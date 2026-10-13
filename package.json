@@ -1,7 +1,7 @@
 {
   "name": "opencode-vscode",
-  "displayName": "OpenCode GUI",
-  "description": "OpenCode AI coding agent for VSCode GUI extension",
+  "displayName": "Axiom — AI Workspace",
+  "description": "Build software through conversation with an AI-first coding workspace.",
   "version": "0.4.3",
   "publisher": "TanishqKancharla",
   "icon": "media/logo.png",
