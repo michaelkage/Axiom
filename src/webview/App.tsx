@@ -3,6 +3,7 @@ import { InputBar } from "./components/InputBar";
 import type { TiptapEditorMethods } from "./components/TiptapEditor";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
+import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
@@ -925,6 +926,7 @@ function App() {
       />
 
       <Show when={!hasMessages()}>
+        <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
             <For each={standalonePermissions()}>
