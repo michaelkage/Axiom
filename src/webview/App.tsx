@@ -310,6 +310,41 @@ function App() {
     messages().some((m) => m.type === "user" || m.type === "assistant")
   );
 
+  // Axiom's first workflow slice: make the intent and execution steps visible
+  // before handing the request to the existing OpenCode runtime.
+  const [workflowPlan, setWorkflowPlan] = createSignal<{ prompt: string; steps: string[] } | null>(null);
+  let skipPlanOnce = false;
+
+  const buildWorkflowSteps = (prompt: string): string[] => {
+    const normalized = prompt.toLowerCase();
+    const steps = ["Inspect the relevant project files and existing patterns"];
+    if (/fix|bug|error|broken|crash|fail/.test(normalized)) {
+      steps.push("Trace the problem to its root cause and identify a minimal fix");
+    } else if (/design|landing|page|ui|interface|dashboard|frontend/.test(normalized)) {
+      steps.push("Map the requested experience into focused UI and behavior changes");
+    } else if (/test|coverage|verify|quality/.test(normalized)) {
+      steps.push("Identify the behavior to validate and the most relevant checks");
+    } else {
+      steps.push("Break the requested outcome into small, coherent implementation changes");
+    }
+    steps.push("Implement the changes while preserving unrelated behavior");
+    steps.push("Run available checks and review the resulting changes");
+    return steps;
+  };
+
+  const requestWorkflowPlan = (prompt: string) => {
+    setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
+  };
+
+  const executeWorkflowPlan = async () => {
+    const plan = workflowPlan();
+    if (!plan) return;
+    setWorkflowPlan(null);
+    setInput(plan.prompt);
+    skipPlanOnce = true;
+    await handleSubmit();
+  };
+
   // Find permissions that should show as standalone modals (not inline with tools)
   const standalonePermissions = createMemo(() => {
     const result: Permission[] = [];
@@ -505,6 +540,12 @@ function App() {
     if (!text || !sync.isReady()) {
       return;
     }
+
+    if (!skipPlanOnce) {
+      requestWorkflowPlan(text);
+      return;
+    }
+    skipPlanOnce = false;
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -941,6 +982,38 @@ function App() {
           </div>
         </Show>
         
+        <Show when={workflowPlan()} keyed>
+          {(plan) => (
+            <section class="workflow-plan" aria-label="Build plan">
+              <div class="workflow-plan__eyebrow">AXIOM WORKFLOW <span>01 / PLAN</span></div>
+              <h2>Here’s the build plan</h2>
+              <p class="workflow-plan__prompt">{plan.prompt}</p>
+              <ol>
+                <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
+              </ol>
+              <div class="workflow-plan__actions">
+                <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+          )}
+        </Show>
+        <Show when={workflowPlan()} keyed>
+          {(plan) => (
+            <section class="workflow-plan" aria-label="Build plan">
+              <div class="workflow-plan__eyebrow">AXIOM WORKFLOW <span>01 / PLAN</span></div>
+              <h2>Here’s the build plan</h2>
+              <p class="workflow-plan__prompt">{plan.prompt}</p>
+              <ol>
+                <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
+              </ol>
+              <div class="workflow-plan__actions">
+                <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+          )}
+        </Show>
         <InputBar
           value={input()}
           onInput={setInput}
