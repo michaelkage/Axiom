@@ -1804,3 +1804,103 @@ body.vscode-high-contrast {
   .welcome-suggestion { padding: 10px 11px; }
   .welcome-screen h1 { font-size: 32px; }
 }
+
+
+/* Plan-first workflow: a clear, lightweight checkpoint before execution. */
+.workflow-plan {
+  width: min(100% - 32px, 620px);
+  margin: 12px auto 18px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, #8b5cf6 38%, var(--border-color-muted));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--input-background) 94%, #8b5cf6 6%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .08);
+  text-align: left;
+}
+.workflow-plan__eyebrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #a78bfa;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .13em;
+}
+.workflow-plan__eyebrow span {
+  color: var(--description-foreground);
+  letter-spacing: .08em;
+}
+.workflow-plan h2 {
+  margin: 12px 0 7px;
+  color: var(--foreground);
+  font-size: 18px;
+  letter-spacing: -.025em;
+}
+.workflow-plan__prompt {
+  margin: 0 0 14px;
+  color: var(--description-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.workflow-plan ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: workflow-step;
+}
+.workflow-plan li {
+  position: relative;
+  padding: 0 0 0 31px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  counter-increment: workflow-step;
+}
+.workflow-plan li::before {
+  content: counter(workflow-step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  color: #c4b5fd;
+  background: color-mix(in srgb, #8b5cf6 17%, transparent);
+  font-size: 9px;
+  font-weight: 750;
+}
+.workflow-plan__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.workflow-plan__actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.workflow-plan__secondary {
+  border: 1px solid var(--border-color-muted);
+  background: transparent;
+  color: var(--foreground);
+}
+.workflow-plan__primary {
+  border: 1px solid #7c3aed;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: #fff;
+}
+.workflow-plan__actions button:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}
