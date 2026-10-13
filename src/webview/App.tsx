@@ -998,22 +998,6 @@ function App() {
             </section>
           )}
         </Show>
-        <Show when={workflowPlan()} keyed>
-          {(plan) => (
-            <section class="workflow-plan" aria-label="Build plan">
-              <div class="workflow-plan__eyebrow">AXIOM WORKFLOW <span>01 / PLAN</span></div>
-              <h2>Here’s the build plan</h2>
-              <p class="workflow-plan__prompt">{plan.prompt}</p>
-              <ol>
-                <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
-              </ol>
-              <div class="workflow-plan__actions">
-                <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
-                <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
-              </div>
-            </section>
-          )}
-        </Show>
         <InputBar
           value={input()}
           onInput={setInput}
@@ -1071,6 +1055,22 @@ function App() {
           </div>
         </Show>
         
+        <Show when={workflowPlan()} keyed>
+          {(plan) => (
+            <section class="workflow-plan" aria-label="Build plan">
+              <div class="workflow-plan__eyebrow">AXIOM WORKFLOW <span>01 / PLAN</span></div>
+              <h2>Here’s the build plan</h2>
+              <p class="workflow-plan__prompt">{plan.prompt}</p>
+              <ol>
+                <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
+              </ol>
+              <div class="workflow-plan__actions">
+                <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+          )}
+        </Show>
         <InputBar
           value={input()}
           onInput={setInput}
