@@ -340,7 +340,8 @@ function App() {
     const plan = workflowPlan();
     if (!plan) return;
     setWorkflowPlan(null);
-    setInput(plan.prompt);
+    const executionPrompt = `${plan.prompt}\n\nImplementation plan:\n${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nAfter implementing, run the relevant checks available in this workspace and summarize what changed and what was verified.`;
+    setInput(executionPrompt);
     skipPlanOnce = true;
     await handleSubmit();
   };
