@@ -1098,7 +1098,7 @@ function App() {
       <Show when={(sessionError() || workflowError()) && workflowRun()?.status === "failed"}>
         <RecoveryAdvice error={(sessionError() || workflowError())!} onRetry={retryFailedRun} />
       </Show>
-      <Show when={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) }).length > 0}>
+      <Show when={(sessionError() || workflowError() || workflowPlan()) && suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) }).length > 0}>
         <section class="workflow-plan workflow-plan--suggestions" aria-label="Suggested next steps">
           <div class="workflow-plan__eyebrow">AXIOM INTELLIGENCE <span>UP NEXT</span></div>
           <h2>Keep the momentum</h2>
@@ -1112,6 +1112,12 @@ function App() {
 
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
+        <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
+          <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
+          <div class="workflow-plan__actions">
+            <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
+          </div>
+        </section>
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
             <For each={standalonePermissions()}>
