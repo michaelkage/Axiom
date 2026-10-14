@@ -36,7 +36,7 @@ export function inferSpecialist(prompt: string): SpecialistRole {
 /** Produce bounded, dependency-aware tasks with stable IDs and explicit scopes. */
 export function coordinateTasks(signals: TaskSignal[]): IntelligenceTask[] {
   const seen = new Set<string>();
-  return signals.map((signal, index) => {
+  const tasks = signals.map((signal, index) => {
     const id = signal.id.trim();
     if (!id || seen.has(id)) throw new Error(`Task IDs must be non-empty and unique: ${id}`);
     seen.add(id);
