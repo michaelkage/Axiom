@@ -2020,3 +2020,46 @@ body.vscode-high-contrast {
 .recovery-advice { border-color: color-mix(in srgb, var(--error-foreground) 45%, var(--border-color-muted)); }
 .recovery-advice strong { font-size: 12px; }
 .recovery-advice button { margin-top: 10px; padding: 7px 10px; border: 1px solid var(--border-color-muted); border-radius: 8px; background: transparent; color: var(--foreground); font: inherit; font-size: 11px; cursor: pointer; }
+
+
+.workflow-plan__parallel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color-muted);
+}
+.workflow-plan__parallel > p,
+.workflow-plan__error {
+  color: var(--description-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.workflow-plan__parallel ol {
+  margin: 12px 0;
+  gap: 10px;
+}
+.workflow-plan__parallel li {
+  display: grid;
+  gap: 3px;
+}
+.workflow-plan__parallel li span {
+  color: var(--description-foreground);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.workflow-plan__parallel > button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.workflow-plan__actions button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+.workflow-plan__error {
+  color: var(--error-foreground, #ef4444);
+}
