@@ -423,9 +423,9 @@ function App() {
         return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "succeeded") + session + worktree + summary;
       }).join("\n");
       setParallelPlan(null);
-      setInput("Integrate and verify the parallel work for this request: " + plan.prompt + "\n\nChild task outcomes:\n" + completed + "\n\nEach task ran in an isolated Git worktree. Inspect the listed worktree paths, compare diffs against the parent workspace, and selectively integrate appropriate changes without blindly overwriting files. Then run relevant tests/build/type checks in the parent workspace. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly. Worktrees are retained for review and cleanup.");
-      skipPlanOnce = true;
-      await handleSubmit();
+      setWorkflowRun({ prompt: plan.prompt, status: "complete" });
+      setInput("");
+      logger.info("Parallel task execution finished; changes remain isolated pending explicit review and integration.", { outcomes: completed });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setWorkflowError(`Parallel execution stopped: ${message}. Some sibling tasks may already have changed files; review the workspace before retrying.`);
