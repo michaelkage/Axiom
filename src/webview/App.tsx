@@ -225,7 +225,7 @@ function App() {
     const unique = new Map(results.map((result) => [result!.id, result!]));
     const observed = [...unique.values()];
     const run = workflowRun();
-    if (run && run.status !== "running") {
+    if (run && run().status !== "running") {
       return [...observed, ...skippedChecks(["Tests", "Build"], observed)];
     }
     return observed;
@@ -599,19 +599,17 @@ function App() {
         }
         
         // Convert mention references to SelectionAttachment objects
-        const mentionAttachments: SelectionAttachment[] = mentionedFiles
-          .map((mentionReference) => {
-            const parsedMention = parseFileMentionReference(mentionReference);
-            if (!parsedMention.filePath) return null;
-            return {
-              id: `mention-${mentionReference}`,
-              filePath: parsedMention.filePath,
-              fileUrl: buildWorkspaceFileUrl(workspaceRoot, parsedMention.filePath),
-              startLine: parsedMention.startLine,
-              endLine: parsedMention.endLine,
-            } satisfies SelectionAttachment;
-          })
-          .filter((attachment): attachment is SelectionAttachment => attachment !== null);
+        const mentionAttachments: SelectionAttachment[] = mentionedFiles.flatMap((mentionReference) => {
+          const parsedMention = parseFileMentionReference(mentionReference);
+          if (!parsedMention.filePath) return [];
+          return [{
+            id: `mention-${mentionReference}`,
+            filePath: parsedMention.filePath,
+            fileUrl: buildWorkspaceFileUrl(workspaceRoot, parsedMention.filePath),
+            startLine: parsedMention.startLine,
+            endLine: parsedMention.endLine,
+          }];
+        });
         
         // Merge with existing attachments (avoid exact duplicates)
         const attachmentKey = (attachment: SelectionAttachment) =>
@@ -1007,11 +1005,11 @@ function App() {
 
       <Show when={workflowRun()}>
         {(run) => (
-          <section class={`workflow-run workflow-run--${run.status}`} aria-live="polite" aria-label="Build run status">
+          <section class={`workflow-run workflow-run--${run().status}`} aria-live="polite" aria-label="Build run status">
             <span class="workflow-run__indicator" aria-hidden="true" />
             <div class="workflow-run__copy">
-              <strong>{run.status === "running" ? "Axiom is building" : run.status === "complete" ? "Response finished" : "Run needs attention"}</strong>
-              <span>{run.status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run.status === "complete" ? "The agent has finished responding. Review the conversation and changed files; run results are not independently verified here." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
+              <strong>{run().status === "running" ? "Axiom is building" : run().status === "complete" ? "Response finished" : "Run needs attention"}</strong>
+              <span>{run().status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run().status === "complete" ? "The agent has finished responding. Review the conversation and changed files; run results are not independently verified here." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
             </div>
             <button type="button" class="workflow-run__dismiss" onClick={() => setWorkflowRun(null)} aria-label="Dismiss run status">×</button>
           </section>
