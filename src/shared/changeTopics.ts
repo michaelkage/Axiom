@@ -45,11 +45,73 @@ export function groupChangeTopics(files: ChangeFile[]): ChangeTopic[] {
   }
   return [...groups.values()];
 }
+type DiffLine = { kind: "context" | "add" | "remove"; text: string };
+function diffLines(before: string[], after: string[]): DiffLine[] {
+  // Bound the dynamic-programming table so very large generated files remain safe to preview.
+  if (before.length * after.length > 250_000) {
+    return [
+      ...before.map(text => ({ kind: "remove" as const, text })),
+      ...after.map(text => ({ kind: "add" as const, text })),
+    ];
+  }
+  const rows = before.length + 1;
+  const cols = after.length + 1;
+  const lcs = Array.from({ length: rows }, () => new Uint32Array(cols));
+  for (let i = before.length - 1; i >= 0; i--) {
+    for (let j = after.length - 1; j >= 0; j--) {
+      lcs[i][j] = before[i] === after[j]
+        ? lcs[i + 1][j + 1] + 1
+        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const lines: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < after.length) {
+    if (before[i] === after[j]) {
+      lines.push({ kind: "context", text: before[i] });
+      i++; j++;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      lines.push({ kind: "remove", text: before[i++] });
+    } else {
+      lines.push({ kind: "add", text: after[j++] });
+    }
+  }
+  while (i < before.length) lines.push({ kind: "remove", text: before[i++] });
+  while (j < after.length) lines.push({ kind: "add", text: after[j++] });
+  return lines;
+}
 export function toUnifiedDiff(file: ChangeFile): string {
   if (file.before === undefined && file.after === undefined) return "";
-  const before = (file.before ?? "").split("\n");
-  const after = (file.after ?? "").split("\n");
-  const lines = [`--- a/${file.file}`, `+++ b/${file.file}`, `@@ -1,${file.before === undefined ? 0 : before.length} +1,${file.after === undefined ? 0 : after.length} @@`];
-  lines.push(...before.map(line => `-${line}`), ...after.map(line => `+${line}`));
-  return lines.join("\n");
+  const before = file.before === undefined ? [] : file.before.split("\n");
+  const after = file.after === undefined ? [] : file.after.split("\n");
+  const lines = diffLines(before, after);
+  const changed = lines.map((line, index) => line.kind === "context" ? -1 : index).filter(index => index >= 0);
+  if (changed.length === 0) return `--- a/${file.file}\n+++ b/${file.file}`;
+  const context = 3;
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const index of changed) {
+    const start = Math.max(0, index - context);
+    const end = Math.min(lines.length, index + context + 1);
+    const previous = ranges[ranges.length - 1];
+    if (previous && start <= previous.end) previous.end = Math.max(previous.end, end);
+    else ranges.push({ start, end });
+  }
+  const oldBefore = new Array(lines.length + 1).fill(0);
+  const newBefore = new Array(lines.length + 1).fill(0);
+  for (let i = 0; i < lines.length; i++) {
+    oldBefore[i + 1] = oldBefore[i] + (lines[i].kind === "add" ? 0 : 1);
+    newBefore[i + 1] = newBefore[i] + (lines[i].kind === "remove" ? 0 : 1);
+  }
+  const output = [`--- a/${file.file}`, `+++ b/${file.file}`];
+  for (const range of ranges) {
+    const slice = lines.slice(range.start, range.end);
+    const oldCount = slice.filter(line => line.kind !== "add").length;
+    const newCount = slice.filter(line => line.kind !== "remove").length;
+    const oldStart = oldCount === 0 ? oldBefore[range.start] : oldBefore[range.start] + 1;
+    const newStart = newCount === 0 ? newBefore[range.start] : newBefore[range.start] + 1;
+    output.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    output.push(...slice.map(line => `${line.kind === "context" ? " " : line.kind === "add" ? "+" : "-"}${line.text}`));
+  }
+  return output.join("\n");
 }
