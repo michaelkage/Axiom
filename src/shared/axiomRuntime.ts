@@ -22,6 +22,7 @@ export interface AxiomSubTask {
   targetFiles: string[];
   dependsOn: string[];
   agentHint?: string;
+  acceptanceCriteria?: string[];
 }
 export interface AxiomPluginContext {
   workspaceRoot: string;
@@ -149,7 +150,7 @@ export async function planSubTasksWithOmniRoute(
     model,
     temperature: 0.1,
     messages: [
-      { role: "system", content: "Split the user request into small independent coding tasks. Return only a JSON object with a tasks array. Each task must have id, title, scope, targetFiles (array of workspace-relative file paths), dependsOn (array of task IDs), and optional agentHint. Use disjoint targetFiles for tasks that can run in parallel. Never invent absolute paths. If a task's files are uncertain, use a narrow, explicit likely path and keep the task small." },
+      { role: "system", content: "Split the user request into small independent coding tasks. Return only a JSON object with a tasks array. Each task must have id, title, scope, targetFiles (array of workspace-relative file paths), dependsOn (array of task IDs), acceptanceCriteria (array of observable, testable strings), and optional agentHint. Use disjoint targetFiles for tasks that can run in parallel. Never invent absolute paths. If a task's files are uncertain, use a narrow, explicit likely path and keep the task small." },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
@@ -170,7 +171,8 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
     if (typeof task.id !== "string" || typeof task.title !== "string" || typeof task.scope !== "string" || !Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn))
       throw new Error(`Task ${index + 1} is missing required fields.`);
     if (![...task.targetFiles, ...task.dependsOn].every(value => typeof value === "string")) throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
-    return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
+    const acceptanceCriteria = Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.every(value => typeof value === "string" && value.trim()) ? task.acceptanceCriteria as string[] : ["Implement the declared scope and report concrete verification evidence."];
+    return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], acceptanceCriteria, agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
   });
   if (tasks.length === 0) throw new Error("Planner returned an empty task list.");
   for (const task of tasks) {
