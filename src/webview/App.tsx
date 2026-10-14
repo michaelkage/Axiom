@@ -17,7 +17,7 @@ import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
-import { BUILTIN_PLUGIN_CATALOG, DEFAULT_COMBOS, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
+import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import type { TaskExecutionRecord } from "../shared/axiomRuntime";
 
 export interface QueuedMessage {
