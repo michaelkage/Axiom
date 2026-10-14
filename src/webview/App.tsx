@@ -559,7 +559,7 @@ function App() {
       }
       
       setInFlightMessage(null);
-      if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "complete" });
+      if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: sessionError() ? "failed" : "complete" });
       
       // Schedule queue drain in a microtask to avoid interleaving with SSE batch
       queueMicrotask(() => {
