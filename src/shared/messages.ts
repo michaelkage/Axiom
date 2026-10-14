@@ -191,6 +191,13 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("search-files-result"),
     files: z.array(z.string()),
   }),
+  z.object({
+    type: z.literal("agent-worktree-result"),
+    requestId: z.string(),
+    ok: z.boolean(),
+    path: z.string().optional(),
+    error: z.string().optional(),
+  }),
 ]);
 export type HostMessage = z.infer<typeof HostMessageSchema>;
 
