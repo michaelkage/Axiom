@@ -31,7 +31,7 @@ interface TestFixtures {
 }
 
 const test = base.extend<TestFixtures>({
-  mockFetch: async ({}, use) => {
+  mockFetch: async ({}, use: (fixture: ReturnType<typeof vi.fn>) => Promise<void>) => {
     const mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
     await use(mockFetch);
