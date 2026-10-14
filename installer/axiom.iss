@@ -36,7 +36,7 @@ var
   Params: string;
 begin
   Params := '/C ""' + CliPath + '" --install-extension "' + VsixPath + '" --force"';
-  Result := Exec(ExpandConstant('{cmd}'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+  Result := Exec(ExpandConstant('{sys}\\cmd.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
     and (ResultCode = 0);
 end;
 
