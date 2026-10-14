@@ -1,17 +1,10 @@
-import { createMemo, createSignal, For, Show, onMount } from "solid-js";
+import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
 import type { ProjectMemory } from "../../shared/axiomWorkflow";
 import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
-import { vscode } from "../utils/vscode";
+import { loadProjectMemories, projectMemoryStorageKey } from "../utils/projectMemory";
 
 type MemoryCategory = ProjectMemory["category"];
 const categories: MemoryCategory[] = ["architecture", "convention", "decision", "preference", "fix", "failure"];
-function storageKey(project: string) { return "axiom.project-memory.v1:" + project; }
-function safeProjectKey(root: string) {
-  // Keep memory scoped to the workspace without persisting the raw path in the key.
-  let hash = 2166136261;
-  for (let i = 0; i < root.length; i++) { hash ^= root.charCodeAt(i); hash = Math.imul(hash, 16777619); }
-  return (hash >>> 0).toString(16);
-}
 export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const [memories, setMemories] = createSignal<ProjectMemory[]>([]);
   const [query, setQuery] = createSignal("");
@@ -20,20 +13,17 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const [tags, setTags] = createSignal("");
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [expanded, setExpanded] = createSignal(false);
-  const key = () => storageKey(safeProjectKey(props.workspaceRoot || "default-workspace"));
+  const key = () => projectMemoryStorageKey(props.workspaceRoot);
   const persist = (next: ProjectMemory[]) => {
     setMemories(next);
     try { localStorage.setItem(key(), JSON.stringify(next)); }
     catch { /* Storage can be disabled or full; current session remains usable. */ }
   };
-  onMount(() => {
-    try {
-      const raw = localStorage.getItem(key());
-      if (raw) {
-        const decoded: unknown = JSON.parse(raw);
-        if (Array.isArray(decoded)) setMemories(decoded.filter(item => item && typeof item.id === "string" && typeof item.content === "string" && categories.includes(item.category)));
-      }
-    } catch { setMemories([]); }
+  createEffect(() => {
+    // Reload when the host finishes resolving the workspace root, avoiding a default-workspace memory leak.
+    const workspace = props.workspaceRoot;
+    void key();
+    setMemories(loadProjectMemories(workspace));
   });
   const visible = createMemo(() => {
     const all = memories();
