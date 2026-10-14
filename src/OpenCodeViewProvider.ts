@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "child_process";
 import * as os from "os";
+import * as fs from "fs";
 import * as path from "path";
 import { OpenCodeService } from "./OpenCodeService";
 import { getLogger } from "./extension";
@@ -222,6 +223,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           resolve();
         });
       });
+      await fs.promises.mkdir(path.dirname(target), { recursive: true });
       await new Promise<void>((resolve, reject) => {
         execFile("git", ["worktree", "add", "--detach", target, "HEAD"], { cwd: workspaceRoot, timeout: 30000 }, error => {
           if (error) return reject(error);
