@@ -1,0 +1,61 @@
+{
+  "name": "axiom-desktop",
+  "version": "0.4.4",
+  "private": true,
+  "description": "Axiom standalone desktop application",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:dir": "electron-builder --dir --win --x64"
+  },
+  "dependencies": {
+    "opencode-ai": "^1.19.0"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.axiom.desktop",
+    "productName": "Axiom",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/.bin/opencode*",
+      "node_modules/opencode-ai/**"
+    ],
+    "files": [
+      "main.cjs",
+      "package.json",
+      "node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../out",
+        "to": "out",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Axiom-Setup-${version}-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Axiom",
+      "uninstallDisplayName": "Axiom"
+    }
+  }
+}
