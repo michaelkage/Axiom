@@ -1,22 +1,25 @@
 # Develop Axiom locally
 
-For the product overview, user installation, architecture, and release process, start with [README.md](./README.md).
+Axiom's product target is the standalone desktop application. Start with [README.md](./README.md) for user installation, architecture, and release details.
 
 ## Requirements
 
 - Node.js 20
-- pnpm 10, matching the version pinned in `package.json`
-- Visual Studio Code
-- Git
+- pnpm 10, matching the root `package.json`
+- npm for Electron desktop packaging
+- Git for worktree-based task isolation and review
+- Windows x64 to build/test the current official installer target
 
-## Install and build
+## Build the standalone UI
 
 From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run build
+pnpm run build:webview
 ```
+
+This generates `out/standalone.html` and its assets.
 
 ## Run automated checks
 
@@ -24,58 +27,63 @@ pnpm run build
 pnpm exec vitest run
 pnpm exec tsc -p tsconfig.webview.json
 pnpm exec tsc -p tsconfig.extension.json --noEmit
+node --check desktop/main.cjs
 ```
 
-The full `pnpm test` script also runs Playwright browser tests. Those tests may need the browser/runtime dependencies installed for your environment.
+The full `pnpm test` script also runs Playwright browser tests. Those tests may need browser/runtime dependencies installed for your environment.
 
-## Launch the extension
-
-1. Open the repository folder in VS Code.
-2. Open **Run and Debug**.
-3. Choose the extension launch configuration and press **F5**.
-4. In the Extension Development Host window, open the **Axiom** view in the Activity Bar.
-5. Connect/configure a supported model provider and try a small request before running a multi-task plan.
-
-If the launch configuration is missing, inspect `.vscode/launch.json` and `.vscode/tasks.json` before creating replacements. Keep the normal build working while changing development tooling.
-
-## Watch mode
+## Launch the desktop app
 
 ```bash
-pnpm run watch
+pnpm install --frozen-lockfile
+pnpm run build:webview
+cd desktop
+npm install
+npm start
 ```
 
-This runs the extension and webview builds in watch mode. Stop it with Ctrl+C when finished.
+Axiom opens a native folder picker, starts its local OpenCode runtime for the selected project, and loads the standalone workspace. If runtime startup fails, inspect the error dialog and verify the local runtime dependency was installed correctly.
+
+## Build the Windows installer
+
+Run from the repository root:
+
+```bash
+pnpm run build:webview
+cd desktop
+npm install
+npm run dist
+```
+
+The Windows x64 installer is written to `desktop/release/`. The release workflow runs this packaging on a Windows GitHub Actions runner.
 
 ## Troubleshooting
 
-### The view is blank
+### The desktop window does not open
 
-- Run `pnpm run build` and check the terminal for the first build error.
-- In the Extension Development Host, run **Developer: Reload Window**.
-- Open **Developer: Toggle Developer Tools** and inspect the console for webview errors.
+- Confirm `out/standalone.html` exists after running `pnpm run build:webview`.
+- Run `node --check desktop/main.cjs` to catch launcher syntax errors.
+- Start with `npm start` from `desktop/` and inspect terminal output.
 
-### The extension does not activate
+### The local runtime fails to start
 
-- Confirm `dist/extension.js` exists after building.
-- Check the Extension Development Host's **Output** and **Debug Console** panels.
-- Verify the extension launch configuration points at this repository.
+- Verify the bundled `opencode-ai` package installed without errors in `desktop/node_modules`.
+- Check that the selected project folder is readable and writable.
+- Confirm the local runtime can bind to a loopback port and that endpoint security software is not blocking it.
 
-### Task worktree checks fail
+### Agent tasks or quality checks fail
 
-- Confirm Git is installed and the workspace is inside a Git repository.
-- Make sure dependencies can be installed with `pnpm install --frozen-lockfile`.
-- Read the exact quality-gate command output; do not treat the agent's completion message as a passing check.
-
-### The installer cannot install the VSIX
-
-The Windows installer retains the VSIX under the user's local Axiom application folder. In VS Code, open **Extensions**, choose **Install from VSIX...**, and select that file. The `.vsix` release asset can also be installed directly.
+- Confirm Git is installed and the project is inside a Git repository for worktree isolation.
+- Make sure dependencies can be installed in the target project.
+- Read the exact quality-gate command output; do not treat an agent completion message as proof that checks passed.
 
 ## Useful locations
 
-- `src/extension.ts`: extension entry point
-- `src/OpenCodeViewProvider.ts`: VS Code integration, task worktrees, inspection, and quality checks
+- `desktop/main.cjs`: Electron launcher, workspace selection, and local runtime lifecycle
+- `desktop/package.json`: desktop dependencies and installer configuration
+- `src/webview/standalone.html`: desktop UI entry point
 - `src/webview/App.tsx`: primary workspace UI
 - `src/webview/components/WorktreeReviewPanel.tsx`: task review and selective integration
 - `src/shared/axiomWorkflow.ts`: shared workflow helpers and tests
 - `.github/workflows/axiom-ci.yml`: automated CI
-- `.github/workflows/release.yml`: tagged Windows release packaging
+- `.github/workflows/release.yml`: standalone Windows release packaging
