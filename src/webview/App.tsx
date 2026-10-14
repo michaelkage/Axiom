@@ -6,11 +6,16 @@ import { TopBar } from "./components/TopBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
+import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
+import { VerificationPanel } from "./components/VerificationPanel";
+import { RecoveryAdvice } from "./components/RecoveryAdvice";
+import { getVerificationResult } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
 import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
+import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
@@ -207,6 +212,18 @@ function App() {
   const pendingPermissions = sync.aggregatedPermissions;
   const contextInfo = sync.contextInfo;
   const fileChanges = sync.fileChanges;
+  const currentSessionDiffs = createMemo<FileDiff[]>(() => {
+    const id = sync.currentSessionId();
+    if (!id) return [];
+    return sync.sessions().find((session) => session.id === id)?.summary?.diffs ?? [];
+  });
+  const verificationResults = createMemo(() => {
+    const results = messages().flatMap((message) => sync.getParts(message.id))
+      .map((part) => getVerificationResult(part as { id: string; tool?: string; state?: { status?: string; input?: Record<string, unknown>; output?: string; error?: string; title?: string } }))
+      .filter((result) => result !== null);
+    const unique = new Map(results.map((result) => [result!.id, result!]));
+    return [...unique.values()];
+  });
   const isThinking = sync.isThinking;
   const sessionError = sync.sessionError;
 
@@ -335,6 +352,15 @@ function App() {
 
   const requestWorkflowPlan = (prompt: string) => {
     setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
+  };
+
+  const retryFailedRun = () => {
+    const run = workflowRun();
+    if (!run) return;
+    setInput(run.prompt);
+    setWorkflowRun({ ...run, status: "running" });
+    skipPlanOnce = true;
+    void handleSubmit();
   };
 
   const executeWorkflowPlan = async () => {
@@ -987,6 +1013,10 @@ function App() {
         )}
       </Show>
 
+      <Show when={sessionError() && workflowRun()?.status === "failed"}>
+        <RecoveryAdvice error={sessionError()!} onRetry={retryFailedRun} />
+      </Show>
+
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
         <Show when={standalonePermissions().length > 0}>
@@ -1061,6 +1091,10 @@ function App() {
           <FileChangesSummary fileChanges={fileChanges()} />
           <ContextIndicator contextInfo={contextInfo()} />
         </div>
+        <Show when={currentSessionDiffs().length > 0}>
+          <ChangeTopicsPanel diffs={currentSessionDiffs()} />
+        </Show>
+        <VerificationPanel results={verificationResults()} />
         
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
