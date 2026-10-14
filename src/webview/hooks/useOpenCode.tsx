@@ -237,6 +237,7 @@ function createOpenCode() {
       });
       const taskPrompt = [
         "Axiom parallel task: " + task.title,
+        "Isolated worktree path: " + taskDirectory,
         "Selected context (estimated " + packed.estimatedTokens + " tokens; omitted " + packed.omittedIds.length + " lower-priority items):",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
         "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
