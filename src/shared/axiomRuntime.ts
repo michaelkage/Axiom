@@ -110,7 +110,13 @@ export async function executeTaskBatches<T>(
       emit({ taskId: task.id, title: task.title, status: "running", startedAt });
       try {
         const result = await runner(task, [...completedContext]);
-        emit({ taskId: task.id, title: task.title, status: "succeeded", startedAt, finishedAt: Date.now() });
+        const detail = result && typeof result === "object" ? result as Record<string, unknown> : {};
+        emit({
+          taskId: task.id, title: task.title, status: "succeeded", startedAt, finishedAt: Date.now(),
+          ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
+          ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
+          ...(typeof detail.summary === "string" ? { summary: detail.summary } : {}),
+        });
         return { task, result };
       } catch (error) {
         emit({ taskId: task.id, title: task.title, status: "failed", startedAt, finishedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
