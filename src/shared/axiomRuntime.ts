@@ -70,7 +70,14 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
     const claimedPaths = new Set<string>();
     for (const task of ready) {
       const paths = task.targetFiles.map(path => path.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase());
-      if (paths.some(path => claimedPaths.has(path))) continue;
+      // Unknown target sets are exclusive: without a declared scope, do not
+      // run this task alongside any other writer.
+      if (task.targetFiles.length === 0) {
+        if (batch.length > 0) continue;
+        batch.push(task);
+        break;
+      }
+      if (batch.some(item => item.targetFiles.length === 0) || paths.some(path => claimedPaths.has(path))) continue;
       batch.push(task);
       for (const path of paths) claimedPaths.add(path);
     }
