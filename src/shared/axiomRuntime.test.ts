@@ -34,6 +34,13 @@ describe("Axiom runtime helpers", () => {
     ])).toThrow(/dependency cycle/);
   });
 
+  it("rejects empty plans and unsafe target paths", () => {
+    expect(() => parseSubTasks([])).toThrow(/empty task list/);
+    expect(() => parseSubTasks([
+      { id: "escape", title: "Escape", scope: "x", targetFiles: ["../outside.ts"], dependsOn: [] },
+    ])).toThrow(/unsafe workspace-relative target path/);
+  });
+
   it("executes safe batches concurrently and waits between dependency layers", async () => {
     const order: string[] = [];
     const tasks = parseSubTasks([
