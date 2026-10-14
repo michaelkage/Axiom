@@ -1223,7 +1223,7 @@ function App() {
               <Show when={parallelPlan()} keyed>
                 {(parallel) => <div class="workflow-plan__parallel">
                   <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
-                  <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span></li>}</For></ol>
+                  <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span><Show when={task.dependsOn.length > 0}><small>Depends on: {task.dependsOn.join(", ")}</small></Show><ul><For each={task.acceptanceCriteria ?? ["Implement scope and report concrete verification evidence."]}>{criterion => <li>{criterion}</li>}</For></ul></li>}</For></ol>
                   <button class="workflow-plan__primary" onClick={() => void executeParallelPlan()}>Run with parallel agents <span aria-hidden="true">→</span></button>
                 </div>}
               </Show>
