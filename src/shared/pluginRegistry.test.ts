@@ -10,7 +10,7 @@ describe("AxiomPluginRegistry", () => {
     await registry.activate("example");
     expect(registry.list()[0].active).toBe(true);
     await registry.deactivate("example");
-    expect(deactivate).toHaveBeenCalledOnce();
+    expect(deactivate).toHaveBeenCalledTimes(1);
     expect(registry.list()[0].active).toBe(false);
   });
   it("rejects duplicate ids and unknown plugins", async () => {
