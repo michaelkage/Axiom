@@ -226,9 +226,23 @@ function createOpenCode() {
         ...(agent ? { agent } : {}),
       });
       if (result.error) {
-        throw new Error(`Task "${task.title}" failed: ${JSON.stringify(result.error)}`);
+        throw new Error("Task \"" + task.title + "\" failed: " + JSON.stringify(result.error));
       }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary: "Child session accepted the task prompt; detailed edits and checks still require integration review." };
+      let summary = "Agent prompt was accepted; review workspace changes and verification before merging.";
+      try {
+        const messagesResponse = await c.session.messages({ sessionID: childSessionId });
+        const messages = (messagesResponse.data ?? []) as unknown as Array<{
+          info?: { role?: string };
+          parts?: Array<{ type?: string; text?: string }>;
+        }>;
+        const assistantMessages = messages.filter(message => message.info?.role === "assistant");
+        const latest = assistantMessages[assistantMessages.length - 1];
+        const text = (latest?.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n").trim();
+        if (text) summary = text.slice(0, 1200);
+      } catch {
+        // A missing transcript must not turn a successful prompt response into a false failure.
+      }
+      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary };
     }, orchestration?.onOutcome);
   }
 
