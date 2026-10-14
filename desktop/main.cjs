@@ -142,8 +142,8 @@ async function createWindow() {
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
   const htmlPath = app.isPackaged
-    ? path.join(process.resourcesPath, "out", "standalone.html")
-    : path.join(__dirname, "..", "out", "standalone.html");
+    ? path.join(process.resourcesPath, "out", "src", "webview", "standalone.html")
+    : path.join(__dirname, "..", "out", "src", "webview", "standalone.html");
   await mainWindow.loadFile(htmlPath, {
     query: {
       serverUrl,
