@@ -17,6 +17,7 @@ import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
 import { DEFAULT_AXIOM_RUNTIME, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
+import { inferSpecialist } from "../../shared/intelligence";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -179,9 +180,12 @@ function createOpenCode() {
         task.targetFiles.length ? `Only modify these declared target files unless a minimal supporting change is absolutely necessary: ${task.targetFiles.join(", ")}.` : "Keep changes tightly scoped and explain the files you need to change.",
         "Do not overlap with sibling tasks. Preserve unrelated behavior. Run focused checks where available and report exact commands and observed outcomes.",
       ].join("\n\n");
+      const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
+      const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
       const agent = preferredAgent && availableAgentNames.has(preferredAgent)
         ? preferredAgent
-        : task.agentHint && availableAgentNames.has(task.agentHint) ? task.agentHint : undefined;
+        : task.agentHint && availableAgentNames.has(task.agentHint) ? task.agentHint
+        : matchingSpecialist;
       const result = await c.session.prompt({
         sessionID: childSessionId,
         parts: [{ type: "text", text: taskPrompt }],
