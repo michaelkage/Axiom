@@ -1,3 +1,4 @@
+import { classifyRecovery } from "./recovery";
 export interface AxiomRuntimeConfig {
   gatewayUrl: string;
   nativeOmniRoute: boolean;
@@ -79,13 +80,22 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
 }
 export async function requestOmniRoute<T>(path: string, body: unknown, config: AxiomRuntimeConfig = DEFAULT_AXIOM_RUNTIME, fetcher: typeof fetch = fetch): Promise<T> {
   const base = config.gatewayUrl.replace(/\/+$/, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
-  try {
-    const response = await fetcher(`${base}/${path.replace(/^\/+/, "")}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`OmniRoute returned HTTP ${response.status}`);
-    return await response.json() as T;
-  } finally { clearTimeout(timeout); }
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= config.maxAutomaticRetries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+    try {
+      const response = await fetcher(`${base}/${path.replace(/^\/+/, "")}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`OmniRoute returned HTTP ${response.status}`);
+      return await response.json() as T;
+    } catch (error) {
+      lastError = error;
+      const advice = classifyRecovery(error);
+      if (attempt >= config.maxAutomaticRetries || !advice.safeToRetryAutomatically) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.min(250 * 2 ** attempt, 1500)));
+    } finally { clearTimeout(timeout); }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
