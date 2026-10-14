@@ -1199,7 +1199,7 @@ function App() {
               </ol>
               <div class="workflow-plan__eyebrow">QUICK COMBOS</div>
               <div class="workflow-plan__actions" aria-label="Reusable workflows">
-                <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title}</button>}</For>
+                <For each={getAvailableCombos(installedPluginIds())}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title}</button>}</For>
               </div>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
