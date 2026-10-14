@@ -91,7 +91,7 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
-  startedAt?: number; finishedAt?: number; sessionId?: string; agent?: string; summary?: string; error?: string;
+  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string;
 }
 export interface CompletedTaskContext { task: AxiomSubTask; result: unknown; }
 export async function executeTaskBatches<T>(
@@ -114,6 +114,7 @@ export async function executeTaskBatches<T>(
         emit({
           taskId: task.id, title: task.title, status: "succeeded", startedAt, finishedAt: Date.now(),
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
+          ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
           ...(typeof detail.summary === "string" ? { summary: detail.summary } : {}),
         });
