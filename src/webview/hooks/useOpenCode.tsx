@@ -156,8 +156,13 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
-    const agentResponse = await c.app.agents();
-    const availableAgentNames = new Set((agentResponse.data ?? []).map(agent => agent.name));
+    let availableAgentNames = new Set<string>();
+    try {
+      const agentResponse = await c.app.agents();
+      availableAgentNames = new Set((agentResponse.data ?? []).map(agent => agent.name));
+    } catch {
+      // A missing agent catalogue should fall back to the OpenCode default agent.
+    }
     return executeTaskBatches(tasks, async task => {
       const created = await c.session.create({
         ...(directory ? { directory } : {}),
