@@ -20,6 +20,7 @@ export interface TaskSignal {
   title: string;
   prompt: string;
   targetFiles?: string[];
+  dependsOn?: string[];
   kind?: "feature" | "bug" | "question" | "test" | "review";
 }
 const roleRules: Array<{ role: SpecialistRole; pattern: RegExp }> = [
@@ -44,10 +45,30 @@ export function coordinateTasks(signals: TaskSignal[]): IntelligenceTask[] {
       title: signal.title.trim() || `Task ${index + 1}`,
       prompt: signal.prompt.trim(),
       role: signal.kind === "test" ? "testing" : signal.kind === "review" ? "review" : inferSpecialist(signal.prompt),
-      dependsOn: [],
+      dependsOn: [...(signal.dependsOn ?? [])],
       targetFiles: [...new Set((signal.targetFiles ?? []).map(path => normalizeWorkspacePath(path)))],
     };
   });
+  const ids = new Set(seen);
+  for (const task of tasks) {
+    for (const dependency of task.dependsOn) {
+      if (!ids.has(dependency)) throw new Error("Unknown dependency " + dependency + " in task " + task.id);
+      if (dependency === task.id) throw new Error("Task " + task.id + " cannot depend on itself");
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const visit = (id: string): void => {
+    if (visiting.has(id)) throw new Error("Task graph contains a dependency cycle.");
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of byId.get(id)?.dependsOn ?? []) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const task of tasks) visit(task.id);
+  return tasks;
 }
 export function normalizeWorkspacePath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "").trim();
