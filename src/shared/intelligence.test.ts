@@ -13,6 +13,14 @@ describe("Axiom intelligence layer", () => {
       { id: "same", title: "one", prompt: "one" },
       { id: "same", title: "two", prompt: "two" },
     ])).toThrow(/unique/);
+    expect(coordinateTasks([
+      { id: "first", title: "First", prompt: "implement" },
+      { id: "second", title: "Second", prompt: "test", dependsOn: ["first"] },
+    ])[1]?.dependsOn).toEqual(["first"]);
+    expect(() => coordinateTasks([
+      { id: "first", title: "First", prompt: "implement", dependsOn: ["second"] },
+      { id: "second", title: "Second", prompt: "test", dependsOn: ["first"] },
+    ])).toThrow(/dependency cycle/);
   });
 
   it("normalizes target paths and blocks traversal", () => {
