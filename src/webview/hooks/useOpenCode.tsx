@@ -17,7 +17,7 @@ import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
 import { DEFAULT_AXIOM_RUNTIME, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
-import { inferSpecialist } from "../../shared/intelligence";
+import { contextForSpecialist, inferSpecialist } from "../../shared/intelligence";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -153,7 +153,7 @@ function createOpenCode() {
     return { model, tasks };
   }
 
-  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null) {
+  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void }) {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
@@ -164,7 +164,7 @@ function createOpenCode() {
     } catch {
       // A missing agent catalogue should fall back to the OpenCode default agent.
     }
-    return executeTaskBatches(tasks, async task => {
+    return executeTaskBatches(tasks, async (task, completed) => {
       const created = await c.session.create({
         ...(directory ? { directory } : {}),
         parentID: parentSessionId,
@@ -174,11 +174,24 @@ function createOpenCode() {
         throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
       }
       const childSessionId = created.data.id;
+      const packed = contextForSpecialist({
+        request: orchestration?.request ?? task.scope,
+        taskTitle: task.title,
+        taskScope: task.scope,
+        targetFiles: task.targetFiles,
+        planSteps: orchestration?.planSteps,
+        completedTasks: completed.map(entry => ({
+          title: entry.task.title,
+          status: "succeeded",
+          summary: typeof entry.result === "object" && entry.result !== null && "summary" in entry.result ? String((entry.result as { summary: unknown }).summary) : undefined,
+        })),
+        constraints: ["Do not overlap with sibling tasks. Preserve unrelated behavior.", "Run focused checks where available and report exact commands and observed outcomes."],
+      });
       const taskPrompt = [
-        `Axiom parallel task: ${task.title}`,
-        task.scope,
-        task.targetFiles.length ? `Only modify these declared target files unless a minimal supporting change is absolutely necessary: ${task.targetFiles.join(", ")}.` : "Keep changes tightly scoped and explain the files you need to change.",
-        "Do not overlap with sibling tasks. Preserve unrelated behavior. Run focused checks where available and report exact commands and observed outcomes.",
+        "Axiom parallel task: " + task.title,
+        "Selected context (estimated " + packed.estimatedTokens + " tokens; omitted " + packed.omittedIds.length + " lower-priority items):",
+        ...packed.items.map(item => "[" + item.kind + "] " + item.content),
+        "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
       ].join("\n\n");
       const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
       const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
@@ -193,8 +206,8 @@ function createOpenCode() {
       if (result.error) {
         throw new Error(`Task "${task.title}" failed: ${JSON.stringify(result.error)}`);
       }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title };
-    });
+      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary: "Child session accepted the task prompt; detailed edits and checks still require integration review." };
+    }, orchestration?.onOutcome);
   }
 
   // Subscribe to events for the workspace through the extension proxy
