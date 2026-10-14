@@ -238,7 +238,7 @@ function createOpenCode() {
       const taskPrompt = [
         "Axiom parallel task: " + task.title,
         "Isolated worktree path: " + taskDirectory,
-        "Selected context (estimated " + packed.estimatedTokens + " tokens; omitted " + packed.omittedIds.length + " lower-priority items):",
+        "Context budget: approximately " + packed.inputEstimatedTokens + " tokens before packing and " + packed.estimatedTokens + " after packing; estimated savings " + packed.estimatedSavingsTokens + " tokens (" + packed.estimatedSavingsPercent + "%). These are heuristic estimates, not provider-reported usage.",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
         "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
         "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
@@ -270,7 +270,7 @@ function createOpenCode() {
       } catch {
         // A missing transcript must not turn a successful prompt response into a false failure.
       }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory };
+      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
     }, orchestration?.onOutcome);
   }
 
