@@ -8,6 +8,9 @@
 #ifndef OutputDir
   #define OutputDir "dist-release"
 #endif
+#ifndef VsixPath
+  #define VsixPath "dist-release\\axiom.vsix"
+#endif
 
 [Setup]
 AppId={{B88A6B6B-1F27-4A9C-8B50-A71000000001}
