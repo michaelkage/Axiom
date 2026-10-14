@@ -17,14 +17,16 @@ import type {
   ContextInfo,
   FileChangesInfo,
   Message,
+  MessagePart,
   Permission,
   Session,
 } from "./types";
 
 const fakeQueuedMessages: QueuedMessage[] = [
-  { id: "q1", text: "After that, can you add unit tests for the auth module?" },
-  { id: "q2", text: "Also update the README with the new API endpoints" },
+  { id: "q1", text: "After that, can you add unit tests for the auth module?", agent: null, attachments: [] },
+  { id: "q2", text: "Also update the README with the new API endpoints", agent: null, attachments: [] },
 ];
+type MockMessage = Message & { parts?: MessagePart[] };
 
 // Fake data for UI development
 const fakeAgents: Agent[] = [
@@ -81,7 +83,7 @@ const fakeSessions: Session[] = [
   },
 ];
 
-const fakeMessages: Message[] = [
+const fakeMessages: MockMessage[] = [
   {
     id: "msg-1",
     type: "user",
@@ -367,7 +369,7 @@ validators.ts:12:  return password === user.hashedPassword;`,
 
 function UIKit() {
   const [input, setInput] = createSignal("");
-  const [messages, setMessages] = createSignal<Message[]>(fakeMessages);
+  const [messages, setMessages] = createSignal<MockMessage[]>(fakeMessages);
   const [isThinking, setIsThinking] = createSignal(false);
   const [agents] = createSignal<Agent[]>(fakeAgents);
   const [selectedAgent, setSelectedAgent] = createSignal<string | null>(
@@ -404,13 +406,10 @@ function UIKit() {
         "call-1",
         {
           id: "perm-1",
-          type: "bash",
+          permission: "bash",
           sessionID: "session-1",
-          messageID: "msg-2",
-          callID: "call-1",
-          title: "Run bash command: npm run test -- --grep auth",
-          metadata: {},
-          time: { created: Date.now() },
+          tool: { messageID: "msg-2", callID: "call-1" },
+          metadata: { title: "Run bash command: npm run test -- --grep auth" },
         },
       ],
     ])
@@ -689,7 +688,7 @@ function UIKit() {
             messages={messages()}
             isThinking={isThinking()}
             workspaceRoot="/Users/developer/project"
-            pendingPermissions={pendingPermissions()}
+            pendingPermissions={pendingPermissions}
             onPermissionResponse={handlePermissionResponse}
           />
 
