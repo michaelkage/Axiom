@@ -56,8 +56,8 @@ function labelFor(command: string): string {
   return "Verification";
 }
 export function skippedChecks(planned: string[], observed: VerificationResult[]): VerificationResult[] {
-  const completedLabels = new Set(observed.filter(result => result.status !== "skipped").map(result => result.label.toLowerCase()));
-  return planned.filter(label => !completedLabels.has(label.toLowerCase())).map(label => ({
+  const observedLabels = new Set(observed.map(result => result.label.toLowerCase()));
+  return planned.filter(label => !observedLabels.has(label.toLowerCase())).map(label => ({
     id: `skipped-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     label, command: "", status: "skipped", detail: "No verified exit status was observed for this check."
   }));
