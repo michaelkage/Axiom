@@ -1103,7 +1103,7 @@ function App() {
             <span class="workflow-run__indicator" aria-hidden="true" />
             <div class="workflow-run__copy">
               <strong>{run().status === "running" ? "Axiom is building" : run().status === "complete" ? "Response finished" : "Run needs attention"}</strong>
-              <span>{run().status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run().status === "complete" ? "The agent has finished responding. Review the conversation and changed files; run results are not independently verified here." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
+              <span>{run().status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run().status === "complete" ? "The agent response finished. This is not a quality-gate pass: review changed files and check results before accepting the work." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
             </div>
             <button type="button" class="workflow-run__dismiss" onClick={() => setWorkflowRun(null)} aria-label="Dismiss run status">×</button>
           </section>
@@ -1131,7 +1131,7 @@ function App() {
           <ol>
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
-              <span>{task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
+              <span>{task.status === "succeeded" ? "AGENT SUCCEEDED · REVIEW REQUIRED" : task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
               <Show when={task.worktreePath}><p>Isolated worktree: {task.worktreePath}</p></Show>
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
