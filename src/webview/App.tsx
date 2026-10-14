@@ -17,7 +17,8 @@ import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
-import { DEFAULT_COMBOS, suggestNextActions } from "../shared/intelligence";
+import { BUILTIN_PLUGIN_CATALOG, DEFAULT_COMBOS, comboPromptForState, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
+import type { TaskExecutionRecord } from "../shared/axiomRuntime";
 
 export interface QueuedMessage {
   id: string;
@@ -67,6 +68,8 @@ function App() {
   const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[] } | null>(null);
   const [parallelPlanBusy, setParallelPlanBusy] = createSignal(false);
   const [parallelPlanError, setParallelPlanError] = createSignal<string | null>(null);
+  const [taskOutcomes, setTaskOutcomes] = createSignal<TaskExecutionRecord[]>([]);
+  const [installedPluginIds, setInstalledPluginIds] = createSignal<string[]>([]);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
@@ -1098,7 +1101,7 @@ function App() {
       <Show when={(sessionError() || workflowError()) && workflowRun()?.status === "failed"}>
         <RecoveryAdvice error={(sessionError() || workflowError())!} onRetry={retryFailedRun} />
       </Show>
-      <Show when={(sessionError() || workflowError() || workflowPlan()) && suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) }).length > 0}>
+      <Show when={(sessionError() || workflowError() || workflowPlan()) && suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()), taskOutcomes: taskOutcomes() }).length > 0}>
         <section class="workflow-plan workflow-plan--suggestions" aria-label="Suggested next steps">
           <div class="workflow-plan__eyebrow">AXIOM INTELLIGENCE <span>UP NEXT</span></div>
           <h2>Keep the momentum</h2>
@@ -1115,7 +1118,7 @@ function App() {
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">
-            <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
+            <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(comboPromptForState(combo, taskOutcomes() as ExecutionSummary[]))}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
           </div>
         </section>
         <Show when={standalonePermissions().length > 0}>
