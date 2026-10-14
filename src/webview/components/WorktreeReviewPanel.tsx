@@ -32,15 +32,15 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
       {review()?.loading ? "Inspecting diff…" : review()?.ok ? "Refresh actual diff" : "Inspect actual diff"}
     </button>
     <Show when={review()} keyed>{item => <div>
-      <strong>{item().ok ? "Actual worktree diff" : "Inspection needs attention"}</strong>
-      <Show when={item().error}><p>{item().error}</p></Show>
-      <Show when={item().ok}>
-        <p>{item().changedFiles?.length ?? 0} changed files · whitespace check {item().whitespaceCheck?.passed ? "passed" : "needs attention"}</p>
-        <For each={item().changedFiles}>{file => <p><code>{file.status}</code> {file.path}</p>}</For>
-        <Show when={(item().changedFiles?.length ?? 0) > 0}>
-          <details><summary>View patch</summary><pre>{item().patch || "No tracked diff returned."}</pre></details>
+      <strong>{item.ok ? "Actual worktree diff" : "Inspection needs attention"}</strong>
+      <Show when={item.error}><p>{item.error}</p></Show>
+      <Show when={item.ok}>
+        <p>{item.changedFiles?.length ?? 0} changed files · whitespace check {item.whitespaceCheck?.passed ? "passed" : "needs attention"}</p>
+        <For each={item.changedFiles}>{file => <p><code>{file.status}</code> {file.path}</p>}</For>
+        <Show when={(item.changedFiles?.length ?? 0) > 0}>
+          <details><summary>View patch</summary><pre>{item.patch || "No tracked diff returned."}</pre></details>
         </Show>
-        <Show when={item().whitespaceCheck && !item().whitespaceCheck?.passed}><pre>{item().whitespaceCheck?.output}</pre></Show>
+        <Show when={item.whitespaceCheck && !item.whitespaceCheck?.passed}><pre>{item.whitespaceCheck?.output}</pre></Show>
       </Show>
     </div>}</Show>
   </div>;
