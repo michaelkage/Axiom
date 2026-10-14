@@ -342,13 +342,18 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     const send = (payload: Record<string, unknown>) => this._sendMessage({ type: "agent-quality-gate-result", taskId, ...payload } as unknown as HostMessage);
     const fail = (error: string) => send({ ok: false, error });
     const allowedRoot = path.resolve(os.tmpdir(), "axiom-agent-worktrees") + path.sep, root = path.resolve(worktreePath);
-    if (!taskId || !workspaceRoot || !root.startsWith(allowedRoot) || !fs.existsSync(path.join(root, ".git")) || !Array.isArray(changedPaths)) { fail("Invalid quality-gate request."); return; }
+    const workspace = vscode.workspace.workspaceFolders?.find(folder => path.resolve(folder.uri.fsPath) === path.resolve(workspaceRoot));
+    if (!taskId || !workspace || !root.startsWith(allowedRoot) || !fs.existsSync(path.join(root, ".git")) || !Array.isArray(changedPaths)) { fail("Invalid quality-gate request."); return; }
     const run = (command: string, args: string[], timeout = 120000) => new Promise<{ code: number; output: string }>(resolve => execFile(command, args, { cwd: root, timeout, maxBuffer: 12 * 1024 * 1024 }, (error, stdout, stderr) => resolve({ code: error ? (typeof (error as any).code === "number" ? (error as any).code : 1) : 0, output: (String(stdout || "") + String(stderr || "")).trim() })));
     const checks: Array<{ name: string; state: string; exitCode: number; output: string }> = [];
     const add = async (name: string, command: string, args: string[], timeout?: number) => { const result = await run(command, args, timeout); checks.push({ name, state: result.code === 0 ? "passed" : "failed", exitCode: result.code, output: result.output.slice(-12000) }); };
     try {
+      const commonDir = (cwd: string) => new Promise<string>((resolve, reject) => execFile("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, timeout: 15000 }, (error, stdout, stderr) => error ? reject(new Error(String(stderr || error.message))) : resolve(stdout.trim())));
+      const [workspaceCommon, worktreeCommon] = await Promise.all([commonDir(workspaceRoot), commonDir(root)]);
+      if (path.resolve(workspaceCommon) !== path.resolve(worktreeCommon)) { fail("The worktree does not belong to the active workspace repository."); return; }
       const pkg = JSON.parse(await fs.promises.readFile(path.join(root, "package.json"), "utf8"));
       const scripts = pkg.scripts || {}, paths = changedPaths.map(p => p.toLowerCase());
+      if (!fs.existsSync(path.join(root, "node_modules"))) await add("Install dependencies", "pnpm", ["install", "--frozen-lockfile"], 240000);
       if (paths.some(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p)) && scripts.test) await add("Unit tests", "pnpm", ["exec", "vitest", "run", ...paths.filter(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p))], 180000);
       if (paths.some(p => p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.webview.json"))) await add("Webview type-check", "pnpm", ["exec", "tsc", "-p", "tsconfig.webview.json"], 120000);
       if (paths.some(p => p.startsWith("src/") && !p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.extension.json"))) await add("Extension type-check", "pnpm", ["exec", "tsc", "-p", "tsconfig.extension.json", "--noEmit"], 120000);
