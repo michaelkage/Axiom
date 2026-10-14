@@ -182,10 +182,9 @@ function createOpenCode() {
       ].join("\n\n");
       const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
       const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
-      const agent = preferredAgent && availableAgentNames.has(preferredAgent)
-        ? preferredAgent
-        : task.agentHint && availableAgentNames.has(task.agentHint) ? task.agentHint
-        : matchingSpecialist;
+      const agent = task.agentHint && availableAgentNames.has(task.agentHint)
+        ? task.agentHint
+        : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
       const result = await c.session.prompt({
         sessionID: childSessionId,
         parts: [{ type: "text", text: taskPrompt }],
