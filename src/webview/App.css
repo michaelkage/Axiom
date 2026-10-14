@@ -2110,3 +2110,43 @@ body.vscode-high-contrast {
 .axiom-memory__item p { margin: 0; color: var(--vscode-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
 .axiom-memory__category { text-transform: capitalize; font-size: 10px; font-weight: 700; }
 .axiom-memory__empty { margin: 0; }
+
+
+/* Task review, quality gate, and selective integration */
+.worktree-review__file {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 5px 0;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--panel-border);
+}
+.worktree-review__file input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.worktree-review__file code {
+  color: var(--description-foreground);
+  font-family: var(--editor-font-family);
+}
+.worktree-review__check {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.worktree-review__check details,
+.worktree-review__check pre {
+  margin-top: 5px;
+}
+.worktree-review__note {
+  color: var(--description-foreground);
+  font-size: var(--font-size-small);
+}
+.workflow-plan__parallel pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--text-code-block-background);
+  padding: 8px;
+  border-radius: 4px;
+}
