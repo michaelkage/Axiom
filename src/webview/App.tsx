@@ -1139,7 +1139,10 @@ function App() {
             <span>{taskOutcomes().filter(item => item.status === "queued" || item.status === "running").length} remaining</span>
           </div>
           <Show when={taskOutcomes().some(item => item.status === "failed")}>
-            <button class="workflow-plan__secondary" onClick={() => setInput("Replan the unfinished work from these actual task outcomes. Preserve successful tasks, isolate the causes of failure, block only dependent tasks, and schedule unrelated remaining work. Do not repeat completed tasks unless a dependency or verification result requires it.\n\n" + taskOutcomes().map(item => "- " + item.title + " [" + item.status + "]: " + (item.error || item.summary || "No details reported")).join("\n"))}>Replan failed and remaining work</button>
+            <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => {
+              const prompt = "Replan unfinished work from actual task outcomes. Preserve successful tasks, isolate failure causes, block only dependent tasks, and schedule unrelated remaining work. Do not repeat completed tasks unless a dependency or verification result requires it.\n\n" + taskOutcomes().map(item => "- " + item.title + " [" + item.status + "]: " + (item.error || item.summary || "No details reported")).join("\n");
+              void prepareParallelPlan(prompt);
+            }}>{parallelPlanBusy() ? "Replanning…" : "Replan failed and remaining work"}</button>
           </Show>
           <ol>
             <For each={taskOutcomes()}>{(task) => <li>
