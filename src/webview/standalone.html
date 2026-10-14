@@ -3,12 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Axiom — AI Workspace</title>
+    <meta name="theme-color" content="#101116" />
+    <meta name="description" content="Axiom, an AI-first standalone project-building workspace." />
+    <title>Axiom</title>
     <script>
-      // Configure Axiom standalone mode
-      // This will be overridden by Playwright tests as needed
+      // Desktop builds pass the selected workspace and local runtime URL as query parameters.
+      // The localhost default is retained for standalone browser development and E2E tests.
+      const params = new URLSearchParams(window.location.search);
       window.OPENCODE_CONFIG = {
-        serverUrl: "http://localhost:8787",
+        serverUrl: params.get("serverUrl") || "http://127.0.0.1:8787",
+        workspaceRoot: params.get("workspaceRoot") || undefined,
       };
     </script>
   </head>
