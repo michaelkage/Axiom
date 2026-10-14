@@ -34,6 +34,14 @@ describe("Axiom runtime helpers", () => {
     ])).toThrow(/dependency cycle/);
   });
 
+  it("serializes tasks that do not declare target files", () => {
+    const tasks = parseSubTasks([
+      { id: "unknown", title: "Unknown scope", scope: "inspect and change", targetFiles: [], dependsOn: [] },
+      { id: "known", title: "Known scope", scope: "change", targetFiles: ["src/known.ts"], dependsOn: [] },
+    ]);
+    expect(createIndependentTasks(tasks).map(batch => batch.map(task => task.id))).toEqual([["unknown"], ["known"]]);
+  });
+
   it("rejects empty plans and unsafe target paths", () => {
     expect(() => parseSubTasks([])).toThrow(/empty task list/);
     expect(() => parseSubTasks([
