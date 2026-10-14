@@ -160,6 +160,44 @@ export function suggestNextActions(input: { lastFailure?: string; changedFiles?:
   return actions.sort((a, b) => b.priority - a.priority);
 }
 
+export interface ExecutionSummary {
+  taskId: string; title: string; status: "queued" | "running" | "succeeded" | "failed";
+  error?: string; summary?: string; sessionId?: string; agent?: string;
+}
+export function contextForSpecialist(input: {
+  request: string; taskTitle: string; taskScope: string; targetFiles: string[];
+  planSteps?: string[]; completedTasks?: Array<{ title: string; status: string; summary?: string; error?: string }>;
+  constraints?: string[]; tokenBudget?: number;
+}): PackedContext {
+  const items: ContextItem[] = [
+    { id: "request", content: "Original request: " + input.request, kind: "constraint", relevance: 99 },
+    { id: "task", content: "Assigned task: " + input.taskTitle + "\nScope: " + input.taskScope, kind: "open-task", relevance: 99 },
+    { id: "targets", content: "Declared target files: " + (input.targetFiles.join(", ") || "No target files declared; minimize scope."), kind: "constraint", relevance: 98 },
+    ...(input.planSteps ?? []).map((step, index) => ({ id: "plan-" + index, content: "Plan step " + (index + 1) + ": " + step, kind: "decision" as const, relevance: 80 })),
+    ...(input.constraints ?? []).map((value, index) => ({ id: "constraint-" + index, content: value, kind: "constraint" as const, relevance: 95 })),
+    ...(input.completedTasks ?? []).map((task, index) => ({ id: "completed-" + index, content: "Prior task: " + task.title + " [" + task.status + "]" + (task.summary ? "\nSummary: " + task.summary : "") + (task.error ? "\nError: " + task.error : ""), kind: task.error ? "error" as const : "decision" as const, relevance: 75 })),
+  ];
+  return packContext(items, input.tokenBudget ?? 4000);
+}
+
+export function comboPromptForState(combo: AxiomCombo, outcomes: ExecutionSummary[]): string {
+  const succeeded = outcomes.filter(item => item.status === "succeeded");
+  const failed = outcomes.filter(item => item.status === "failed");
+  const pending = outcomes.filter(item => item.status === "queued" || item.status === "running");
+  const status = [
+    "Observed task outcomes (use these as evidence; do not assume unreported checks passed):",
+    ...outcomes.map(item => "- " + item.title + ": " + item.status + (item.error ? " — " + item.error : "") + (item.summary ? " — " + item.summary : "")),
+    "Totals: " + succeeded.length + " succeeded, " + failed.length + " failed, " + pending.length + " pending/running.",
+  ].join("\n");
+  return combo.prompt + "\n\n" + status + "\n\nIf any tasks failed or remain pending, address or clearly report them before claiming completion. Never claim a check passed without an observed successful exit status.";
+}
+
+export const BUILTIN_PLUGIN_CATALOG: PluginManifest[] = [
+  { id: "axiom-context-tools", version: "1.0.0", publisher: "Axiom", description: "Context packing and task summary utilities.", permissions: ["read-files"], verified: true, sourceUrl: "https://github.com/michaelkage/Axiom" },
+  { id: "axiom-review-workflows", version: "1.0.0", publisher: "Axiom", description: "Reusable review and release-note workflow templates.", permissions: ["read-files"], verified: true, sourceUrl: "https://github.com/michaelkage/Axiom" },
+  { id: "community-command-runner", version: "community", publisher: "Community", description: "Illustrative third-party command-runner manifest. Not installed or executable from the catalog.", permissions: ["read-files", "run-commands", "network"], verified: false },
+];
+
 export interface PluginManifest {
   id: string;
   version: string;
