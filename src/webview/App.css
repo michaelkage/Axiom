@@ -2063,3 +2063,50 @@ body.vscode-high-contrast {
 .workflow-plan__error {
   color: var(--error-foreground, #ef4444);
 }
+
+
+/* Workspace-scoped project intelligence */
+.axiom-memory {
+  margin: 12px 0;
+  border: 1px solid var(--vscode-panel-border, var(--border));
+  border-radius: 10px;
+  overflow: hidden;
+}
+.axiom-memory__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 0;
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background, transparent);
+  text-align: left;
+  cursor: pointer;
+}
+.axiom-memory__toggle > span:first-child { display: grid; gap: 4px; }
+.axiom-memory__toggle small, .axiom-memory__body p, .axiom-memory__item small, .axiom-memory__item time {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.axiom-memory__body { display: grid; gap: 10px; padding: 12px; }
+.axiom-memory__body label { display: grid; gap: 5px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.axiom-memory__body input, .axiom-memory__body textarea, .axiom-memory__body select {
+  width: 100%; box-sizing: border-box; padding: 7px 8px; border-radius: 5px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit;
+}
+.axiom-memory__body textarea { resize: vertical; }
+.axiom-memory__actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.axiom-memory__actions button {
+  padding: 5px 9px; border-radius: 5px; border: 1px solid var(--vscode-button-border, transparent);
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; font: inherit; font-size: 11px;
+}
+.axiom-memory__actions button:disabled { opacity: .5; cursor: not-allowed; }
+.axiom-memory__item { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; }
+.axiom-memory__item > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.axiom-memory__item p { margin: 0; color: var(--vscode-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
+.axiom-memory__category { text-transform: capitalize; font-size: 10px; font-weight: 700; }
+.axiom-memory__empty { margin: 0; }
