@@ -1,47 +1,95 @@
-import { createSignal, For, Show, onMount, onCleanup } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
 import { vscode } from "../utils/vscode";
 
-type Review = {
-  ok: boolean;
-  loading?: boolean;
-  error?: string;
-  changedFiles?: Array<{ status: string; path: string }>;
-  patch?: string;
-  whitespaceCheck?: { passed: boolean; output: string };
-};
+type ChangedFile = { status: string; path: string };
+type Check = { name: string; state: string; exitCode?: number; output?: string };
+type Review = { ok: boolean; loading?: boolean; error?: string; changedFiles?: ChangedFile[]; patch?: string; whitespaceCheck?: { passed: boolean; output: string } };
+type Gate = { loading?: boolean; status?: string; checks?: Check[]; error?: string };
+type Apply = { loading?: boolean; ok: boolean; error?: string; appliedPaths?: string[] };
 
 export function WorktreeReviewPanel(props: { taskId: string; worktreePath: string; workspaceRoot?: string }) {
   const [review, setReview] = createSignal<Review | null>(null);
+  const [selected, setSelected] = createSignal<string[]>([]);
+  const [gate, setGate] = createSignal<Gate | null>(null);
+  const [applyResult, setApplyResult] = createSignal<Apply | null>(null);
+  const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
+
   const inspect = () => {
     if (!props.workspaceRoot) return;
     setReview({ ok: false, loading: true });
     vscode.postMessage({ type: "inspect-agent-worktree", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot });
   };
+  const runGate = () => {
+    if (!props.workspaceRoot || !changedPaths().length) return;
+    setGate({ loading: true });
+    vscode.postMessage({ type: "run-agent-quality-gate", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, changedPaths: changedPaths() });
+  };
+  const applySelected = () => {
+    if (!props.workspaceRoot || !selected().length || gate()?.status !== "Ready to review") return;
+    setApplyResult({ loading: true, ok: false });
+    vscode.postMessage({ type: "apply-agent-worktree-changes", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, paths: selected() });
+  };
+  const toggle = (path: string, checked: boolean) => setSelected(old => checked ? [...new Set([...old, path])] : old.filter(item => item !== path));
+
   onMount(() => {
     const listener = (event: MessageEvent) => {
-      const data = event.data as { type?: string; taskId?: string; ok?: boolean; error?: string; changedFiles?: Array<{ status: string; path: string }>; patch?: string; whitespaceCheck?: { passed: boolean; output: string } };
-      if (data?.type !== "agent-worktree-review-result" || data.taskId !== props.taskId) return;
-      setReview({ ok: data.ok === true, loading: false, error: data.error, changedFiles: data.changedFiles ?? [], patch: data.patch ?? "", whitespaceCheck: data.whitespaceCheck });
+      const data = event.data as { type?: string; taskId?: string; ok?: boolean; error?: string; changedFiles?: ChangedFile[]; patch?: string; whitespaceCheck?: Review["whitespaceCheck"]; status?: string; checks?: Check[]; appliedPaths?: string[] };
+      if (data?.taskId !== props.taskId) return;
+      if (data.type === "agent-worktree-review-result") {
+        const files = data.changedFiles ?? [];
+        setReview({ ok: data.ok === true, loading: false, error: data.error, changedFiles: files, patch: data.patch ?? "", whitespaceCheck: data.whitespaceCheck });
+        setSelected(files.map(file => file.path));
+        setGate(null);
+        setApplyResult(null);
+      } else if (data.type === "agent-quality-gate-result") {
+        setGate({ loading: false, status: data.status, checks: data.checks, error: data.error });
+      } else if (data.type === "agent-worktree-apply-result") {
+        setApplyResult({ loading: false, ok: data.ok === true, error: data.error, appliedPaths: data.appliedPaths });
+        if (data.ok) inspect();
+      }
     };
     window.addEventListener("message", listener);
     onCleanup(() => window.removeEventListener("message", listener));
   });
+
   return <div class="workflow-plan__parallel">
     <p>Isolated worktree: <code>{props.worktreePath}</code></p>
-    <button class="workflow-plan__secondary" disabled={!props.workspaceRoot || review()?.loading} onClick={inspect}>
-      {review()?.loading ? "Inspecting diff…" : review()?.ok ? "Refresh actual diff" : "Inspect actual diff"}
-    </button>
+    <div class="workflow-plan__actions">
+      <button class="workflow-plan__secondary" disabled={!props.workspaceRoot || review()?.loading} onClick={inspect}>
+        {review()?.loading ? "Inspecting diff…" : review()?.ok ? "Refresh actual diff" : "Inspect actual diff"}
+      </button>
+      <button class="workflow-plan__secondary" disabled={!review()?.ok || !changedPaths().length || gate()?.loading} onClick={runGate}>
+        {gate()?.loading ? "Running checks…" : "Run quality gate"}
+      </button>
+    </div>
     <Show when={review()} keyed>{item => <div>
       <strong>{item.ok ? "Actual worktree diff" : "Inspection needs attention"}</strong>
       <Show when={item.error}><p>{item.error}</p></Show>
       <Show when={item.ok}>
-        <p>{item.changedFiles?.length ?? 0} changed files · whitespace check {item.whitespaceCheck?.passed ? "passed" : "needs attention"}</p>
-        <For each={item.changedFiles}>{file => <p><code>{file.status}</code> {file.path}</p>}</For>
+        <p>{item.changedFiles?.length ?? 0} tracked changed files · whitespace check {item.whitespaceCheck?.passed ? "passed" : "needs attention"}</p>
         <Show when={(item.changedFiles?.length ?? 0) > 0}>
-          <details><summary>View patch</summary><pre>{item.patch || "No tracked diff returned."}</pre></details>
+          <p>Select files to integrate after the quality gate passes:</p>
+          <For each={item.changedFiles}>{file => <label class="worktree-review__file">
+            <input type="checkbox" checked={selected().includes(file.path)} onChange={event => toggle(file.path, event.currentTarget.checked)} />
+            <code>{file.status}</code> {file.path}
+          </label>}</For>
+          <details><summary>View actual Git diff</summary><pre>{item.patch || "No tracked patch returned."}</pre></details>
         </Show>
-        <Show when={item.whitespaceCheck && !item.whitespaceCheck?.passed}><pre>{item.whitespaceCheck?.output}</pre></Show>
+        <Show when={(item.changedFiles?.length ?? 0) === 0}><p>No tracked changes against the worktree HEAD. Untracked files are listed separately only when supported by the host.</p></Show>
       </Show>
     </div>}</Show>
+    <Show when={gate()} keyed>{result => <div class="workflow-plan__parallel">
+      <strong>Quality gate: {result.status ?? (result.loading ? "Running" : "Blocked")}</strong>
+      <Show when={result.error}><p>{result.error}</p></Show>
+      <For each={result.checks}>{check => <div class="worktree-review__check">
+        <span>{check.state === "passed" ? "✓" : "✕"} {check.name}</span>
+        <Show when={check.output}><details><summary>Output</summary><pre>{check.output}</pre></details></Show>
+      </div>}</For>
+      <button class="workflow-plan__secondary" disabled={result.status !== "Ready to review" || !selected().length || applyResult()?.loading} onClick={applySelected}>
+        {applyResult()?.loading ? "Integrating…" : "Integrate selected files"}
+      </button>
+      <p class="worktree-review__note">Integration is blocked unless all configured checks pass. Existing dirty workspace paths are never overwritten.</p>
+    </div>}</Show>
+    <Show when={applyResult()} keyed>{result => <p>{result.ok ? "Integrated: " + (result.appliedPaths ?? []).join(", ") : result.error ? "Integration blocked: " + result.error : ""}</p>}</Show>
   </div>;
 }
