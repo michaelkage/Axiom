@@ -58,7 +58,7 @@ export function coordinateTasks(signals: TaskSignal[]): IntelligenceTask[] {
   }
   const visiting = new Set<string>();
   const visited = new Set<string>();
-  const byId = new Map(tasks.map(task => [task.id, task]));
+  const byId = new Map<string, IntelligenceTask>(tasks.map(task => [task.id, task] as const));
   const visit = (id: string): void => {
     if (visiting.has(id)) throw new Error("Task graph contains a dependency cycle.");
     if (visited.has(id)) return;
