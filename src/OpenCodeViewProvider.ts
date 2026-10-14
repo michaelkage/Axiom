@@ -354,7 +354,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       const pkg = JSON.parse(await fs.promises.readFile(path.join(root, "package.json"), "utf8"));
       const scripts = pkg.scripts || {}, paths = changedPaths.map(p => p.toLowerCase());
       if (!fs.existsSync(path.join(root, "node_modules"))) await add("Install dependencies", "pnpm", ["install", "--frozen-lockfile"], 240000);
-      if (paths.some(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p)) && scripts.test) await add("Unit tests", "pnpm", ["exec", "vitest", "run", ...paths.filter(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p))], 180000);
+      if (paths.some(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p)) && scripts.test) await add("Unit tests", "pnpm", ["exec", "vitest", "run", ...changedPaths.filter(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p))], 180000);
       if (paths.some(p => p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.webview.json"))) await add("Webview type-check", "pnpm", ["exec", "tsc", "-p", "tsconfig.webview.json"], 120000);
       if (paths.some(p => p.startsWith("src/") && !p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.extension.json"))) await add("Extension type-check", "pnpm", ["exec", "tsc", "-p", "tsconfig.extension.json", "--noEmit"], 120000);
       if (paths.some(p => p === "package.json" || p.endsWith(".json") || p.endsWith(".css") || p.endsWith(".tsx") || p.endsWith(".ts")) && scripts.build) await add("Production build", "pnpm", ["run", "build"], 240000);
