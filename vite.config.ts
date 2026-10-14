@@ -21,6 +21,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'src/webview/index.html'),
+        standalone: resolve(__dirname, 'src/webview/standalone.html'),
         uikit: resolve(__dirname, 'src/webview/uikit.html')
       },
       output: {
