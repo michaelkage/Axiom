@@ -48,16 +48,79 @@ export function compressionPercent(inputTokens: number, compressedInputTokens: n
   return Math.max(0, Math.min(100, (1 - compressedInputTokens / inputTokens) * 100));
 }
 export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] {
-  const remaining = new Map(tasks.map(task => [task.id, task]));
+  const remaining = new Map<string, AxiomSubTask>();
+  for (const task of tasks) {
+    if (!task.id.trim() || remaining.has(task.id)) throw new Error(`Duplicate or empty task id: ${task.id}`);
+    remaining.set(task.id, task);
+  }
+  const ids = new Set(remaining.keys());
+  for (const task of tasks) {
+    for (const dependency of task.dependsOn) {
+      if (!ids.has(dependency)) throw new Error(`Unknown dependency ${dependency} in task ${task.id}`);
+    }
+  }
   const completed = new Set<string>();
   const batches: AxiomSubTask[][] = [];
   while (remaining.size) {
     const ready = [...remaining.values()].filter(task => task.dependsOn.every(id => completed.has(id)));
     if (!ready.length) throw new Error("Task graph contains a dependency cycle or an unknown dependency.");
-    batches.push(ready);
-    for (const task of ready) { remaining.delete(task.id); completed.add(task.id); }
+    // Avoid concurrent writes to the same declared target file. Tasks that
+    // overlap are deferred to a later batch even when their dependencies allow parallelism.
+    const batch: AxiomSubTask[] = [];
+    const claimedPaths = new Set<string>();
+    for (const task of ready) {
+      const paths = task.targetFiles.map(path => path.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase());
+      if (paths.some(path => claimedPaths.has(path))) continue;
+      batch.push(task);
+      for (const path of paths) claimedPaths.add(path);
+    }
+    if (!batch.length) throw new Error("Task graph could not be scheduled safely.");
+    batches.push(batch);
+    for (const task of batch) { remaining.delete(task.id); completed.add(task.id); }
   }
   return batches;
+}
+
+export async function executeTaskBatches<T>(
+  tasks: AxiomSubTask[],
+  runner: (task: AxiomSubTask) => Promise<T>,
+): Promise<Array<{ task: AxiomSubTask; result: T }>> {
+  const completed: Array<{ task: AxiomSubTask; result: T }> = [];
+  for (const batch of createIndependentTasks(tasks)) {
+    const settled = await Promise.allSettled(batch.map(async task => ({ task, result: await runner(task) })));
+    const failure = settled.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
+    if (failure) throw new Error(`Parallel task batch failed: ${String(failure.reason instanceof Error ? failure.reason.message : failure.reason)}`);
+    for (const entry of settled) {
+      if (entry.status === "fulfilled") completed.push(entry.value);
+    }
+  }
+  return completed;
+}
+
+export async function planSubTasksWithOmniRoute(
+  prompt: string,
+  model: string,
+  config: AxiomRuntimeConfig = DEFAULT_AXIOM_RUNTIME,
+  fetcher: typeof fetch = fetch,
+): Promise<AxiomSubTask[]> {
+  const response = await requestOmniRoute<{
+    choices?: Array<{ message?: { content?: string } }>;
+  }>("chat/completions", {
+    model,
+    temperature: 0.1,
+    messages: [
+      { role: "system", content: "Split the user request into small independent coding tasks. Return only a JSON object with a tasks array. Each task must have id, title, scope, targetFiles (array of workspace-relative file paths), dependsOn (array of task IDs), and optional agentHint. Use disjoint targetFiles for tasks that can run in parallel. Never invent absolute paths. If a task's files are uncertain, use a narrow, explicit likely path and keep the task small." },
+      { role: "user", content: prompt },
+    ],
+    response_format: { type: "json_object" },
+  }, config, fetcher);
+  const content = response.choices?.[0]?.message?.content;
+  if (!content) throw new Error("OmniRoute planner returned no message content.");
+  let decoded: unknown;
+  try { decoded = JSON.parse(content); }
+  catch { throw new Error("OmniRoute planner did not return valid JSON."); }
+  const taskList = decoded && typeof decoded === "object" ? (decoded as Record<string, unknown>).tasks : undefined;
+  return parseSubTasks(taskList);
 }
 export function parseSubTasks(value: unknown): AxiomSubTask[] {
   if (!Array.isArray(value)) throw new Error("Planner response must be an array of tasks.");
