@@ -396,6 +396,7 @@ function App() {
     const activeSession = sync.currentSessionId();
     if (activeSession) sync.setSessionError(activeSession, null);
     setWorkflowRun({ prompt: plan.prompt, status: "running" });
+    setTaskOutcomes([]);
     setWorkflowPlan(null);
     try {
       let parentSessionId = sync.currentSessionId();
@@ -406,8 +407,16 @@ function App() {
         parentSessionId = session.id;
         sync.setCurrentSessionId(parentSessionId);
       }
-      const results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent());
-      const completed = results.map(({ task }) => `- ${task.title} (task ${task.id})`).join("\\n");
+      const results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), {
+        request: plan.prompt,
+        planSteps: plan.steps,
+        onOutcome: record => setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]),
+      });
+      const completed = results.map(({ task, result }) => {
+        const outcome = taskOutcomes().find(item => item.taskId === task.id);
+        const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
+        return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "succeeded") + session;
+      }).join("\\n");
       setParallelPlan(null);
       setInput(`Integrate and verify the parallel work for this request: ${plan.prompt}\\n\\nChild tasks completed:\\n${completed}\\n\\nInspect the actual workspace changes, resolve any integration issues, and run the relevant tests/build/type checks. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly.`);
       skipPlanOnce = true;
