@@ -17,6 +17,7 @@ import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
+import { DEFAULT_COMBOS, suggestNextActions } from "../shared/intelligence";
 
 export interface QueuedMessage {
   id: string;
@@ -1097,6 +1098,17 @@ function App() {
       <Show when={(sessionError() || workflowError()) && workflowRun()?.status === "failed"}>
         <RecoveryAdvice error={(sessionError() || workflowError())!} onRetry={retryFailedRun} />
       </Show>
+      <Show when={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) }).length > 0}>
+        <section class="workflow-plan workflow-plan--suggestions" aria-label="Suggested next steps">
+          <div class="workflow-plan__eyebrow">AXIOM INTELLIGENCE <span>UP NEXT</span></div>
+          <h2>Keep the momentum</h2>
+          <div class="workflow-plan__actions">
+            <For each={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) })}>
+              {(action) => <button class="workflow-plan__secondary" title={action.reason} onClick={() => setInput(action.prompt)}>{action.label} <span aria-hidden="true">→</span></button>}
+            </For>
+          </div>
+        </section>
+      </Show>
 
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
@@ -1123,6 +1135,10 @@ function App() {
               <ol>
                 <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
               </ol>
+              <div class="workflow-plan__eyebrow">QUICK COMBOS</div>
+              <div class="workflow-plan__actions" aria-label="Reusable workflows">
+                <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title}</button>}</For>
+              </div>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
