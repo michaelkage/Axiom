@@ -9,6 +9,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { ProjectMemoryPanel } from "./components/ProjectMemoryPanel";
+import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
@@ -649,7 +650,7 @@ function App() {
 
   // Handlers
   const handleSubmit = async () => {
-    const text = input().trim();
+    const text = withProjectMemory(input().trim(), sync.workspaceRoot());
     if (!text || !sync.isReady()) {
       if (workflowRun()?.status === "running") {
         const message = !text ? "No prompt was available to run." : "Axiom is not connected to the OpenCode runtime.";
@@ -839,7 +840,7 @@ function App() {
     try {
       const extraParts = buildSelectionParts(next.attachments);
       
-      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
+      const result = await sendPrompt(sessionId, withProjectMemory(next.text, sync.workspaceRoot()), next.agent, extraParts, messageID);
       const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
