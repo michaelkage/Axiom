@@ -100,6 +100,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           await this._handleCreateAgentWorktree(msg as { requestId: string; taskId: string; workspaceRoot: string });
           return;
         }
+        if (msg.type === "inspect-agent-worktree") {
+          await this._handleInspectAgentWorktree(msg as { taskId: string; worktreePath: string; workspaceRoot: string });
+          return;
+        }
         if (msg.type === "proxyFetch") {
           await this._handleProxyFetch(
             msg as {
@@ -233,6 +237,50 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       this._sendMessage({ type: "agent-worktree-result", requestId, ok: true, path: target });
     } catch (error) {
       fail("Could not create isolated Git worktree: " + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+
+  private async _handleInspectAgentWorktree(message: { taskId: string; worktreePath: string; workspaceRoot: string }) {
+    const { taskId, worktreePath, workspaceRoot } = message;
+    const send = (payload: Record<string, unknown>) => this._sendMessage({ type: "agent-worktree-review-result", taskId, ...payload } as unknown as HostMessage);
+    const fail = (error: string) => send({ ok: false, error });
+    if (![taskId, worktreePath, workspaceRoot].every(value => typeof value === "string" && value.length > 0)) {
+      fail("Invalid worktree review request."); return;
+    }
+    const workspace = vscode.workspace.workspaceFolders?.find(folder => path.resolve(folder.uri.fsPath) === path.resolve(workspaceRoot));
+    if (!workspace) { fail("The requested workspace is not open."); return; }
+    const allowedRoot = path.resolve(os.tmpdir(), "axiom-agent-worktrees") + path.sep;
+    const resolvedWorktree = path.resolve(worktreePath);
+    if (!resolvedWorktree.startsWith(allowedRoot) || !fs.existsSync(path.join(resolvedWorktree, ".git"))) {
+      fail("The path is not a registered Axiom worktree."); return;
+    }
+    const runGit = (cwd: string, args: string[]) => new Promise<string>((resolve, reject) => {
+      execFile("git", args, { cwd, timeout: 15000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) return reject(new Error((stderr || error.message).trim()));
+        resolve(stdout);
+      });
+    });
+    try {
+      const [workspaceCommon, worktreeCommon] = await Promise.all([
+        runGit(workspaceRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+        runGit(resolvedWorktree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+      ]);
+      if (path.resolve(workspaceCommon.trim()) !== path.resolve(worktreeCommon.trim())) {
+        fail("The worktree does not belong to the active workspace repository."); return;
+      }
+      const [nameStatus, patch, whitespace] = await Promise.all([
+        runGit(resolvedWorktree, ["diff", "--name-status", "HEAD"]),
+        runGit(resolvedWorktree, ["diff", "--no-ext-diff", "--no-color", "HEAD", "--"]),
+        runGit(resolvedWorktree, ["diff", "--check", "HEAD"]),
+      ]);
+      const changedFiles = nameStatus.split(/\r?\n/).filter(Boolean).map(line => {
+        const [status, ...fileParts] = line.split("\t");
+        return { status, path: fileParts[fileParts.length - 1] ?? "" };
+      });
+      send({ ok: true, changedFiles, patch, whitespaceCheck: { passed: !whitespace.trim(), output: whitespace.trim() || "git diff --check passed." } });
+    } catch (error) {
+      fail("Could not inspect worktree diff: " + (error instanceof Error ? error.message : String(error)));
     }
   }
 
