@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "child_process";
+import * as os from "os";
+import * as path from "path";
 import { OpenCodeService } from "./OpenCodeService";
 import { getLogger } from "./extension";
 import type {
@@ -93,6 +95,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           return;
         }
 
+        if (msg.type === "create-agent-worktree") {
+          await this._handleCreateAgentWorktree(msg as { requestId: string; taskId: string; workspaceRoot: string });
+          return;
+        }
         if (msg.type === "proxyFetch") {
           await this._handleProxyFetch(
             msg as {
@@ -184,6 +190,47 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       const logger = getLogger();
       logger.error("[ViewProvider] Failed to open file", { url, error });
       vscode.window.showErrorMessage("OpenCode: Failed to open file.");
+    }
+  }
+
+  private async _handleCreateAgentWorktree(message: { requestId: string; taskId: string; workspaceRoot: string }) {
+    const { requestId, taskId, workspaceRoot } = message;
+    const fail = (error: string) => this._sendMessage({ type: "agent-worktree-result", requestId, ok: false, error });
+    if (typeof requestId !== "string" || typeof taskId !== "string" || typeof workspaceRoot !== "string") {
+      fail("Invalid isolated-worktree request.");
+      return;
+    }
+    const workspace = vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === workspaceRoot);
+    if (!workspace) {
+      fail("The requested workspace is not an open VS Code workspace.");
+      return;
+    }
+    const safeTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48);
+    if (!safeTaskId) {
+      fail("Task ID did not contain safe path characters.");
+      return;
+    }
+    const repoName = path.basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, "-");
+    const target = path.join(os.tmpdir(), "axiom-agent-worktrees", repoName + "-" + safeTaskId + "-" + Date.now());
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile("git", ["rev-parse", "--show-toplevel"], { cwd: workspaceRoot, timeout: 10000 }, (error, stdout) => {
+          if (error) return reject(error);
+          if (path.resolve(stdout.trim()) !== path.resolve(workspaceRoot)) {
+            return reject(new Error("Open the Git repository root as the workspace before enabling isolated agent worktrees."));
+          }
+          resolve();
+        });
+      });
+      await new Promise<void>((resolve, reject) => {
+        execFile("git", ["worktree", "add", "--detach", target, "HEAD"], { cwd: workspaceRoot, timeout: 30000 }, error => {
+          if (error) return reject(error);
+          resolve();
+        });
+      });
+      this._sendMessage({ type: "agent-worktree-result", requestId, ok: true, path: target });
+    } catch (error) {
+      fail("Could not create isolated Git worktree: " + (error instanceof Error ? error.message : String(error)));
     }
   }
 
