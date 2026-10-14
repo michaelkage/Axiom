@@ -313,6 +313,7 @@ function App() {
   // Axiom's first workflow slice: make the intent and execution steps visible
   // before handing the request to the existing OpenCode runtime.
   const [workflowPlan, setWorkflowPlan] = createSignal<{ prompt: string; steps: string[] } | null>(null);
+  const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   let skipPlanOnce = false;
 
   const buildWorkflowSteps = (prompt: string): string[] => {
@@ -340,6 +341,7 @@ function App() {
     const plan = workflowPlan();
     if (!plan) return;
     setWorkflowPlan(null);
+    setWorkflowRun({ prompt: plan.prompt, status: "running" });
     const executionPrompt = `${plan.prompt}\n\nImplementation plan:\n${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nAfter implementing, run the relevant checks available in this workspace and summarize what changed and what was verified.`;
     setInput(executionPrompt);
     skipPlanOnce = true;
@@ -526,6 +528,7 @@ function App() {
       }
       
       setInFlightMessage(null);
+      if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "complete" });
       
       // Schedule queue drain in a microtask to avoid interleaving with SSE batch
       queueMicrotask(() => {
@@ -661,6 +664,7 @@ function App() {
         sync.setThinking(sessionId, false);
         setInFlightMessage(null);
         sync.setSessionError(sessionId, errorMessage);
+        if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
         return;
       }
       
@@ -675,6 +679,7 @@ function App() {
       sync.setThinking(sessionId, false);
       setInFlightMessage(null);
       sync.setSessionError(sessionId, errorMessage);
+      if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
     }
   };
 
@@ -816,6 +821,7 @@ function App() {
     
     // Set session and bootstrap to load messages
     sync.setCurrentSessionId(sessionId);
+    setWorkflowRun(null);
     await sync.bootstrap();
   };
 
@@ -829,6 +835,7 @@ function App() {
       // Clear local UI state
       setMessageQueue([]);
       setInFlightMessage(null);
+      setWorkflowRun(null);
       setEditingMessageId(null);
       setEditingText("");
       
@@ -966,6 +973,19 @@ function App() {
         onNewSession={handleNewSession}
         onRefreshSessions={refreshSessions}
       />
+
+      <Show when={workflowRun()}>
+        {(run) => (
+          <section class={`workflow-run workflow-run--${run.status}`} aria-live="polite" aria-label="Build run status">
+            <span class="workflow-run__indicator" aria-hidden="true" />
+            <div class="workflow-run__copy">
+              <strong>{run.status === "running" ? "Axiom is building" : run.status === "complete" ? "Response finished" : "Run needs attention"}</strong>
+              <span>{run.status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run.status === "complete" ? "The agent has finished responding. Review the conversation and changed files; run results are not independently verified here." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
+            </div>
+            <button type="button" class="workflow-run__dismiss" onClick={() => setWorkflowRun(null)} aria-label="Dismiss run status">×</button>
+          </section>
+        )}
+      </Show>
 
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
