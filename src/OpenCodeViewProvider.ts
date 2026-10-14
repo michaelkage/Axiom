@@ -104,6 +104,14 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           await this._handleInspectAgentWorktree(msg as { taskId: string; worktreePath: string; workspaceRoot: string });
           return;
         }
+        if (msg.type === "apply-agent-worktree-changes") {
+          await this._handleApplyAgentWorktreeChanges(msg as { taskId: string; worktreePath: string; workspaceRoot: string; paths: string[] });
+          return;
+        }
+        if (msg.type === "run-agent-quality-gate") {
+          await this._handleRunAgentQualityGate(msg as { taskId: string; worktreePath: string; workspaceRoot: string; changedPaths: string[] });
+          return;
+        }
         if (msg.type === "proxyFetch") {
           await this._handleProxyFetch(
             msg as {
@@ -284,6 +292,72 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async _handleApplyAgentWorktreeChanges(message: { taskId: string; worktreePath: string; workspaceRoot: string; paths: string[] }) {
+    const { taskId, worktreePath, workspaceRoot, paths } = message;
+    const send = (payload: Record<string, unknown>) => this._sendMessage({ type: "agent-worktree-apply-result", taskId, ...payload } as unknown as HostMessage);
+    const fail = (error: string) => send({ ok: false, error });
+    if (typeof taskId !== "string" || typeof worktreePath !== "string" || typeof workspaceRoot !== "string" || !Array.isArray(paths) || !paths.every(p => typeof p === "string")) { fail("Invalid task integration request."); return; }
+    const workspace = vscode.workspace.workspaceFolders?.find(folder => path.resolve(folder.uri.fsPath) === path.resolve(workspaceRoot));
+    if (!workspace) { fail("The requested workspace is not open."); return; }
+    const allowedRoot = path.resolve(os.tmpdir(), "axiom-agent-worktrees") + path.sep;
+    const sourceRoot = path.resolve(worktreePath), targetRoot = path.resolve(workspaceRoot);
+    if (!sourceRoot.startsWith(allowedRoot) || !fs.existsSync(path.join(sourceRoot, ".git"))) { fail("The path is not a registered Axiom worktree."); return; }
+    const normalize = (value: string) => value.replace(/\\/g, "/").replace(/^\.\//, "");
+    const safePaths = [...new Set(paths.map(normalize))];
+    if (!safePaths.length || safePaths.some(p => !p || path.isAbsolute(p) || p.split("/").some(part => part === ".." || part === ""))) { fail("The selected file list contains an unsafe path."); return; }
+    const runGit = (cwd: string, args: string[]) => new Promise<string>((resolve, reject) => execFile("git", args, { cwd, timeout: 15000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => error ? reject(new Error((stderr || error.message).trim())) : resolve(stdout)));
+    try {
+      const values = await Promise.all([runGit(workspaceRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), runGit(sourceRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), runGit(sourceRoot, ["diff", "--name-only", "HEAD"]), runGit(sourceRoot, ["ls-files", "--others", "--exclude-standard"]), runGit(workspaceRoot, ["status", "--porcelain=v1", "--untracked-files=all"])]);
+      if (path.resolve(values[0].trim()) !== path.resolve(values[1].trim())) { fail("The worktree does not belong to the active workspace repository."); return; }
+      const available = new Set((values[2] + "\n" + values[3]).split(/\r?\n/).filter(Boolean).map(normalize));
+      if (safePaths.some(p => !available.has(p))) { fail("The selection contains files that are not changed in this task worktree."); return; }
+      const dirtyPaths = values[4].split(/\r?\n/).filter(Boolean).map(line => normalize(line.slice(3).split(" -> ").pop() || ""));
+      const conflicts = safePaths.filter(p => dirtyPaths.includes(p));
+      if (conflicts.length) { fail("Integration blocked to protect existing workspace edits in: " + conflicts.join(", ")); return; }
+      const staged: Array<{ target: string; backup?: Buffer; existed: boolean }> = [];
+      try {
+        for (const relative of safePaths) {
+          const source = path.resolve(sourceRoot, relative), target = path.resolve(targetRoot, relative);
+          if (!source.startsWith(sourceRoot + path.sep) || !target.startsWith(targetRoot + path.sep)) throw new Error("Resolved path escaped its root.");
+          let sourceStat: fs.Stats | undefined; try { sourceStat = await fs.promises.lstat(source); } catch { sourceStat = undefined; }
+          let targetStat: fs.Stats | undefined; try { targetStat = await fs.promises.lstat(target); } catch { targetStat = undefined; }
+          if (sourceStat && (!sourceStat.isFile() || sourceStat.isSymbolicLink())) throw new Error("Refusing to copy non-regular file: " + relative);
+          if (targetStat && (!targetStat.isFile() || targetStat.isSymbolicLink())) throw new Error("Refusing to replace non-regular file: " + relative);
+          staged.push({ target, backup: targetStat ? await fs.promises.readFile(target) : undefined, existed: !!targetStat });
+          if (sourceStat) { await fs.promises.mkdir(path.dirname(target), { recursive: true }); await fs.promises.copyFile(source, target); }
+          else if (targetStat) await fs.promises.unlink(target);
+        }
+      } catch (error) {
+        for (const item of staged.reverse()) { try { if (item.existed && item.backup) { await fs.promises.mkdir(path.dirname(item.target), { recursive: true }); await fs.promises.writeFile(item.target, item.backup); } else await fs.promises.rm(item.target, { force: true }); } catch { /* report original failure; rollback is best effort */ } }
+        throw error;
+      }
+      send({ ok: true, appliedPaths: safePaths });
+    } catch (error) { fail("Task integration failed: " + (error instanceof Error ? error.message : String(error))); }
+  }
+
+  private async _handleRunAgentQualityGate(message: { taskId: string; worktreePath: string; workspaceRoot: string; changedPaths: string[] }) {
+    const { taskId, worktreePath, workspaceRoot, changedPaths } = message;
+    const send = (payload: Record<string, unknown>) => this._sendMessage({ type: "agent-quality-gate-result", taskId, ...payload } as unknown as HostMessage);
+    const fail = (error: string) => send({ ok: false, error });
+    const allowedRoot = path.resolve(os.tmpdir(), "axiom-agent-worktrees") + path.sep, root = path.resolve(worktreePath);
+    if (!taskId || !workspaceRoot || !root.startsWith(allowedRoot) || !fs.existsSync(path.join(root, ".git")) || !Array.isArray(changedPaths)) { fail("Invalid quality-gate request."); return; }
+    const run = (command: string, args: string[], timeout = 120000) => new Promise<{ code: number; output: string }>(resolve => execFile(command, args, { cwd: root, timeout, maxBuffer: 12 * 1024 * 1024 }, (error, stdout, stderr) => resolve({ code: error ? (typeof (error as any).code === "number" ? (error as any).code : 1) : 0, output: (String(stdout || "") + String(stderr || "")).trim() })));
+    const checks: Array<{ name: string; state: string; exitCode: number; output: string }> = [];
+    const add = async (name: string, command: string, args: string[], timeout?: number) => { const result = await run(command, args, timeout); checks.push({ name, state: result.code === 0 ? "passed" : "failed", exitCode: result.code, output: result.output.slice(-12000) }); };
+    try {
+      const pkg = JSON.parse(await fs.promises.readFile(path.join(root, "package.json"), "utf8"));
+      const scripts = pkg.scripts || {}, paths = changedPaths.map(p => p.toLowerCase());
+      if (paths.some(p => /\.(test|spec)\.[cm]?[jt]sx?$/.test(p)) && scripts.test) await add("Unit tests", "pnpm", ["exec", "vitest", "run"], 180000);
+      if (paths.some(p => p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.webview.json"))) await add("Webview type-check", "pnpm", ["exec", "tsc", "-p", "tsconfig.webview.json"], 120000);
+      if (paths.some(p => p.startsWith("src/") && !p.startsWith("src/webview/")) && fs.existsSync(path.join(root, "tsconfig.json"))) await add("Extension type-check", "pnpm", ["exec", "tsc", "--noEmit", "-p", "tsconfig.json"], 120000);
+      if (paths.some(p => p === "package.json" || p.endsWith(".json") || p.endsWith(".css") || p.endsWith(".tsx") || p.endsWith(".ts")) && scripts.build) await add("Production build", "pnpm", ["run", "build"], 240000);
+      if (!checks.length) await add("Production build", "pnpm", ["run", "build"], 240000);
+      const whitespace = await run("git", ["diff", "--check", "HEAD"], 15000);
+      checks.push({ name: "Git whitespace check", state: whitespace.code === 0 ? "passed" : "failed", exitCode: whitespace.code, output: whitespace.output || "No whitespace errors." });
+      const failed = checks.some(check => check.state === "failed");
+      send({ ok: true, status: failed ? "Needs fixes" : "Ready to review", checks, changedPaths });
+    } catch (error) { fail("Quality gate could not run: " + (error instanceof Error ? error.message : String(error))); }
+  }
   private async _handleSearchFiles(query: string) {
     try {
       const logger = getLogger();
