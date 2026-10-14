@@ -38,6 +38,9 @@ describe("Axiom intelligence layer", () => {
     expect(packed.items.map(item => item.id)).toContain("constraint");
     expect(packed.items.find(item => item.id === "old")?.content).toBe("new decision");
     expect(packed.estimatedTokens).toBeLessThanOrEqual(12);
+    expect(packed.inputEstimatedTokens).toBeGreaterThan(packed.estimatedTokens);
+    expect(packed.estimatedSavingsTokens).toBe(packed.inputEstimatedTokens - packed.estimatedTokens);
+    expect(packed.estimatedSavingsPercent).toBeGreaterThan(0);
     expect(packed.omittedIds).toContain("noise");
   });
 
