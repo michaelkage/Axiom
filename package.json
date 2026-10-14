@@ -1,13 +1,13 @@
 {
   "name": "opencode-vscode",
-  "displayName": "Axiom — AI Workspace",
-  "description": "Build software through conversation with an AI-first coding workspace.",
-  "version": "0.4.3",
+  "displayName": "Axiom",
+  "description": "Build software through conversation with an AI-first project-building workspace.",
+  "version": "0.4.4",
   "publisher": "TanishqKancharla",
   "icon": "media/logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/saffron-health/opencode-vscode-extension.git"
+    "url": "https://github.com/michaelkage/Axiom.git"
   },
   "engines": {
     "vscode": "^1.74.0"
@@ -23,7 +23,7 @@
       "activitybar": [
         {
           "id": "opencode",
-          "title": "OpenCode",
+          "title": "Axiom",
           "icon": "media/icon.svg"
         }
       ]
@@ -40,8 +40,8 @@
     "commands": [
       {
         "command": "opencode.addSelectionToPrompt",
-        "title": "Add Selection to Prompt",
-        "category": "OpenCode"
+        "title": "Add Selection to Axiom Prompt",
+        "category": "Axiom"
       }
     ],
     "menus": {
