@@ -88,18 +88,41 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
   return batches;
 }
 
+export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed";
+export interface TaskExecutionRecord {
+  taskId: string; title: string; status: TaskExecutionStatus;
+  startedAt?: number; finishedAt?: number; sessionId?: string; agent?: string; summary?: string; error?: string;
+}
+export interface CompletedTaskContext { task: AxiomSubTask; result: unknown; }
 export async function executeTaskBatches<T>(
   tasks: AxiomSubTask[],
-  runner: (task: AxiomSubTask) => Promise<T>,
+  runner: (task: AxiomSubTask, completed: ReadonlyArray<CompletedTaskContext>) => Promise<T>,
+  onOutcome?: (record: TaskExecutionRecord) => void,
 ): Promise<Array<{ task: AxiomSubTask; result: T }>> {
   const completed: Array<{ task: AxiomSubTask; result: T }> = [];
-  for (const batch of createIndependentTasks(tasks)) {
-    const settled = await Promise.allSettled(batch.map(async task => ({ task, result: await runner(task) })));
-    const failure = settled.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
-    if (failure) throw new Error(`Parallel task batch failed: ${String(failure.reason instanceof Error ? failure.reason.message : failure.reason)}`);
-    for (const entry of settled) {
-      if (entry.status === "fulfilled") completed.push(entry.value);
+  const completedContext: CompletedTaskContext[] = [];
+  const emit = (record: TaskExecutionRecord) => { try { onOutcome?.(record); } catch { /* observers must not break task execution */ } };
+  const batches = createIndependentTasks(tasks);
+  for (const task of tasks) emit({ taskId: task.id, title: task.title, status: "queued" });
+  for (const batch of batches) {
+    const settled = await Promise.allSettled(batch.map(async task => {
+      const startedAt = Date.now();
+      emit({ taskId: task.id, title: task.title, status: "running", startedAt });
+      try {
+        const result = await runner(task, [...completedContext]);
+        emit({ taskId: task.id, title: task.title, status: "succeeded", startedAt, finishedAt: Date.now() });
+        return { task, result };
+      } catch (error) {
+        emit({ taskId: task.id, title: task.title, status: "failed", startedAt, finishedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    }));
+    for (const entry of settled) if (entry.status === "fulfilled") {
+      completed.push(entry.value);
+      completedContext.push({ task: entry.value.task, result: entry.value.result });
     }
+    const failure = settled.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
+    if (failure) throw new Error("Parallel task batch failed: " + String(failure.reason instanceof Error ? failure.reason.message : failure.reason));
   }
   return completed;
 }
