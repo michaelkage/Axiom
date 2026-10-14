@@ -139,7 +139,8 @@ function createOpenCode() {
   }
 
   async function planParallelTasks(prompt: string) {
-    const response = await proxyFetch(`${DEFAULT_AXIOM_RUNTIME.gatewayUrl.replace(/\\/+$/, "")}/models`, {
+    const gateway = DEFAULT_AXIOM_RUNTIME.gatewayUrl.replace(/\/+$/, "");
+    const response = await proxyFetch(gateway + "/models", {
       method: "GET",
       headers: { "Accept": "application/json" },
     });
