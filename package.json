@@ -1,65 +1,17 @@
 {
-  "name": "opencode-vscode",
+  "name": "axiom-workspace",
   "displayName": "Axiom",
-  "description": "Build software through conversation with an AI-first project-building workspace.",
+  "description": "Source workspace for Axiom, a standalone AI-first project-building desktop application.",
   "version": "0.4.4",
-  "publisher": "TanishqKancharla",
-  "icon": "media/logo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/michaelkage/Axiom.git"
   },
-  "engines": {
-    "vscode": "^1.74.0"
-  },
-  "categories": [
-    "Other",
-    "AI"
-  ],
-  "activationEvents": [],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "opencode",
-          "title": "Axiom",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "opencode": [
-        {
-          "type": "webview",
-          "id": "opencode.chatView",
-          "name": ""
-        }
-      ]
-    },
-    "commands": [
-      {
-        "command": "opencode.addSelectionToPrompt",
-        "title": "Add Selection to Axiom Prompt",
-        "category": "Axiom"
-      }
-    ],
-    "menus": {
-      "editor/context": [
-        {
-          "command": "opencode.addSelectionToPrompt",
-          "when": "editorTextFocus",
-          "group": "navigation@9"
-        }
-      ]
-    }
-  },
   "scripts": {
-    "vscode:prepublish": "npm run build",
-    "build": "npm run build:extension && npm run build:webview",
+    "build": "npm run build:webview",
     "build:extension": "vite build --config vite.config.extension.ts",
     "build:webview": "vite build --config vite.config.ts",
-    "watch": "concurrently \"npm run watch:extension\" \"npm run watch:webview\"",
+    "watch": "npm run watch:webview",
     "watch:extension": "vite build --config vite.config.extension.ts --watch --mode development",
     "watch:webview": "vite build --config vite.config.ts --watch --mode development",
     "clean": "rm -rf dist out",
@@ -74,9 +26,6 @@
     "test:e2e:ui": "playwright test --ui",
     "debug:extension": "tsx scripts/debug-extension.ts",
     "demo:standalone": "./scripts/demo-standalone.sh",
-    "package": "vsce package",
-    "publish": "vsce publish --skip-duplicate --no-dependencies && source .env && ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies",
-    "publish:pre": "vsce publish --pre-release --no-dependencies && source .env && ovsx publish --pre-release -p \"$OPEN_VSX_KEY\" --no-dependencies",
     "google-login": "gcloud auth application-default login"
   },
   "devDependencies": {
