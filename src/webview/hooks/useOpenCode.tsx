@@ -157,6 +157,27 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
+    const historyItems: Array<{ id: string; content: string; relevance: number; updatedAt: number }> = [];
+    try {
+      const historyResponse = await c.session.messages({ sessionID: parentSessionId });
+      const history = (historyResponse.data ?? []) as unknown as Array<{
+        info?: { id?: string; role?: string; time?: { created?: number } };
+        parts?: Array<{ type?: string; text?: string }>;
+      }>;
+      for (const message of history.slice(-30)) {
+        const text = (message.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n");
+        if (!text.trim()) continue;
+        const role = message.info?.role ?? "unknown";
+        historyItems.push({
+          id: message.info?.id ?? "history-" + historyItems.length,
+          content: role + ": " + text.slice(0, 6000),
+          relevance: role === "user" ? 75 : 45,
+          updatedAt: message.info?.time?.created ?? historyItems.length,
+        });
+      }
+    } catch {
+      // Context packing still works from the original request and plan if history is unavailable.
+    }
     let availableAgentNames = new Set<string>();
     try {
       const agentResponse = await c.app.agents();
@@ -180,6 +201,7 @@ function createOpenCode() {
         taskScope: task.scope,
         targetFiles: task.targetFiles,
         planSteps: orchestration?.planSteps,
+        conversation: historyItems,
         completedTasks: completed.map(entry => ({
           title: entry.task.title,
           status: "succeeded",
