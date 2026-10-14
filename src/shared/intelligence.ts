@@ -137,6 +137,20 @@ export const DEFAULT_COMBOS: AxiomCombo[] = [
   { id: "ship-it", title: "Ship it", description: "Review changes and prepare release-ready notes.", prompt: "Review the current changes for regressions and risks, run relevant checks, and draft concise release notes. Do not publish or deploy without explicit approval.", steps: ["review", "test", "release-notes"], requiresConfirmation: true },
   { id: "understand-it", title: "Understand it", description: "Map the relevant architecture and explain it clearly.", prompt: "Inspect the relevant code, map the architecture and important data flows, then explain the design and likely change points without modifying files.", steps: ["map-architecture", "explain"] },
 ];
+export function getAvailableCombos(installedPluginIds: string[]): AxiomCombo[] {
+  const combos = [...DEFAULT_COMBOS];
+  if (installedPluginIds.includes("axiom-review-workflows")) {
+    combos.push({
+      id: "review-it",
+      title: "Review it",
+      description: "Review the current changes and focus on regressions, security, and test gaps.",
+      prompt: "Review the current workspace changes for regressions, security concerns, missing edge cases, and test gaps. Prioritize concrete findings with file references. Do not modify files unless asked.",
+      steps: ["review", "test", "summarize"],
+    });
+  }
+  return combos;
+}
+
 export function getCombo(id: string, combos: AxiomCombo[] = DEFAULT_COMBOS): AxiomCombo {
   const combo = combos.find(item => item.id === id);
   if (!combo) throw new Error(`Unknown Axiom combo: ${id}`);
