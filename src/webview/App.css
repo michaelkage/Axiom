@@ -1904,3 +1904,65 @@ body.vscode-high-contrast {
   outline: 2px solid #a78bfa;
   outline-offset: 2px;
 }
+
+
+/* Plan-driven execution status */
+.workflow-run {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 10px;
+  background: var(--input-background);
+}
+.workflow-run__indicator {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #8b5cf6 15%, transparent);
+}
+.workflow-run--running .workflow-run__indicator {
+  animation: workflow-run-pulse 1.4s ease-in-out infinite;
+}
+.workflow-run--complete .workflow-run__indicator { background: #22c55e; }
+.workflow-run--failed .workflow-run__indicator { background: var(--error-foreground); }
+.workflow-run__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.workflow-run__copy strong {
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 700;
+}
+.workflow-run__copy span {
+  color: var(--description-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.workflow-run__dismiss {
+  flex: 0 0 auto;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--description-foreground);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.workflow-run__dismiss:hover { color: var(--foreground); }
+@keyframes workflow-run-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-run--running .workflow-run__indicator { animation: none; }
+}
