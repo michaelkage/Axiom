@@ -1115,8 +1115,26 @@ function App() {
           <div class="workflow-plan__eyebrow">AXIOM INTELLIGENCE <span>UP NEXT</span></div>
           <h2>Keep the momentum</h2>
           <div class="workflow-plan__actions">
-            <For each={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()) })}>
+            <For each={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()), taskOutcomes: taskOutcomes() })}>
               {(action) => <button class="workflow-plan__secondary" title={action.reason} onClick={() => setInput(action.prompt)}>{action.label} <span aria-hidden="true">→</span></button>}
+            </For>
+          </div>
+        </section>
+      </Show>
+      <Show when={taskOutcomes().length > 0}>
+        <section class="workflow-plan workflow-plan--task-outcomes" aria-label="Agent task outcomes">
+          <div class="workflow-plan__eyebrow">AGENT ORCHESTRATION <span>{taskOutcomes().filter(item => item.status === "succeeded").length} / {taskOutcomes().length} SUCCEEDED</span></div>
+          <h2>Task progress</h2>
+          <ol>
+            <For each={taskOutcomes()}>{(task) => <li>
+              <strong>{task.title}</strong>
+              <span>{task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
+              <Show when={task.error}><p>{task.error}</p></Show>
+            </li>}</For>
+          </ol>
+          <div class="workflow-plan__actions">
+            <For each={suggestNextActions({ lastFailure: sessionError() || workflowError() || undefined, hasPlan: Boolean(workflowPlan()), taskOutcomes: taskOutcomes() })}>
+              {(action) => <button class="workflow-plan__secondary" title={action.reason} onClick={() => setInput(action.prompt)}>{action.label} →</button>}
             </For>
           </div>
         </section>
