@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BUILTIN_PLUGIN_CATALOG, comboPromptForState, contextForSpecialist, coordinateTasks, DEFAULT_COMBOS, getCombo, inferSpecialist, packContext,
+  BUILTIN_PLUGIN_CATALOG, comboPromptForState, contextForSpecialist, coordinateTasks, DEFAULT_COMBOS, getAvailableCombos, getCombo, inferSpecialist, packContext,
   reviewPluginManifest, suggestNextActions,
 } from "./intelligence";
 
@@ -44,6 +44,8 @@ describe("Axiom intelligence layer", () => {
   it("exposes the three starter combos with safe ship-it confirmation", () => {
     expect(DEFAULT_COMBOS.map(combo => combo.id)).toEqual(["fix-it", "ship-it", "understand-it"]);
     expect(getCombo("ship-it").requiresConfirmation).toBe(true);
+    expect(getAvailableCombos(["axiom-review-workflows"]).map(combo => combo.id)).toContain("review-it");
+    expect(getAvailableCombos([]).map(combo => combo.id)).not.toContain("review-it");
     expect(() => getCombo("unknown")).toThrow(/Unknown Axiom combo/);
   });
 
