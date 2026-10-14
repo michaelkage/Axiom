@@ -11,6 +11,6 @@ describe("verification", () => {
     expect(getVerificationResult({ id: "3", tool: "bash", state: { status: "running", input: { command: "npm test" } } })).toBeNull();
   });
   it("makes unobserved planned checks explicitly skipped", () => {
-    expect(skippedChecks(["Tests"], []).at(0)?.status).toBe("skipped");
+    expect(skippedChecks(["Tests"], [])[0]?.status).toBe("skipped");
   });
 });
