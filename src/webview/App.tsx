@@ -1134,7 +1134,7 @@ function App() {
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
               <span>{task.status === "succeeded" ? "AGENT SUCCEEDED · REVIEW REQUIRED" : task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
-              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} /></Show>
+              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} onRepair={async failure => { if (!task.sessionId) throw new Error("No task session is available for a bounded repair."); await sendPrompt(task.sessionId, withProjectMemory("Repair this task in its isolated worktree. Fix only the reported verification failures, preserve the task scope, and do not claim checks passed unless their exit status confirms it.\n\nFailure evidence:\n" + failure, sync.workspaceRoot()), task.agent); }} /></Show>
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
