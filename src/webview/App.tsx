@@ -225,7 +225,7 @@ function App() {
     const unique = new Map(results.map((result) => [result!.id, result!]));
     const observed = [...unique.values()];
     const run = workflowRun();
-    if (run && run().status !== "running") {
+    if (run && run.status !== "running") {
       return [...observed, ...skippedChecks(["Tests", "Build"], observed)];
     }
     return observed;
