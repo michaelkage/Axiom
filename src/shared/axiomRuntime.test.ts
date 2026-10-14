@@ -65,6 +65,34 @@ describe("Axiom runtime helpers", () => {
     expect(order.indexOf("c")).toBeGreaterThan(order.indexOf("b"));
   });
 
+  it("emits task lifecycle outcomes and supplies completed task context to dependent batches", async () => {
+    const tasks = parseSubTasks([
+      { id: "a", title: "Research", scope: "research", targetFiles: ["a.ts"], dependsOn: [] },
+      { id: "b", title: "Implement", scope: "implement from research", targetFiles: ["b.ts"], dependsOn: ["a"] },
+    ]);
+    const outcomes: string[] = [];
+    const result = await executeTaskBatches(tasks, async (task, completed) => {
+      if (task.id === "b") expect(completed.map(item => item.task.id)).toEqual(["a"]);
+      return { sessionId: task.id + "-session" };
+    }, record => outcomes.push(record.taskId + ":" + record.status));
+    expect(result).toHaveLength(2);
+    expect(outcomes).toEqual(["a:queued", "b:queued", "a:running", "a:succeeded", "b:running", "b:succeeded"]);
+  });
+
+  it("records failures and stops before dependent work", async () => {
+    const tasks = parseSubTasks([
+      { id: "a", title: "Fail", scope: "fail", targetFiles: ["a.ts"], dependsOn: [] },
+      { id: "b", title: "Blocked", scope: "blocked", targetFiles: ["b.ts"], dependsOn: ["a"] },
+    ]);
+    const outcomes: string[] = [];
+    await expect(executeTaskBatches(tasks, async task => {
+      if (task.id === "a") throw new Error("agent unavailable");
+      return "unexpected";
+    }, record => outcomes.push(record.taskId + ":" + record.status))).rejects.toThrow(/agent unavailable/);
+    expect(outcomes).toContain("a:failed");
+    expect(outcomes).not.toContain("b:running");
+  });
+
   it("plans tasks through an OpenAI-compatible OmniRoute endpoint", async () => {
     const fetcher: typeof fetch = async (_input, init) => {
       expect(init?.method).toBe("POST");
