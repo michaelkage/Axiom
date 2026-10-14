@@ -312,6 +312,10 @@ async function applyWorktreeChanges(event, message) {
       if (!insidePath(message.worktreePath, source) || !insidePath(root, destination)) throw new Error("A selected path escaped the project repository.");
       const dirty = await run("git", ["status", "--porcelain", "--", relative], root);
       if (dirty.output.trim()) throw new Error("Integration blocked for " + relative + ": the destination has local changes.");
+      const tracked = await run("git", ["ls-files", "--error-unmatch", "--", relative], root);
+      if (tracked.exitCode !== 0 && fs.existsSync(destination)) {
+        throw new Error("Integration blocked for " + relative + ": an existing untracked or ignored destination file would be overwritten.");
+      }
       try {
         const sourceStat = await fs.promises.lstat(source);
         if (sourceStat.isSymbolicLink()) throw new Error("Integration blocked for " + relative + ": symbolic links are not copied.");
