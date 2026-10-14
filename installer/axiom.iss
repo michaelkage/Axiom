@@ -10,7 +10,7 @@
 #endif
 
 [Setup]
-AppId={{B88A6B6B-1F27-4A9C-8B50-AXIOM00000001}
+AppId={{B88A6B6B-1F27-4A9C-8B50-A71000000001}
 AppName=Axiom
 AppVersion={#AppVersion}
 AppPublisher=Axiom
@@ -28,8 +28,6 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "{#OutputDir}\{#VsixFile}"; DestDir: "{app}"; DestName: "axiom-{#AppVersion}.vsix"; Flags: ignoreversion
 
-[Icons]
-Name: "{userprograms}\Axiom\Axiom VSIX installer"; Filename: "{app}"; Flags: createonlyiffileexists
 
 [Code]
 function TryInstallVSIX(const CliPath, VsixPath: string): Boolean;
