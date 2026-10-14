@@ -374,13 +374,15 @@ function App() {
     setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
   };
 
-  const prepareParallelPlan = async () => {
+  const prepareParallelPlan = async (overridePrompt?: string) => {
     const plan = workflowPlan();
-    if (!plan || parallelPlanBusy()) return;
+    const prompt = overridePrompt ?? plan?.prompt;
+    if (!prompt || parallelPlanBusy()) return;
     setParallelPlanBusy(true);
     setParallelPlanError(null);
     try {
-      const result = await planParallelTasks(plan.prompt);
+      const result = await planParallelTasks(prompt);
+      setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
       setParallelPlan(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
