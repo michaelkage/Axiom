@@ -62,6 +62,7 @@ function App() {
   // Local UI-only state
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
+  const [workflowError, setWorkflowError] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
@@ -362,6 +363,9 @@ function App() {
   const retryFailedRun = () => {
     const run = workflowRun();
     if (!run) return;
+    const sessionId = sync.currentSessionId();
+    if (sessionId) sync.setSessionError(sessionId, null);
+    setWorkflowError(null);
     setInput(run.prompt);
     setWorkflowRun({ ...run, status: "running" });
     skipPlanOnce = true;
@@ -372,6 +376,9 @@ function App() {
     const plan = workflowPlan();
     if (!plan) return;
     setWorkflowPlan(null);
+    setWorkflowError(null);
+    const currentSessionId = sync.currentSessionId();
+    if (currentSessionId) sync.setSessionError(currentSessionId, null);
     setWorkflowRun({ prompt: plan.prompt, status: "running" });
     const executionPrompt = `${plan.prompt}\n\nImplementation plan:\n${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nAfter implementing, run the relevant checks available in this workspace and summarize what changed and what was verified.`;
     setInput(executionPrompt);
@@ -573,6 +580,11 @@ function App() {
   const handleSubmit = async () => {
     const text = input().trim();
     if (!text || !sync.isReady()) {
+      if (workflowRun()?.status === "running") {
+        const message = !text ? "No prompt was available to run." : "Axiom is not connected to the OpenCode runtime.";
+        setWorkflowError(message);
+        setWorkflowRun({ ...workflowRun()!, status: "failed" });
+      }
       return;
     }
 
@@ -636,16 +648,25 @@ function App() {
         const res = await createSession();
         const newSession = res?.data as Session | undefined;
         if (!newSession?.id) {
+          const message = "The OpenCode runtime did not return a new session.";
           console.error("[App] Failed to create session");
+          setWorkflowError(message);
+          if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
           return;
         }
         sessionId = newSession.id;
         sync.setCurrentSessionId(sessionId);
       } catch (err) {
-        console.error("[App] Failed to create session:", err);
+        const message = getSdkErrorMessage(err);
+        console.error("[App] Failed to create session:", message);
+        setWorkflowError(message);
+        if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
         return;
       }
     }
+
+    sync.setSessionError(sessionId, null);
+    setWorkflowError(null);
 
     // Clear both text and JSON content
     setInput("");
@@ -693,6 +714,7 @@ function App() {
         sync.setThinking(sessionId, false);
         setInFlightMessage(null);
         sync.setSessionError(sessionId, errorMessage);
+        setWorkflowError(errorMessage);
         if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
         return;
       }
@@ -708,6 +730,7 @@ function App() {
       sync.setThinking(sessionId, false);
       setInFlightMessage(null);
       sync.setSessionError(sessionId, errorMessage);
+      setWorkflowError(errorMessage);
       if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
     }
   };
@@ -1016,8 +1039,8 @@ function App() {
         )}
       </Show>
 
-      <Show when={sessionError() && workflowRun()?.status === "failed"}>
-        <RecoveryAdvice error={sessionError()!} onRetry={retryFailedRun} />
+      <Show when={(sessionError() || workflowError()) && workflowRun()?.status === "failed"}>
+        <RecoveryAdvice error={(sessionError() || workflowError())!} onRetry={retryFailedRun} />
       </Show>
 
       <Show when={!hasMessages()}>
