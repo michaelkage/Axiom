@@ -415,10 +415,12 @@ function App() {
       const completed = results.map(({ task, result }) => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
-        return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "succeeded") + session;
-      }).join("\\n");
+        const worktree = typeof result === "object" && result !== null && "worktreePath" in result ? ", isolated worktree " + String(result.worktreePath) : "";
+        const summary = typeof result === "object" && result !== null && "summary" in result ? ", summary: " + String(result.summary).slice(0, 500) : "";
+        return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "succeeded") + session + worktree + summary;
+      }).join("\n");
       setParallelPlan(null);
-      setInput(`Integrate and verify the parallel work for this request: ${plan.prompt}\\n\\nChild tasks completed:\\n${completed}\\n\\nInspect the actual workspace changes, resolve any integration issues, and run the relevant tests/build/type checks. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly.`);
+      setInput("Integrate and verify the parallel work for this request: " + plan.prompt + "\n\nChild task outcomes:\n" + completed + "\n\nEach task ran in an isolated Git worktree. Inspect the listed worktree paths, compare diffs against the parent workspace, and selectively integrate appropriate changes without blindly overwriting files. Then run relevant tests/build/type checks in the parent workspace. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly. Worktrees are retained for review and cleanup.");
       skipPlanOnce = true;
       await handleSubmit();
     } catch (error) {
