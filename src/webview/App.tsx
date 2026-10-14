@@ -61,6 +61,7 @@ function App() {
   
   // Local UI-only state
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
+  const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
@@ -335,7 +336,6 @@ function App() {
   // Axiom's first workflow slice: make the intent and execution steps visible
   // before handing the request to the existing OpenCode runtime.
   const [workflowPlan, setWorkflowPlan] = createSignal<{ prompt: string; steps: string[] } | null>(null);
-  const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   let skipPlanOnce = false;
 
   const buildWorkflowSteps = (prompt: string): string[] => {
