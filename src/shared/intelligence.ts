@@ -150,8 +150,12 @@ export interface NextAction {
   prompt: string;
   priority: number;
 }
-export function suggestNextActions(input: { lastFailure?: string; changedFiles?: string[]; checksPassed?: boolean; hasPlan?: boolean }): NextAction[] {
+export function suggestNextActions(input: { lastFailure?: string; changedFiles?: string[]; checksPassed?: boolean; hasPlan?: boolean; taskOutcomes?: Array<{ title: string; status: string; error?: string }> }): NextAction[] {
   const actions: NextAction[] = [];
+  const failedTasks = (input.taskOutcomes ?? []).filter(task => task.status === "failed");
+  const pendingTasks = (input.taskOutcomes ?? []).filter(task => task.status === "queued" || task.status === "running");
+  if (failedTasks.length) actions.push({ id: "retry-failed-tasks", label: "Resolve failed tasks", reason: failedTasks.length + " task(s) failed.", prompt: "Investigate and fix these failed agent tasks without replaying completed side effects:\n" + failedTasks.map(task => "- " + task.title + ": " + (task.error ?? "failure details unavailable")).join("\n"), priority: 110 });
+  if (pendingTasks.length) actions.push({ id: "check-running-tasks", label: "Check task progress", reason: pendingTasks.length + " task(s) remain queued or running.", prompt: "Inspect the current agent task outcomes and continue only tasks that are still pending. Report observed statuses.", priority: 95 });
   if (input.lastFailure) actions.push({ id: "diagnose-failure", label: "Diagnose failure", reason: "The last operation reported an error.", prompt: `Diagnose this failure without repeating side-effecting actions: ${input.lastFailure}`, priority: 100 });
   if (input.hasPlan) actions.push({ id: "run-plan", label: "Continue plan", reason: "A prepared plan is ready to run.", prompt: "Continue with the prepared plan and report each task outcome.", priority: 80 });
   if ((input.changedFiles?.length ?? 0) > 0 && input.checksPassed !== true) actions.push({ id: "verify-changes", label: "Verify changes", reason: "Workspace changes exist without confirmed passing checks.", prompt: "Run the relevant tests and build, and report only outcomes supported by observed exit statuses.", priority: 70 });
