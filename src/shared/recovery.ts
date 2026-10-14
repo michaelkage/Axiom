@@ -7,7 +7,7 @@ export function classifyRecovery(error: unknown): RecoveryAdvice {
     return { kind: "permission", title: "Permission needed", explanation: "Review the requested permission and approve it if you trust the action.", retryable: true, safeToRetryAutomatically: false };
   if (/429|rate.?limit|too many requests/.test(text))
     return { kind: "rate-limit", title: "Rate limit reached", explanation: "Wait briefly, then retry. A provider or gateway may be throttling requests.", retryable: true, safeToRetryAutomatically: true };
-  if (/timeout|timed out|etimedout|deadline exceeded/.test(text))
+  if (/timeout|timed out|etimedout|deadline exceeded|aborted/.test(text))
     return { kind: "timeout", title: "Request timed out", explanation: "The model or tool took too long. Retry once, or reduce the task scope.", retryable: true, safeToRetryAutomatically: true };
   if (/econnrefused|fetch failed|network|socket|connection reset|not connected/.test(text))
     return { kind: "connection", title: "Connection problem", explanation: "Check that the local runtime or model gateway is running and reachable, then retry.", retryable: true, safeToRetryAutomatically: true };
