@@ -402,7 +402,7 @@ function App() {
         parentSessionId = session.id;
         sync.setCurrentSessionId(parentSessionId);
       }
-      const results = await runSubAgentTasks(parentSessionId, parallel.tasks);
+      const results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent());
       const completed = results.map(({ task }) => `- ${task.title} (task ${task.id})`).join("\\n");
       setParallelPlan(null);
       setInput(`Integrate and verify the parallel work for this request: ${plan.prompt}\\n\\nChild tasks completed:\\n${completed}\\n\\nInspect the actual workspace changes, resolve any integration issues, and run the relevant tests/build/type checks. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly.`);
