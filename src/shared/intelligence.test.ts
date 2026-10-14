@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  coordinateTasks, DEFAULT_COMBOS, getCombo, inferSpecialist, packContext,
+  BUILTIN_PLUGIN_CATALOG, comboPromptForState, contextForSpecialist, coordinateTasks, DEFAULT_COMBOS, getCombo, inferSpecialist, packContext,
   reviewPluginManifest, suggestNextActions,
 } from "./intelligence";
 
@@ -52,6 +52,35 @@ describe("Axiom intelligence layer", () => {
     expect(suggestions[0]?.id).toBe("diagnose-failure");
     expect(suggestions.map(item => item.id)).toContain("verify-changes");
     expect(suggestNextActions({})[0]?.id).toBe("clarify-goal");
+  });
+
+  it("packs request, scope, target files, and completed dependency context for a specialist", () => {
+    const packed = contextForSpecialist({
+      request: "Preserve the public API",
+      taskTitle: "Implement handler",
+      taskScope: "Add the handler",
+      targetFiles: ["src/handler.ts"],
+      completedTasks: [{ title: "Research", status: "succeeded", summary: "Use the existing adapter." }],
+    });
+    const combined = packed.items.map(item => item.content).join("\n");
+    expect(combined).toContain("Preserve the public API");
+    expect(combined).toContain("src/handler.ts");
+    expect(combined).toContain("Use the existing adapter.");
+  });
+
+  it("adapts combo prompts and next actions to real task outcomes", () => {
+    const prompt = comboPromptForState(getCombo("fix-it"), [
+      { taskId: "api", title: "API task", status: "failed", error: "Type-check failed" },
+    ]);
+    expect(prompt).toContain("API task: failed");
+    expect(prompt).toContain("Type-check failed");
+    expect(suggestNextActions({ taskOutcomes: [{ title: "API task", status: "failed", error: "Type-check failed" }] })[0]?.id).toBe("retry-failed-tasks");
+  });
+
+  it("lists only permission-reviewed built-in workflow packs as safe catalog entries", () => {
+    expect(BUILTIN_PLUGIN_CATALOG.length).toBeGreaterThan(0);
+    expect(BUILTIN_PLUGIN_CATALOG.find(item => item.id === "community-command-runner")?.verified).toBe(false);
+    expect(reviewPluginManifest(BUILTIN_PLUGIN_CATALOG.find(item => item.id === "community-command-runner")!).requiredApprovals).toContain("run-commands");
   });
 
   it("requires verification and explicit approval for sensitive plugin permissions", () => {
