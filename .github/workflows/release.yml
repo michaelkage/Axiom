@@ -1,0 +1,85 @@
+name: Build Axiom Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (for example 0.4.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package extension and Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and type-check
+        shell: pwsh
+        run: |
+          pnpm run build
+          pnpm exec tsc -p tsconfig.webview.json
+          pnpm exec tsc -p tsconfig.extension.json --noEmit
+          pnpm exec vitest run
+
+      - name: Package VS Code extension
+        shell: pwsh
+        run: |
+          $version = if ("\${{ github.event_name }}" -eq "workflow_dispatch") { "\${{ inputs.version }}" } else { "\${{ github.ref_name }}".TrimStart("v") }
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid release version: $version" }
+          pnpm exec vsce package --no-dependencies --out "axiom-$version.vsix"
+          "AXIOM_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "AXIOM_VSIX=axiom-$version.vsix" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup --yes --no-progress; $iscc = "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" }
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not found." }
+          New-Item -ItemType Directory -Force -Path dist-release | Out-Null
+          Copy-Item "$env:AXIOM_VSIX" "dist-release\$env:AXIOM_VSIX"
+          & $iscc "/DAppVersion=$env:AXIOM_VERSION" "/DVsixFile=$env:AXIOM_VSIX" "/DOutputDir=dist-release" "installer\axiom.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Upload release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiom-windows-\${{ env.AXIOM_VERSION }}
+          path: |
+            axiom-*.vsix
+            dist-release/*.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Axiom \${{ env.AXIOM_VERSION }}
+          generate_release_notes: true
+          files: |
+            axiom-*.vsix
+            dist-release/*.exe
