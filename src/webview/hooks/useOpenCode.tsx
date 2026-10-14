@@ -237,6 +237,9 @@ function createOpenCode() {
       });
       const taskPrompt = [
         "Axiom parallel task: " + task.title,
+        "Task scope: " + task.scope,
+        "Declared target files: " + (task.targetFiles.length ? task.targetFiles.join(", ") : "(none declared; keep the scope narrow)"),
+        "Acceptance criteria (each must be addressed and evidenced): " + (task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((criterion, index) => (index + 1) + ". " + criterion).join("; ") : "Implement the declared scope and report concrete verification evidence."),
         "Isolated worktree path: " + taskDirectory,
         "Context budget: approximately " + packed.inputEstimatedTokens + " tokens before packing and " + packed.estimatedTokens + " after packing; estimated savings " + packed.estimatedSavingsTokens + " tokens (" + packed.estimatedSavingsPercent + "%). These are heuristic estimates, not provider-reported usage.",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
