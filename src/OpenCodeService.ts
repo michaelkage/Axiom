@@ -165,7 +165,7 @@ export class OpenCodeService {
       );
     }
 
-    return result.data || [];
+    return (result.data || []).map((message) => message.info);
   }
 
   dispose(): void {
