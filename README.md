@@ -61,7 +61,7 @@ pnpm install --frozen-lockfile
 pnpm run build:webview
 ```
 
-The standalone desktop UI is emitted to `out/standalone.html` and its associated assets.
+The standalone desktop UI is emitted to `out/src/webview/standalone.html` and its associated assets.
 
 ### Run checks
 
