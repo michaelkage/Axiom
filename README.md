@@ -2,139 +2,142 @@
 
 **Build software by describing the outcome, not by starting with a pile of files.**
 
-Axiom is an AI-first project-building workspace being developed as a Visual Studio Code extension. Describe a feature or a change in plain language, let the planner break it into scoped work, and review the result through task summaries, diffs, and verification evidence. Code and Git details stay available when you need them, rather than being the whole product.
+Axiom is a standalone desktop app for AI-first project building. Describe the feature or outcome you want, let Axiom plan the work, then review scoped changes, diffs, acceptance criteria, and actual verification results. The goal is a project workspace, not another IDE plugin that requires an editor to exist first.
 
-> **Project status:** active development. Axiom is not yet a standalone desktop IDE. The current deliverable is a VS Code extension; Windows releases include an installer wrapper and the installable `.vsix` package.
+## Download Axiom
 
-## What Axiom is aiming to do
+**Windows x64:** open the [Axiom Releases page](https://github.com/michaelkage/Axiom/releases) and download `Axiom-Setup-<version>-x64.exe`.
 
-- **Start with outcomes.** Describe what the project should do or what should change.
-- **Plan work before editing.** Split larger requests into scoped tasks, acceptance criteria, dependencies, and parallel work where safe.
-- **Keep agent work reviewable.** Work is isolated in Git worktrees where supported, so task changes can be inspected before integration.
-- **Verify instead of guessing.** The quality gate runs relevant checks against the task worktree and reports actual command output. An agent saying “done” is not proof that the build passes.
-- **Recover deliberately.** Failed checks can be sent back through a bounded repair attempt with the failure evidence.
-- **Integrate selectively.** Review changed files and diffs, select what to integrate, and avoid blindly overwriting unrelated local edits.
-- **Keep project context handy.** A project memory panel lets you save, search, edit, and delete conventions, decisions, architecture notes, and fixes. Current memory storage is browser/webview-local, not automatically synced between machines.
-- **Finish with a useful result.** See task outcomes, blockers, outstanding work, and the evidence available for review.
+The installer installs the standalone Axiom desktop application, including its desktop shell and local OpenCode runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app.
 
-These capabilities are evolving. The repository contains legacy OpenCode-oriented extension infrastructure and identifiers alongside the Axiom product work; not every screen or string has been fully rebranded yet.
+If the Releases page does not contain a Windows installer yet, a release has not been published. CI artifacts are not the same as published release assets, because apparently one download location was too straightforward.
 
-## Install
+## What Axiom does
 
-### Windows
+- **Outcome-first building:** describe the result you want in plain language.
+- **Adaptive planning:** break larger requests into scoped tasks, acceptance criteria, dependencies, and parallel work where safe.
+- **Reviewable agent work:** isolate task changes in Git worktrees where supported and inspect diffs before integrating.
+- **Evidence-based quality gates:** run relevant checks and show actual command output instead of treating an agent's “done” message as proof.
+- **Bounded repair:** send real failed-check output back for a limited correction attempt.
+- **Selective integration:** review changed files and integrate selected work without blindly replacing unrelated edits.
+- **Project memory:** save, search, edit, and delete project conventions, architecture notes, decisions, and fixes. Current memory storage is local to the app's webview profile and is not synced between devices.
+- **Outcome-centered handoff:** track completed and blocked tasks, outstanding requirements, and verification evidence.
 
-1. Open the [Axiom Releases page](https://github.com/michaelkage/Axiom/releases).
-2. Download **Axiom-Setup-`version`-x64.exe** to use the installer, or download the **`.vsix`** file for manual installation.
-3. Run the installer. It attempts to install the extension into Visual Studio Code.
-4. If the installer cannot find the VS Code command-line tool, it keeps the VSIX under your local Axiom application folder and tells you where it is. In VS Code, open **Extensions**, choose **Install from VSIX...**, and select that file.
-5. Reload VS Code and open the Axiom view from the Activity Bar.
-
-The Windows installer and VSIX are produced by the tagged-release workflow. If the Releases page has no published release yet, the packaging workflow has not published one. Do not mistake a build artifact for a published release; GitHub has enough ways to confuse people already.
-
-### Install a VSIX manually
-
-From a terminal with VS Code's `code` CLI available:
-
-```powershell
-code --install-extension .\axiom-<version>.vsix
-```
-
-Or use **Extensions → … → Install from VSIX...** in VS Code.
+Features are actively evolving. Some legacy internal modules still use OpenCode names because the application is built on OpenCode's runtime and client libraries. The product you install is Axiom.
 
 ## Quick start
 
-1. Open a project folder in VS Code.
-2. Open the Axiom view in the Activity Bar.
-3. Configure/connect a supported model provider using the available provider controls.
-4. Describe a concrete outcome, for example: “Add CSV export to the reports page, include tests, and explain the files changed.”
-5. Review the generated plan and task scopes. Larger requests may be split into dependent tasks.
-6. Inspect each task's changed files, diff, acceptance criteria, and quality-gate output.
-7. Mark criteria reviewed and integrate only the changes you want. A successful agent response is not the same thing as a passed quality gate.
+1. Install and launch Axiom.
+2. Choose the folder for the project you want to work on.
+3. Configure a supported model provider in the app. Provider access and model API credentials may be required.
+4. Enter a concrete request, for example: “Add CSV export to the reports page, include tests, and summarize the files changed.”
+5. Review the proposed plan, task scopes, and acceptance criteria.
+6. Inspect each task's changed files, diff, and quality-gate output.
+7. Integrate the changes you want. A successful agent response is not the same thing as a passed quality gate.
 
-Start with a small change the first time so you can confirm your provider, permissions, and local toolchain are configured correctly.
+Start with a small change while you confirm your model provider and local development toolchain are configured.
+
+## How the desktop app works
+
+Axiom is an Electron desktop application. It opens a project folder and starts a local OpenCode runtime for that workspace. The runtime listens on a loopback interface, not a public network interface. The installer bundles the desktop app and the OpenCode CLI runtime so a separate VS Code installation is not required.
+
+Axiom works on files in the project folder you select. Review generated changes carefully and keep backups or version control for important projects. Agent permissions and tool availability depend on the runtime and model configuration.
 
 ## Development setup
 
 ### Requirements
 
 - Node.js 20
-- pnpm 10 (the version declared by `package.json`)
-- Visual Studio Code for running the extension
+- pnpm 10, matching the version pinned in the root `package.json`
+- npm for the Electron desktop packaging project
 - Git for worktree-based task isolation and change review
 
-### Install dependencies and build
+### Install and build the UI
+
+From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run build
+pnpm run build:webview
 ```
+
+The standalone desktop UI is emitted to `out/standalone.html` and its associated assets.
 
 ### Run checks
 
 ```bash
-# Unit tests
 pnpm exec vitest run
-
-# Webview type-check
 pnpm exec tsc -p tsconfig.webview.json
-
-# Extension type-check
 pnpm exec tsc -p tsconfig.extension.json --noEmit
-
-# Full test script (includes Playwright tests)
-pnpm test
+node --check desktop/main.cjs
 ```
 
-### Launch the extension locally
+The full `pnpm test` script also runs Playwright browser tests. Those tests may need browser/runtime dependencies installed for your environment.
 
-1. Open this repository in VS Code.
-2. Open **Run and Debug**.
-3. Select the extension launch configuration and press **F5**.
-4. Use the new Extension Development Host window to exercise Axiom.
+### Run the desktop app in development
 
-For the existing helper scripts and debugging details, see [HOW-TO-RUN.md](./HOW-TO-RUN.md). Some of that document still uses the previous OpenCode name and is being cleaned up as the migration proceeds.
+Build the UI first, then install desktop dependencies and launch Electron:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run build:webview
+cd desktop
+npm install
+npm start
+```
+
+To create the Windows installer locally, from the repository root:
+
+```bash
+pnpm run build:webview
+cd desktop
+npm install
+npm run dist
+```
+
+The installer is emitted to `desktop/release/`. The release workflow performs the same steps on a Windows runner and attaches the installer to a tagged GitHub Release.
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `src/extension.ts` | Extension entry point and VS Code integration |
-| `src/OpenCodeViewProvider.ts` | Webview messaging, task worktrees, inspection, and quality-gate execution |
+| `desktop/main.cjs` | Electron main process, project selection, and local runtime lifecycle |
+| `desktop/package.json` | Desktop dependencies and Windows installer configuration |
+| `src/webview/standalone.html` | Standalone desktop UI entry point |
 | `src/webview/App.tsx` | Main project-building workspace and task flow |
 | `src/webview/components/WorktreeReviewPanel.tsx` | Task diff, acceptance criteria, checks, and selective integration UI |
 | `src/webview/components/ProjectMemoryPanel.tsx` | Project memory management UI |
+| `src/OpenCodeViewProvider.ts` | Legacy VS Code host integration and task worktree/quality-gate handlers |
 | `src/shared/axiomRuntime.ts` | Task planning and runtime data contracts |
 | `src/shared/axiomWorkflow.ts` | Shared planning, review, quality-gate, memory-retrieval, and outcome helpers |
 | `src/shared/axiomWorkflow.test.ts` | Workflow helper tests |
 | `.github/workflows/axiom-ci.yml` | Build, type checks, and unit tests on pushes and pull requests |
-| `.github/workflows/release.yml` | Windows packaging and GitHub Release publishing on version tags |
+| `.github/workflows/release.yml` | Standalone Windows installer packaging and release publishing |
 
 ## Release process
 
-A release is built on Windows and includes both an installable VS Code extension and a Windows installer executable.
+1. Ensure CI passes on the intended release commit.
+2. Set the version in both the root `package.json` and `desktop/package.json`.
+3. Push a tag matching `v*` (for example `v0.4.4`) to that commit.
+4. The **Build Axiom Desktop Release** workflow builds the standalone UI, installs desktop packaging dependencies, packages the app and runtime, and creates `Axiom-Setup-<version>-x64.exe`.
+5. The workflow attaches the installer to the GitHub Release. Inspect the workflow run and test the downloaded installer before announcing the release.
 
-1. Ensure CI passes on the commit you intend to release.
-2. Update the extension version in `package.json` and commit the change.
-3. Push a version tag matching `v*` (for example `v0.4.4`) on the release commit.
-4. The **Build Axiom Release** workflow builds, type-checks, runs unit tests, packages the VSIX, compiles the Windows installer, and attaches both files to a GitHub Release.
-5. Inspect the workflow run and test the downloaded assets before announcing the release.
-
-The workflow can also be run manually from GitHub Actions with a semantic version input. A manual run creates build artifacts but does not publish a GitHub Release unless it was triggered by a tag.
+A manual workflow run builds an artifact but does not publish a GitHub Release unless triggered by a tag.
 
 ## Current limitations
 
-- Axiom is a VS Code extension, not yet a standalone Electron desktop application. The Windows `.exe` is an installer wrapper for the extension, not a separate IDE.
-- Project memories currently use webview-local storage. They are not a shared database, versioned project file, or cross-device sync system.
-- Quality-gate checks depend on the commands and dependencies available in the target repository. A passing check is evidence for the checks that ran, not a guarantee that every behavior is correct.
-- Preview and screenshot capture are not yet a complete, automatic end-to-end release feature.
-- Legacy OpenCode naming and extension identifiers remain in parts of the codebase and packaging metadata.
+- The current official packaged installer target is Windows x64. macOS and Linux packages are not yet part of the release workflow.
+- Project memories currently use app/webview-local storage. They are not yet a shared database, versioned project file, or cross-device sync system.
+- Quality-gate checks depend on commands and dependencies available in the target repository. Passing checks are evidence for the checks that ran, not a guarantee that every behavior is correct.
+- Preview and screenshot capture are not yet a complete, automatic end-to-end workflow.
+- Some internal modules and legacy development configurations still retain VS Code/OpenCode naming while the standalone desktop migration continues.
 
 ## Product direction
 
 Axiom is intended to make AI-assisted software building feel like collaborating on a project rather than supervising a code generator: clear goals, scoped work, visible progress, inspectable changes, honest verification, and a useful final handoff.
 
-See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_PRODUCT_WORKFLOWS.md](./docs/AXIOM_PRODUCT_WORKFLOWS.md) for more detail.
+See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_PRODUCT_WORKFLOWS.md](./docs/AXIOM_PRODUCT_WORKFLOWS.md) for product and workflow details.
 
 ## Contributing
 
-Before changing infrastructure, trace how it is used and preserve working paths until replacements are tested. Keep task scopes explicit, include acceptance criteria for user-visible behavior, and prefer verifiable outcomes over claims in agent summaries.
+Trace how existing infrastructure is used before replacing it. Keep task scopes explicit, define acceptance criteria for user-visible behavior, and prefer verifiable outcomes over claims in agent summaries. Changes to desktop startup or runtime lifecycle should include a smoke test on the target operating system.
