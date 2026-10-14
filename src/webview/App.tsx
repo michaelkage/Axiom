@@ -63,6 +63,9 @@ function App() {
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   const [workflowError, setWorkflowError] = createSignal<string | null>(null);
+  const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[] } | null>(null);
+  const [parallelPlanBusy, setParallelPlanBusy] = createSignal(false);
+  const [parallelPlanError, setParallelPlanError] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
@@ -93,6 +96,8 @@ function App() {
     createSession,
     abortSession,
     sendPrompt,
+    planParallelTasks,
+    runSubAgentTasks,
     respondToPermission,
     revertToMessage,
     hostError,
@@ -357,7 +362,57 @@ function App() {
   };
 
   const requestWorkflowPlan = (prompt: string) => {
+    setParallelPlan(null);
+    setParallelPlanError(null);
     setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
+  };
+
+  const prepareParallelPlan = async () => {
+    const plan = workflowPlan();
+    if (!plan || parallelPlanBusy()) return;
+    setParallelPlanBusy(true);
+    setParallelPlanError(null);
+    try {
+      const result = await planParallelTasks(plan.prompt);
+      setParallelPlan(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setParallelPlanError(message);
+    } finally {
+      setParallelPlanBusy(false);
+    }
+  };
+
+  const executeParallelPlan = async () => {
+    const plan = workflowPlan();
+    const parallel = parallelPlan();
+    if (!plan || !parallel || parallel.tasks.length === 0) return;
+    setWorkflowError(null);
+    setParallelPlanError(null);
+    const activeSession = sync.currentSessionId();
+    if (activeSession) sync.setSessionError(activeSession, null);
+    setWorkflowRun({ prompt: plan.prompt, status: "running" });
+    setWorkflowPlan(null);
+    try {
+      let parentSessionId = sync.currentSessionId();
+      if (!parentSessionId) {
+        const created = await createSession();
+        const session = created?.data as Session | undefined;
+        if (!session?.id) throw new Error("Could not create a parent session for parallel tasks.");
+        parentSessionId = session.id;
+        sync.setCurrentSessionId(parentSessionId);
+      }
+      const results = await runSubAgentTasks(parentSessionId, parallel.tasks);
+      const completed = results.map(({ task }) => `- ${task.title} (task ${task.id})`).join("\\n");
+      setParallelPlan(null);
+      setInput(`Integrate and verify the parallel work for this request: ${plan.prompt}\\n\\nChild tasks completed:\\n${completed}\\n\\nInspect the actual workspace changes, resolve any integration issues, and run the relevant tests/build/type checks. Report each check as passed only when its real exit status is successful; list failures and skipped checks explicitly.`);
+      skipPlanOnce = true;
+      await handleSubmit();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setWorkflowError(`Parallel execution stopped: ${message}. Some sibling tasks may already have changed files; review the workspace before retrying.`);
+      setWorkflowRun({ prompt: plan.prompt, status: "failed" });
+    }
   };
 
   const retryFailedRun = () => {
@@ -1070,8 +1125,17 @@ function App() {
               </ol>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
+              <Show when={parallelPlanError()}><p class="workflow-plan__error" role="alert">{parallelPlanError()}</p></Show>
+              <Show when={parallelPlan()} keyed>
+                {(parallel) => <div class="workflow-plan__parallel">
+                  <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
+                  <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span></li>}</For></ol>
+                  <button class="workflow-plan__primary" onClick={() => void executeParallelPlan()}>Run with parallel agents <span aria-hidden="true">→</span></button>
+                </div>}
+              </Show>
             </section>
           )}
         </Show>
@@ -1147,8 +1211,17 @@ function App() {
               </ol>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
+              <Show when={parallelPlanError()}><p class="workflow-plan__error" role="alert">{parallelPlanError()}</p></Show>
+              <Show when={parallelPlan()} keyed>
+                {(parallel) => <div class="workflow-plan__parallel">
+                  <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
+                  <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span></li>}</For></ol>
+                  <button class="workflow-plan__primary" onClick={() => void executeParallelPlan()}>Run with parallel agents <span aria-hidden="true">→</span></button>
+                </div>}
+              </Show>
             </section>
           )}
         </Show>
