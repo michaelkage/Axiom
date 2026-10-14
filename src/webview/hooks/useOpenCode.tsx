@@ -16,6 +16,7 @@ import {
 import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
+import { DEFAULT_AXIOM_RUNTIME, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -137,6 +138,51 @@ function createOpenCode() {
     });
   }
 
+  async function planParallelTasks(prompt: string): Promise<{ model: string; tasks: AxiomSubTask[] }> {
+    const response = await proxyFetch(`${DEFAULT_AXIOM_RUNTIME.gatewayUrl.replace(/\\/+$/, "")}/models`, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    });
+    if (!response.ok) throw new Error(`OmniRoute model discovery failed (HTTP ${response.status}). Check that the local gateway is running.`);
+    const modelResponse = await response.json() as { data?: Array<{ id?: string }> };
+    const model = modelResponse.data?.find(item => typeof item.id === "string" && item.id.trim())?.id;
+    if (!model) throw new Error("OmniRoute returned no available model IDs.");
+    const tasks = await planSubTasksWithOmniRoute(prompt, model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
+    return { model, tasks };
+  }
+
+  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[]) {
+    const c = client();
+    if (!c) throw new Error("Not connected to the OpenCode runtime.");
+    const directory = workspaceRoot();
+    return executeTaskBatches(tasks, async task => {
+      const created = await c.session.create({
+        ...(directory ? { directory } : {}),
+        parentID: parentSessionId,
+        title: `Axiom: ${task.title}`,
+      });
+      if (created.error || !created.data?.id) {
+        throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
+      }
+      const childSessionId = created.data.id;
+      const taskPrompt = [
+        `Axiom parallel task: ${task.title}`,
+        task.scope,
+        task.targetFiles.length ? `Only modify these declared target files unless a minimal supporting change is absolutely necessary: ${task.targetFiles.join(", ")}.` : "Keep changes tightly scoped and explain the files you need to change.",
+        "Do not overlap with sibling tasks. Preserve unrelated behavior. Run focused checks where available and report exact commands and observed outcomes.",
+      ].join("\\n\\n");
+      const result = await c.session.prompt({
+        sessionID: childSessionId,
+        parts: [{ type: "text", text: taskPrompt }],
+        ...(task.agentHint ? { agent: task.agentHint } : {}),
+      });
+      if (result.error) {
+        throw new Error(`Task "${task.title}" failed: ${JSON.stringify(result.error)}`);
+      }
+      return { sessionId: childSessionId, taskId: task.id, title: task.title };
+    });
+  }
+
   // Subscribe to events for the workspace through the extension proxy
   // (native EventSource has CORS issues in webview)
   function subscribeToEvents(
@@ -224,6 +270,8 @@ function createOpenCode() {
     abortSession: (id: string) => client()?.session.abort({ sessionID: id }),
     // High-level helpers
     sendPrompt,
+    planParallelTasks,
+    runSubAgentTasks,
     subscribeToEvents,
     respondToPermission,
     revertToMessage,
