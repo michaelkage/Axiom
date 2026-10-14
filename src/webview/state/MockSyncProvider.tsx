@@ -10,7 +10,7 @@ import type { Message, MessagePart, Permission, Session, Agent, ContextInfo, Fil
 import { SyncContext, type SyncContextValue } from "./sync";
 
 interface MockSyncProviderProps extends ParentProps {
-  messages?: Message[];
+  messages?: Array<Message & { parts?: MessagePart[] }>;
   sessions?: Session[];
   agents?: Agent[];
   isThinking?: boolean;
