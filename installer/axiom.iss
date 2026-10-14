@@ -9,7 +9,7 @@
   #define OutputDir "dist-release"
 #endif
 #ifndef VsixPath
-  #define VsixPath "dist-release\\axiom.vsix"
+  #define VsixPath "dist-release\axiom.vsix"
 #endif
 
 [Setup]
