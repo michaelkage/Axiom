@@ -17,7 +17,7 @@ import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
-import { BUILTIN_PLUGIN_CATALOG, DEFAULT_COMBOS, comboPromptForState, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
+import { BUILTIN_PLUGIN_CATALOG, DEFAULT_COMBOS, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import type { TaskExecutionRecord } from "../shared/axiomRuntime";
 
 export interface QueuedMessage {
@@ -1149,7 +1149,7 @@ function App() {
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">
-            <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(comboPromptForState(combo, taskOutcomes() as ExecutionSummary[]))}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
+            <For each={getAvailableCombos(installedPluginIds())}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(comboPromptForState(combo, taskOutcomes() as ExecutionSummary[]))}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
           </div>
         </section>
         <section class="workflow-plan workflow-plan--plugins" aria-label="Plugin marketplace">
