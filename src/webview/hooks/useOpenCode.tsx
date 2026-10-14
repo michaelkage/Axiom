@@ -152,10 +152,12 @@ function createOpenCode() {
     return { model, tasks };
   }
 
-  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[]) {
+  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null) {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
+    const agentResponse = await c.app.agents();
+    const availableAgentNames = new Set((agentResponse.data ?? []).map(agent => agent.name));
     return executeTaskBatches(tasks, async task => {
       const created = await c.session.create({
         ...(directory ? { directory } : {}),
@@ -172,10 +174,13 @@ function createOpenCode() {
         task.targetFiles.length ? `Only modify these declared target files unless a minimal supporting change is absolutely necessary: ${task.targetFiles.join(", ")}.` : "Keep changes tightly scoped and explain the files you need to change.",
         "Do not overlap with sibling tasks. Preserve unrelated behavior. Run focused checks where available and report exact commands and observed outcomes.",
       ].join("\n\n");
+      const agent = preferredAgent && availableAgentNames.has(preferredAgent)
+        ? preferredAgent
+        : task.agentHint && availableAgentNames.has(task.agentHint) ? task.agentHint : undefined;
       const result = await c.session.prompt({
         sessionID: childSessionId,
         parts: [{ type: "text", text: taskPrompt }],
-        ...(task.agentHint ? { agent: task.agentHint } : {}),
+        ...(agent ? { agent } : {}),
       });
       if (result.error) {
         throw new Error(`Task "${task.title}" failed: ${JSON.stringify(result.error)}`);
