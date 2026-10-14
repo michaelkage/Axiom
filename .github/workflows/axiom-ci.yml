@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build extension and webview
+      - name: Build standalone UI
         run: pnpm run build
 
       - name: Validate standalone desktop launcher
