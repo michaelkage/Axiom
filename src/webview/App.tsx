@@ -9,7 +9,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
-import { getVerificationResult } from "../shared/verification";
+import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
@@ -222,7 +222,12 @@ function App() {
       .map((part) => getVerificationResult(part as { id: string; tool?: string; state?: { status?: string; input?: Record<string, unknown>; output?: string; error?: string; title?: string } }))
       .filter((result) => result !== null);
     const unique = new Map(results.map((result) => [result!.id, result!]));
-    return [...unique.values()];
+    const observed = [...unique.values()];
+    const run = workflowRun();
+    if (run && run.status !== "running") {
+      return [...observed, ...skippedChecks(["Tests", "Build"], observed)];
+    }
+    return observed;
   });
   const isThinking = sync.isThinking;
   const sessionError = sync.sessionError;
