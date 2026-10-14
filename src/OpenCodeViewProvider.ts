@@ -277,16 +277,18 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       if (path.resolve(workspaceCommon.trim()) !== path.resolve(worktreeCommon.trim())) {
         fail("The worktree does not belong to the active workspace repository."); return;
       }
-      const [nameStatus, patch, whitespace] = await Promise.all([
+      const [nameStatus, patch, whitespace, untracked] = await Promise.all([
         runGit(resolvedWorktree, ["diff", "--name-status", "HEAD"]),
         runGit(resolvedWorktree, ["diff", "--no-ext-diff", "--no-color", "HEAD", "--"]),
         runGit(resolvedWorktree, ["diff", "--check", "HEAD"]),
+        runGit(resolvedWorktree, ["ls-files", "--others", "--exclude-standard"]),
       ]);
       const changedFiles = nameStatus.split(/\r?\n/).filter(Boolean).map(line => {
         const [status, ...fileParts] = line.split("\t");
         return { status, path: fileParts[fileParts.length - 1] ?? "" };
       });
-      send({ ok: true, changedFiles, patch, whitespaceCheck: { passed: !whitespace.trim(), output: whitespace.trim() || "git diff --check passed." } });
+      const untrackedFiles = untracked.split(/\r?\n/).filter(Boolean).map(file => ({ status: "??", path: file }));
+      send({ ok: true, changedFiles: [...changedFiles, ...untrackedFiles], patch, whitespaceCheck: { passed: !whitespace.trim(), output: whitespace.trim() || "git diff --check passed." } });
     } catch (error) {
       fail("Could not inspect worktree diff: " + (error instanceof Error ? error.message : String(error)));
     }
