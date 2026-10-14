@@ -19,7 +19,7 @@ pnpm install --frozen-lockfile
 pnpm run build:webview
 ```
 
-This generates `out/standalone.html` and its assets.
+This generates `out/src/webview/standalone.html` and its assets.
 
 ## Run automated checks
 
@@ -61,7 +61,7 @@ The Windows x64 installer is written to `desktop/release/`. The release workflow
 
 ### The desktop window does not open
 
-- Confirm `out/standalone.html` exists after running `pnpm run build:webview`.
+- Confirm `out/src/webview/standalone.html` exists after running `pnpm run build:webview`.
 - Run `node --check desktop/main.cjs` to catch launcher syntax errors.
 - Start with `npm start` from `desktop/` and inspect terminal output.
 
