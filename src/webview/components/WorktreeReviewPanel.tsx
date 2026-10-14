@@ -7,11 +7,13 @@ type Review = { ok: boolean; loading?: boolean; error?: string; changedFiles?: C
 type Gate = { loading?: boolean; status?: string; checks?: Check[]; error?: string };
 type Apply = { loading?: boolean; ok: boolean; error?: string; appliedPaths?: string[] };
 
-export function WorktreeReviewPanel(props: { taskId: string; worktreePath: string; workspaceRoot?: string }) {
+export function WorktreeReviewPanel(props: { taskId: string; worktreePath: string; workspaceRoot?: string; onRepair?: (failure: string) => Promise<void> | void }) {
   const [review, setReview] = createSignal<Review | null>(null);
   const [selected, setSelected] = createSignal<string[]>([]);
   const [gate, setGate] = createSignal<Gate | null>(null);
   const [applyResult, setApplyResult] = createSignal<Apply | null>(null);
+  const [repairAttempts, setRepairAttempts] = createSignal(0);
+  const [repairing, setRepairing] = createSignal(false);
   const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
 
   const inspect = () => {
@@ -85,10 +87,18 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
         <span>{check.state === "passed" ? "✓" : "✕"} {check.name}</span>
         <Show when={check.output}><details><summary>Output</summary><pre>{check.output}</pre></details></Show>
       </div>}</For>
+      <Show when={result.status === "Needs fixes" && props.onRepair && repairAttempts() < 1}>
+        <button class="workflow-plan__secondary" disabled={repairing()} onClick={async () => {
+          const failure = (result.checks ?? []).filter(check => check.state !== "passed").map(check => check.name + " (exit " + check.exitCode + "): " + (check.output || "No output captured.")).join("\n\n");
+          setRepairAttempts(count => count + 1);
+          setRepairing(true);
+          try { await props.onRepair?.(failure); } finally { setRepairing(false); }
+        }}>{repairing() ? "Requesting one bounded repair…" : "Ask task agent to fix failures (1 retry)"}</button>
+      </Show>
       <button class="workflow-plan__secondary" disabled={result.status !== "Ready to review" || !selected().length || applyResult()?.loading} onClick={applySelected}>
         {applyResult()?.loading ? "Integrating…" : "Integrate selected files"}
       </button>
-      <p class="worktree-review__note">Integration is blocked unless all configured checks pass. Existing dirty workspace paths are never overwritten.</p>
+      <p class="worktree-review__note">Integration is blocked unless all configured checks pass. Existing dirty workspace paths are never overwritten. Repair is limited to one attempt per task review.</p>
     </div>}</Show>
     <Show when={applyResult()} keyed>{result => <p>{result.ok ? "Integrated: " + (result.appliedPaths ?? []).join(", ") : result.error ? "Integration blocked: " + result.error : ""}</p>}</Show>
   </div>;
