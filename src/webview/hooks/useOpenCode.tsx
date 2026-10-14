@@ -153,6 +153,30 @@ function createOpenCode() {
     return { model, tasks };
   }
 
+  async function createAgentWorktree(taskId: string, root: string): Promise<string> {
+    if (!hasVscodeApi) throw new Error("Isolated agent worktrees require the VS Code extension host.");
+    const requestId = "axiom-worktree-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    return new Promise<string>((resolve, reject) => {
+      const cleanup = () => {
+        window.removeEventListener("message", onMessage);
+        clearTimeout(timeout);
+      };
+      const onMessage = (event: MessageEvent) => {
+        const data = event.data as { type?: string; requestId?: string; ok?: boolean; path?: string; error?: string };
+        if (data?.type !== "agent-worktree-result" || data.requestId !== requestId) return;
+        cleanup();
+        if (data.ok && data.path) resolve(data.path);
+        else reject(new Error(data.error ?? "The host could not create an isolated worktree."));
+      };
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timed out while creating the isolated agent worktree."));
+      }, 35000);
+      window.addEventListener("message", onMessage);
+      vscode.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
+    });
+  }
+
   async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void }) {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
@@ -186,10 +210,12 @@ function createOpenCode() {
       // A missing agent catalogue should fall back to the OpenCode default agent.
     }
     return executeTaskBatches(tasks, async (task, completed) => {
+      if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
+      const taskDirectory = await createAgentWorktree(task.id, directory);
       const created = await c.session.create({
-        ...(directory ? { directory } : {}),
+        directory: taskDirectory,
         parentID: parentSessionId,
-        title: `Axiom: ${task.title}`,
+        title: "Axiom: " + task.title,
       });
       if (created.error || !created.data?.id) {
         throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
@@ -213,6 +239,7 @@ function createOpenCode() {
         "Axiom parallel task: " + task.title,
         "Selected context (estimated " + packed.estimatedTokens + " tokens; omitted " + packed.omittedIds.length + " lower-priority items):",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
+        "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
         "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
       ].join("\n\n");
       const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
@@ -242,7 +269,7 @@ function createOpenCode() {
       } catch {
         // A missing transcript must not turn a successful prompt response into a false failure.
       }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary };
+      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory };
     }, orchestration?.onOutcome);
   }
 
