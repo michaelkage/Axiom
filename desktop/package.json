@@ -26,6 +26,7 @@
     ],
     "files": [
       "main.cjs",
+      "preload.cjs",
       "package.json",
       "node_modules/**"
     ],
@@ -33,7 +34,9 @@
       {
         "from": "../out",
         "to": "out",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
@@ -43,7 +46,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Axiom-Setup-${version}-x64.${ext}"
