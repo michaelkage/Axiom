@@ -1128,7 +1128,7 @@ function App() {
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
-              <Show when={parallelPlanError()}><p class="workflow-plan__error" role="alert">{parallelPlanError()}</p></Show>
+              <Show when={parallelPlanError()}><RecoveryAdvice error={parallelPlanError()!} onRetry={prepareParallelPlan} /></Show>
               <Show when={parallelPlan()} keyed>
                 {(parallel) => <div class="workflow-plan__parallel">
                   <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
@@ -1214,7 +1214,7 @@ function App() {
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
-              <Show when={parallelPlanError()}><p class="workflow-plan__error" role="alert">{parallelPlanError()}</p></Show>
+              <Show when={parallelPlanError()}><RecoveryAdvice error={parallelPlanError()!} onRetry={prepareParallelPlan} /></Show>
               <Show when={parallelPlan()} keyed>
                 {(parallel) => <div class="workflow-plan__parallel">
                   <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
