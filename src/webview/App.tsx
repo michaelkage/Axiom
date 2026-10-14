@@ -9,6 +9,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { ProjectMemoryPanel } from "./components/ProjectMemoryPanel";
+import { WorktreeReviewPanel } from "./components/WorktreeReviewPanel";
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
@@ -1133,7 +1134,7 @@ function App() {
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
               <span>{task.status === "succeeded" ? "AGENT SUCCEEDED · REVIEW REQUIRED" : task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
-              <Show when={task.worktreePath}><p>Isolated worktree: {task.worktreePath}</p></Show>
+              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} /></Show>
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
