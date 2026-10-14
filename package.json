@@ -93,7 +93,8 @@
     "tsx": "^4.x",
     "typescript": "^5.x",
     "vite": "^5.x",
-    "vitest": "^1.x"
+    "vitest": "^1.x",
+    "@types/hast": "^3.0.4"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.5",
