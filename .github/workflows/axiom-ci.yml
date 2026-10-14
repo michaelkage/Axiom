@@ -41,6 +41,12 @@ jobs:
       - name: Build extension and webview
         run: pnpm run build
 
+      - name: Validate standalone desktop launcher
+        run: node --check desktop/main.cjs
+
+      - name: Verify standalone UI output
+        run: test -f out/standalone.html
+
       - name: Type-check webview
         run: pnpm exec tsc -p tsconfig.webview.json
 
