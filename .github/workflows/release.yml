@@ -49,6 +49,8 @@ jobs:
         shell: pwsh
         run: |
           $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}".TrimStart("v") }
+          $manifestVersion = (Get-Content "package.json" -Raw | ConvertFrom-Json).version
+          if ($version -ne $manifestVersion) { throw "Release version $version does not match package.json version $manifestVersion" }
           if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid release version: $version" }
           pnpm exec vsce package --no-dependencies --out "axiom-$version.vsix"
           "AXIOM_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -61,8 +63,10 @@ jobs:
           if (!(Test-Path $iscc)) { choco install innosetup --yes --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not found." }
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
-          Copy-Item "$env:AXIOM_VSIX" "dist-release\$env:AXIOM_VSIX"
-          & $iscc "/DAppVersion=$env:AXIOM_VERSION" "/DVsixFile=$env:AXIOM_VSIX" "/DOutputDir=dist-release" "installer\axiom.iss"
+          $releaseDir = (Resolve-Path "dist-release").Path
+          $vsixPath = Join-Path $releaseDir $env:AXIOM_VSIX
+          Copy-Item "$env:AXIOM_VSIX" $vsixPath
+          & $iscc "/DAppVersion=$env:AXIOM_VERSION" "/DVsixFile=$env:AXIOM_VSIX" "/DVsixPath=$vsixPath" "/DOutputDir=$releaseDir" "installer\axiom.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - name: Upload release packages
