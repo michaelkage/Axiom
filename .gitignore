@@ -1,4 +1,6 @@
 node_modules
+desktop/node_modules/
+desktop/release/
 tmp/
 dist
 out
