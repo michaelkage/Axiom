@@ -1131,6 +1131,8 @@ function App() {
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
               <span>{task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
+              <Show when={task.worktreePath}><p>Isolated worktree: {task.worktreePath}</p></Show>
+              <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
             </li>}</For>
           </ol>
