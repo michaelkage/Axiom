@@ -132,6 +132,15 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
     if (![...task.targetFiles, ...task.dependsOn].every(value => typeof value === "string")) throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
     return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
   });
+  if (tasks.length === 0) throw new Error("Planner returned an empty task list.");
+  for (const task of tasks) {
+    for (const target of task.targetFiles) {
+      const normalized = target.replace(/\\/g, "/");
+      if (!normalized.trim() || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized) || normalized.split("/").some(segment => segment === "..")) {
+        throw new Error(`Task ${task.id} contains an unsafe workspace-relative target path: ${target}`);
+      }
+    }
+  }
   const ids = new Set<string>();
   for (const task of tasks) {
     if (ids.has(task.id)) throw new Error(`Duplicate task id: ${task.id}`);
