@@ -8,6 +8,7 @@ import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
+import { ProjectMemoryPanel } from "./components/ProjectMemoryPanel";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
@@ -1264,6 +1265,7 @@ function App() {
           <ChangeTopicsPanel diffs={currentSessionDiffs()} />
         </Show>
         <VerificationPanel results={verificationResults()} />
+        <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
         
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
