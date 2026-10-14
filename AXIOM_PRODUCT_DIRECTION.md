@@ -39,7 +39,7 @@ Deliver one end-to-end loop before expanding the feature set:
 
 ## Architecture approach
 
-This repository is currently an OpenCode-oriented VS Code extension/webview using the OpenCode SDK. Evolve it in place and preserve useful working capabilities while validating the target architecture. Avoid a destructive cleanup until each directory and dependency has been classified as required, reusable, obsolete, or undecided.
+The product target is a standalone Electron desktop app. The current desktop shell wraps the existing webview UI and starts a local OpenCode CLI runtime for the project selected by the user. Legacy VS Code host code remains in the repository for compatibility and migration reference, but it is not the primary product or release target. Preserve reusable capabilities while replacing editor-host dependencies with explicit desktop adapters and tests.
 
 Keep clear boundaries between:
 - Product UI and presentation state
@@ -50,7 +50,7 @@ Keep clear boundaries between:
 - Validation and failure recovery
 - Plugin contracts and extension isolation
 
-Do not introduce a new desktop shell or replace the runtime solely for aesthetic reasons. Make those choices only when a concrete product requirement demands them.
+The standalone desktop shell is now a product requirement, not an aesthetic option. Keep the runtime and renderer boundaries explicit, bind local services to loopback only, and package the runtime with the installer so users do not need VS Code.
 
 ## Non-goals for the first milestone
 
