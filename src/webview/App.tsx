@@ -1130,6 +1130,28 @@ function App() {
             <For each={DEFAULT_COMBOS}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(comboPromptForState(combo, taskOutcomes() as ExecutionSummary[]))}>{combo.title} <span aria-hidden="true">→</span></button>}</For>
           </div>
         </section>
+        <section class="workflow-plan workflow-plan--plugins" aria-label="Plugin marketplace">
+          <div class="workflow-plan__eyebrow">AXIOM EXTENSIONS <span>BUILT-IN CATALOG</span></div>
+          <h2>Workflow extensions</h2>
+          <p class="workflow-plan__prompt">Discover declarative workflow packs. Unverified executable plugins are never downloaded or run from this catalog.</p>
+          <div class="workflow-plan__actions">
+            <For each={BUILTIN_PLUGIN_CATALOG}>{(plugin) => {
+              const review = reviewPluginManifest(plugin);
+              const enabled = () => installedPluginIds().includes(plugin.id);
+              const safeTemplate = plugin.verified === true && plugin.permissions.every(permission => permission === "read-files");
+              return <div class="workflow-plan__parallel">
+                <strong>{plugin.id}</strong>
+                <p>{plugin.description}</p>
+                <span>{plugin.publisher} · v{plugin.version} · Permissions: {plugin.permissions.join(", ")}</span>
+                <Show when={review.warnings.length > 0}><p>{review.warnings.join(" ")}</p></Show>
+                <Show when={review.requiredApprovals.length > 0}><p>Requires explicit approval: {review.requiredApprovals.join(", ")}</p></Show>
+                <button class="workflow-plan__secondary" disabled={!safeTemplate} onClick={() => setInstalledPluginIds(previous => enabled() ? previous.filter(id => id !== plugin.id) : [...previous, plugin.id])}>
+                  {enabled() ? "Enabled for this session" : safeTemplate ? "Enable workflow pack" : "Blocked pending trust and sandbox"}
+                </button>
+              </div>;
+            }}</For>
+          </div>
+        </section>
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
             <For each={standalonePermissions()}>
