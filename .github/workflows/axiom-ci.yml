@@ -41,5 +41,11 @@ jobs:
       - name: Build extension and webview
         run: pnpm run build
 
+      - name: Type-check webview
+        run: pnpm exec tsc -p tsconfig.webview.json
+
+      - name: Type-check extension
+        run: pnpm exec tsc -p tsconfig.extension.json --noEmit
+
       - name: Run unit tests
         run: pnpm exec vitest run
