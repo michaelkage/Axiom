@@ -88,6 +88,9 @@ export interface ContextItem {
 export interface PackedContext {
   items: ContextItem[];
   estimatedTokens: number;
+  inputEstimatedTokens: number;
+  estimatedSavingsTokens: number;
+  estimatedSavingsPercent: number;
   omittedIds: string[];
 }
 const PRIORITY: Record<ContextItem["kind"], number> = {
@@ -109,6 +112,7 @@ export function packContext(items: ContextItem[], tokenBudget: number): PackedCo
   );
   const selected: ContextItem[] = [];
   const omittedIds: string[] = [];
+  const inputEstimatedTokens = ranked.reduce((total, item) => total + estimateTokens(item.content), 0);
   let estimatedTokens = 0;
   for (const item of ranked) {
     const cost = estimateTokens(item.content);
@@ -117,7 +121,9 @@ export function packContext(items: ContextItem[], tokenBudget: number): PackedCo
       estimatedTokens += cost;
     } else omittedIds.push(item.id);
   }
-  return { items: selected, estimatedTokens, omittedIds };
+  const estimatedSavingsTokens = Math.max(0, inputEstimatedTokens - estimatedTokens);
+  const estimatedSavingsPercent = inputEstimatedTokens > 0 ? Math.round(estimatedSavingsTokens / inputEstimatedTokens * 100) : 0;
+  return { items: selected, estimatedTokens, inputEstimatedTokens, estimatedSavingsTokens, estimatedSavingsPercent, omittedIds };
 }
 function clamp(value: number, min: number, max: number): number {
   return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
