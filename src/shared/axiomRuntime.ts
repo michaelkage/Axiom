@@ -91,7 +91,7 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
-  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string;
+  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
 }
 export interface CompletedTaskContext { task: AxiomSubTask; result: unknown; }
 export async function executeTaskBatches<T>(
@@ -117,6 +117,9 @@ export async function executeTaskBatches<T>(
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
           ...(typeof detail.summary === "string" ? { summary: detail.summary } : {}),
+          ...(typeof detail.contextEstimatedTokensBefore === "number" ? { contextEstimatedTokensBefore: detail.contextEstimatedTokensBefore } : {}),
+          ...(typeof detail.contextEstimatedTokensAfter === "number" ? { contextEstimatedTokensAfter: detail.contextEstimatedTokensAfter } : {}),
+          ...(typeof detail.contextSavingsPercent === "number" ? { contextSavingsPercent: detail.contextSavingsPercent } : {}),
         });
         return { task, result };
       } catch (error) {
