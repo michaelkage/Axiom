@@ -1129,7 +1129,16 @@ function App() {
       <Show when={taskOutcomes().length > 0}>
         <section class="workflow-plan workflow-plan--task-outcomes" aria-label="Agent task outcomes">
           <div class="workflow-plan__eyebrow">AGENT ORCHESTRATION <span>{taskOutcomes().filter(item => item.status === "succeeded").length} / {taskOutcomes().length} SUCCEEDED</span></div>
-          <h2>Task progress</h2>
+          <h2>Build outcome</h2>
+          <p class="workflow-plan__prompt">Agents report implementation outcomes; nothing is considered verified until the task quality gate passes. Review each task diff, run its checks, and integrate only the selected files.</p>
+          <div class="workflow-plan__actions">
+            <span>{taskOutcomes().filter(item => item.status === "succeeded").length} agent tasks succeeded</span>
+            <span>{taskOutcomes().filter(item => item.status === "failed").length} failed</span>
+            <span>{taskOutcomes().filter(item => item.status === "queued" || item.status === "running").length} remaining</span>
+          </div>
+          <Show when={taskOutcomes().some(item => item.status === "failed")}>
+            <button class="workflow-plan__secondary" onClick={() => setInput("Replan the unfinished work from these actual task outcomes. Preserve successful tasks, isolate the causes of failure, block only dependent tasks, and schedule unrelated remaining work. Do not repeat completed tasks unless a dependency or verification result requires it.\n\n" + taskOutcomes().map(item => "- " + item.title + " [" + item.status + "]: " + (item.error || item.summary || "No details reported")).join("\n"))}>Replan failed and remaining work</button>
+          </Show>
           <ol>
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
