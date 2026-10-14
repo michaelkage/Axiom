@@ -138,7 +138,7 @@ function createOpenCode() {
     });
   }
 
-  async function planParallelTasks(prompt: string): Promise<{ model: string; tasks: AxiomSubTask[] }> {
+  async function planParallelTasks(prompt: string) {
     const response = await proxyFetch(`${DEFAULT_AXIOM_RUNTIME.gatewayUrl.replace(/\\/+$/, "")}/models`, {
       method: "GET",
       headers: { "Accept": "application/json" },
@@ -170,7 +170,7 @@ function createOpenCode() {
         task.scope,
         task.targetFiles.length ? `Only modify these declared target files unless a minimal supporting change is absolutely necessary: ${task.targetFiles.join(", ")}.` : "Keep changes tightly scoped and explain the files you need to change.",
         "Do not overlap with sibling tasks. Preserve unrelated behavior. Run focused checks where available and report exact commands and observed outcomes.",
-      ].join("\\n\\n");
+      ].join("\n\n");
       const result = await c.session.prompt({
         sessionID: childSessionId,
         parts: [{ type: "text", text: taskPrompt }],
