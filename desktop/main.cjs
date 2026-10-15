@@ -11,6 +11,7 @@ let runtimeProcess;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
+let stoppingRuntime = false;
 
 app.setName("Axiom");
 if (process.platform === "win32") app.setAppUserModelId("com.axiom.desktop");
