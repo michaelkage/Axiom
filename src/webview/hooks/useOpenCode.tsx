@@ -16,7 +16,7 @@ import {
 import { hasAxiomDesktopApi, hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
-import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
+import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 import { contextForSpecialist, filterProjectContext, inferSpecialist } from "../../shared/intelligence";
 
 // Re-export types for convenience
@@ -139,7 +139,7 @@ function createOpenCode() {
     });
   }
 
-  async function planParallelTasks(prompt: string) {
+  async function planParallelTasks(prompt: string, requestedModel?: string, configuredFallbackModel?: string) {
     const discovery = await discoverOmniRouteModels(DEFAULT_AXIOM_RUNTIME, proxyFetch);
     if (!discovery.reachable) {
       throw new Error(discovery.warning ?? "OmniRoute is unreachable. Start the local gateway and retry.");
@@ -147,11 +147,13 @@ function createOpenCode() {
     if (!discovery.models.length) {
       throw new Error(discovery.warning ?? "OmniRoute returned no available model IDs.");
     }
-    // The planner has no model picker yet; choose the first advertised model explicitly
-    // and report that exact ID to the UI. Do not silently substitute a different model.
-    const model = discovery.models[0].id;
-    const tasks = await planSubTasksWithOmniRoute(prompt, model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
-    return { model, tasks, discoveryWarning: discovery.warning };
+    // Until the UI exposes a model picker, use the first advertised model. Callers
+    // that specify a model get strict inventory validation and only an explicit fallback.
+    const requested = requestedModel?.trim() || discovery.models[0].id;
+    const route = resolveOmniRouteModel(requested, discovery.models, configuredFallbackModel);
+    if (!route.model) throw new Error(route.explanation ?? "The requested OmniRoute model is unavailable.");
+    const tasks = await planSubTasksWithOmniRoute(prompt, route.model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
+    return { model: route.model, tasks, discoveryWarning: discovery.warning, fallbackUsed: route.fallbackUsed, routingExplanation: route.explanation };
   }
 
   async function createAgentWorktree(taskId: string, root: string): Promise<string> {
