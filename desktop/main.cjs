@@ -26,7 +26,7 @@ async function appendRuntimeLog(text) {
   try {
     const logPath = path.join(app.getPath("userData"), "logs", "runtime.log");
     await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
-    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${text}\\n`, "utf8");
+    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${text}\n`, "utf8");
   } catch { /* Diagnostics must never prevent startup or shutdown. */ }
 }
 
@@ -107,11 +107,18 @@ async function startRuntime(workspace) {
   const collect = chunk => {
     recentOutput = (recentOutput + chunk.toString()).slice(-6000);
   };
-  runtimeProcess.stdout?.on("data", collect);
-  runtimeProcess.stderr?.on("data", collect);
+  runtimeProcess.stdout?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
+  runtimeProcess.stderr?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.on("error", error => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showErrorBox("Axiom runtime error", error.message);
+    void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
+    if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
+      void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nCheck the runtime log in Axiom’s user-data folder, then restart Axiom.`, buttons: ["OK"] });
+    }
+  });
+  runtimeProcess.on("exit", (code, signal) => {
+    void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
+    if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
+      void dialog.showMessageBox(mainWindow, { type: "warning", title: "Axiom runtime stopped", message: "The local AI runtime has stopped.", detail: `Exit code: ${code ?? "unknown"}\nSignal: ${signal || "none"}\n\nSave any important work, then restart Axiom. Diagnostics are recorded in the runtime log.`, buttons: ["OK"] });
     }
   });
 
@@ -119,18 +126,24 @@ async function startRuntime(workspace) {
   try {
     await waitForRuntime(url, runtimeProcess);
   } catch (error) {
-    runtimeProcess.kill();
+    await appendRuntimeLog(`Runtime startup failed: ${error.stack || error.message}`);
+    await stopRuntime();
     const detail = recentOutput.trim();
-    throw new Error(error.message + (detail ? "\n\nRuntime output:\n" + detail : ""));
+    throw new Error(error.message + (detail ? "\n\nRecent runtime output:\n" + detail : "") + "\n\nA diagnostic log was saved in Axiom’s user-data folder.");
   }
   return url;
 }
 
 async function createWindow() {
-  const workspace = await chooseWorkspace();
-  if (!workspace) {
-    app.quit();
-    return;
+  const requestedWorkspace = workspaceArgument();
+  let workspace = requestedWorkspace && fs.existsSync(requestedWorkspace) && fs.statSync(requestedWorkspace).isDirectory()
+    ? requestedWorkspace
+    : null;
+  while (!workspace) {
+    workspace = await chooseWorkspace();
+    if (workspace) break;
+    const choice = await dialog.showMessageBox({ type: "question", title: "Choose a project", message: "Axiom needs a project folder to continue.", detail: "Choose a folder to start building, or quit Axiom for now.", buttons: ["Choose Project", "Quit"], defaultId: 0, cancelId: 1 });
+    if (choice.response === 1) { app.quit(); return; }
   }
 
   selectedWorkspace = path.resolve(workspace);
@@ -138,7 +151,8 @@ async function createWindow() {
   try {
     serverUrl = await startRuntime(workspace);
   } catch (error) {
-    dialog.showErrorBox("Axiom could not start", error.message);
+    const choice = await dialog.showMessageBox({ type: "error", title: "Axiom could not start", message: "Axiom could not start its local AI runtime.", detail: `${error.message}\n\nThe runtime log is saved under Axiom’s user-data folder. Check that the installer completed correctly, then retry.`, buttons: ["Retry", "Quit"], defaultId: 0, cancelId: 1 });
+    if (choice.response === 0) { await createWindow(); return; }
     app.quit();
     return;
   }
@@ -386,12 +400,54 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
   }
 });
 
-app.whenReady().then(createWindow);
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+async function stopRuntime() {
+  stoppingRuntime = true;
+  const child = runtimeProcess;
+  runtimeProcess = null;
+  if (!child || child.exitCode !== null || child.killed) { stoppingRuntime = false; return; }
+  if (process.platform === "win32" && child.pid) {
+    try { await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { timeout: 10000, windowsHide: true }); }
+    catch { try { child.kill(); } catch {} }
+  } else { try { child.kill("SIGTERM"); } catch {} }
+  await Promise.race([new Promise(resolve => child.once("exit", resolve)), new Promise(resolve => setTimeout(resolve, 3000))]);
+  if (child.exitCode === null && process.platform !== "win32") { try { child.kill("SIGKILL"); } catch {} }
+  stoppingRuntime = false;
+}
+
+app.whenReady().then(() => {
+  const { Menu } = require("electron");
+  const menu = Menu.buildFromTemplate([
+    { label: "File", submenu: [
+      { label: "Switch Project…", accelerator: "Ctrl+O", click: async () => {
+        const nextWorkspace = await chooseWorkspace();
+        if (!nextWorkspace || nextWorkspace === selectedWorkspace) return;
+        isQuitting = true;
+        await stopRuntime();
+        app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${nextWorkspace}`] });
+        app.quit();
+      } },
+      { type: "separator" },
+      { role: "quit" }
+    ] },
+    { label: "Help", submenu: [
+      { label: "Open Axiom Runtime Log", click: () => { void shell.openPath(path.join(app.getPath("userData"), "logs", "runtime.log")); } },
+      { label: "About Axiom", click: () => dialog.showMessageBox({ title: "About Axiom", message: `Axiom ${app.getVersion()}`, detail: "Standalone AI-first project-building desktop app." }) }
+    ] }
+  ]);
+  Menu.setApplicationMenu(menu);
+  return createWindow();
 });
-app.on("before-quit", () => {
-  if (runtimeProcess && runtimeProcess.exitCode === null) runtimeProcess.kill();
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0 && !isQuitting) createWindow();
+});
+app.on("before-quit", event => {
+  isQuitting = true;
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  if (runtimeProcess && runtimeProcess.exitCode === null) {
+    event.preventDefault();
+    void stopRuntime().finally(() => app.quit());
+  }
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
