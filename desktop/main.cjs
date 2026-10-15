@@ -112,7 +112,7 @@ async function startRuntime(workspace) {
   runtimeProcess.on("error", error => {
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
-      void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nCheck the runtime log in Axiom’s user-data folder, then restart Axiom.`, buttons: ["OK"] });
+      void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nRestart Axiom after reviewing the log.`, buttons: ["OK"] });
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
@@ -151,7 +151,7 @@ async function createWindow() {
   try {
     serverUrl = await startRuntime(workspace);
   } catch (error) {
-    const choice = await dialog.showMessageBox({ type: "error", title: "Axiom could not start", message: "Axiom could not start its local AI runtime.", detail: `${error.message}\n\nThe runtime log is saved under Axiom’s user-data folder. Check that the installer completed correctly, then retry.`, buttons: ["Retry", "Quit"], defaultId: 0, cancelId: 1 });
+    const choice = await dialog.showMessageBox({ type: "error", title: "Axiom could not start", message: "Axiom could not start its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nCheck that the installer completed correctly, then retry.`, buttons: ["Retry", "Quit"], defaultId: 0, cancelId: 1 });
     if (choice.response === 0) { await createWindow(); return; }
     app.quit();
     return;
