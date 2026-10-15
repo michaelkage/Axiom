@@ -6,8 +6,8 @@ export function ProviderOnboardingPanel() {
   return (
     <section class="provider-onboarding" aria-labelledby="provider-onboarding-title">
       <div class="provider-onboarding__eyebrow">FIRST-RUN SETUP</div>
-      <h2 id="provider-onboarding-title">Connect a model before you build</h2>
-      <p>Axiom includes the desktop workspace and local runtime. Model access is configured separately, so you can choose a hosted provider or a local model setup that you already run.</p>
+      <h2 id="provider-onboarding-title">Set up model access before your first build</h2>
+      <p>Axiom includes the desktop workspace and local runtime. If you have not configured a model provider yet, use this checklist to get started. If model access is already configured, skip ahead to the small first task.</p>
       <div class="provider-onboarding__steps">
         <div><span>1</span><div><strong>Choose a provider</strong><p>Pick a model provider that supports the models and tools you want to use.</p></div></div>
         <div><span>2</span><div><strong>Configure access</strong><p>Follow the provider's sign-in or API-key setup instructions. Keep keys in the provider's supported credential store; don't paste secrets into project prompts.</p></div></div>
