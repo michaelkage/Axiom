@@ -23,7 +23,7 @@ export function openAxiomRuntimeDashboard(context: vscode.ExtensionContext, runt
       const config = getAxiomConfig();
       const [gateway, openCode] = await Promise.all([
         new OmniRouteClient().healthCheck(),
-        Promise.resolve({ ready: runtime ? true : false }),
+        Promise.resolve({ ready: runtime.isOpenCodeReady() }),
       ]);
       await panel.webview.postMessage({
         type: "status", gatewayUrl: config.gatewayUrl, plannerModel: config.plannerModel,
