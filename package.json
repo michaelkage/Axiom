@@ -52,6 +52,11 @@
         "command": "axiom.checkOmniRoute",
         "title": "Check OmniRoute Gateway",
         "category": "Axiom"
+      },
+      {
+        "command": "axiom.analyzeDiagnostics",
+        "title": "Analyze Current File Diagnostics",
+        "category": "Axiom"
       }
     ],
     "menus": {
