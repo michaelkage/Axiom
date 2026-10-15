@@ -13,6 +13,7 @@ import { WorktreeReviewPanel } from "./components/WorktreeReviewPanel";
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
+import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -111,6 +112,8 @@ function App() {
     revertToMessage,
     hostError,
     clearHostError,
+    getProviderReadiness,
+    testProviderConnection,
   } = useOpenCode();
 
   // Get the current session key for drafts/agents
@@ -1205,6 +1208,7 @@ function App() {
 
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
+        <ProviderReadinessPanel loadReadiness={getProviderReadiness} testConnection={testProviderConnection} />
         <ProviderOnboardingPanel />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
