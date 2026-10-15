@@ -13,6 +13,9 @@ describe("Axiom product workflow primitives", () => {
     expect(result.status).toBe("Needs fixes");
     expect(result.unexpectedPaths).toEqual(["secrets.txt"]);
   });
+  it("does not mark a task review-ready when no verification checks ran", () => {
+    expect(evaluateQualityGate({ checks: [], changes: [] }).status).toBe("Needs fixes");
+  });
   it("does not treat a passed label without exit-code evidence as verified", () => {
     const result = evaluateQualityGate({ checks: [{ name: "tests", state: "passed" }], changes: [] });
     expect(result.status).toBe("Needs fixes");
