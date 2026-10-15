@@ -189,7 +189,10 @@ export class OpenCodeService {
     if (signal?.aborted) throw new Error("Worker task cancelled before prompt submission");
     const abortSession = () => {
       // Best-effort cancellation of the actual OpenCode session, not only the planner loop.
-      void client.session.abort({ path: { id: sessionId } }).catch(() => undefined);
+      try {
+        const abortRequest = client.session.abort({ path: { id: sessionId } });
+        if (abortRequest && typeof abortRequest.catch === "function") void abortRequest.catch(() => undefined);
+      } catch { /* cancellation is best-effort if this SDK/server version lacks abort */ }
     };
     signal?.addEventListener("abort", abortSession, { once: true });
     let prompted: any;
@@ -206,7 +209,7 @@ export class OpenCodeService {
 
     const responseData = prompted?.data;
     const directText = Array.isArray(responseData?.parts)
-      ? responseData.parts.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\\n")
+      ? responseData.parts.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\n")
       : "";
     if (directText.trim()) return { sessionId, output: directText.trim() };
 
