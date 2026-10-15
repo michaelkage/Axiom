@@ -327,6 +327,77 @@ function createOpenCode() {
   }
 
   // Revert to a previous message
+  async function getProviderReadiness() {
+    const c = client() as any;
+    if (!c) throw new Error("The Axiom runtime is not connected. Wait for the runtime to finish starting, then refresh.");
+    const response = await c.provider.list();
+    if (response?.error) {
+      const detail = typeof response.error === "string" ? response.error : response.error.message ?? JSON.stringify(response.error);
+      throw new Error("Provider discovery failed: " + detail);
+    }
+    const data = response?.data ?? {};
+    const allProviders = Array.isArray(data.all) ? data.all : [];
+    const connectedIds = new Set<string>(Array.isArray(data.connected) ? data.connected : []);
+    const modelMap = data.models && typeof data.models === "object" ? data.models : {};
+    const warnings: string[] = [];
+    if (!Array.isArray(data.all)) warnings.push("The runtime returned an unexpected provider catalogue shape. Update the bundled OpenCode runtime if this persists.");
+    const providers = allProviders.map((provider: any) => {
+      const id = String(provider.id ?? provider.providerID ?? "");
+      const rawModels = modelMap[id] && typeof modelMap[id] === "object" ? modelMap[id] : provider.models ?? {};
+      const models = Object.entries(rawModels as Record<string, any>).map(([modelID, model]) => ({
+        providerID: id,
+        modelID,
+        name: String(model?.name ?? modelID),
+      })).sort((a, b) => a.name.localeCompare(b.name));
+      return {
+        id,
+        name: String(provider.name ?? id),
+        connected: connectedIds.has(id),
+        models,
+      };
+    }).filter((provider: { id: string }) => Boolean(provider.id));
+    if (providers.some((provider: { connected: boolean; models: unknown[] }) => provider.connected && provider.models.length === 0)) {
+      warnings.push("At least one connected provider has no selectable models. Check its model configuration, local endpoint, and provider-specific requirements.");
+    }
+    return { providers, warnings };
+  }
+
+  async function testProviderConnection(providerID: string, modelID: string) {
+    const c = client() as any;
+    if (!c) throw new Error("The Axiom runtime is not connected. Wait for the runtime to finish starting, then try again.");
+    try {
+      const result = await c.model.default({
+        prompt: "Reply with exactly: AXIOM_CONNECTION_OK",
+        model: { providerID, modelID },
+      });
+      if (result?.error) {
+        const error = result.error;
+        const message = typeof error === "string" ? error : error.message ?? error.data?.message ?? JSON.stringify(error);
+        throw new Error(String(message));
+      }
+      if (!result?.data) throw new Error("The provider returned no test response. Check credentials, model access, endpoint settings, and runtime logs.");
+    } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      const lower = raw.toLowerCase();
+      if (/401|unauthori[sz]ed|invalid api.?key|authentication|credential/.test(lower)) {
+        throw new Error("Authentication failed for " + providerID + "/" + modelID + ". Reconnect the provider or replace its credential in the runtime's credential store, then retry.");
+      }
+      if (/403|forbidden|permission|access denied/.test(lower)) {
+        throw new Error("The provider denied access to " + providerID + "/" + modelID + ". Check account permissions, model access, and organization/project settings.");
+      }
+      if (/404|not found|model unavailable|unknown model/.test(lower)) {
+        throw new Error("Model " + providerID + "/" + modelID + " was not found by the provider. Refresh model discovery and verify the exact model ID.");
+      }
+      if (/429|rate.?limit|quota|billing|insufficient.?credit/.test(lower)) {
+        throw new Error("The provider reached a rate, quota, or billing limit. Check provider usage and billing, then retry when access is restored.");
+      }
+      if (/econnrefused|fetch failed|network|timed out|timeout|enotfound/.test(lower)) {
+        throw new Error("The provider endpoint could not be reached. Check network access, local model-server status, and the configured base URL.");
+      }
+      throw new Error("Test request failed for " + providerID + "/" + modelID + ": " + raw);
+    }
+  }
+
   async function revertToMessage(sessionId: string, messageId: string) {
     const c = client();
     if (!c) throw new Error("Not connected");
