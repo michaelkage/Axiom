@@ -1385,6 +1385,9 @@ function App() {
               <Show when={parallelPlan()} keyed>
                 {(parallel) => <div class="workflow-plan__parallel">
                   <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
+                  <Show when={parallel.routingExplanation}><p>{parallel.routingExplanation}</p></Show>
+                  <Show when={parallel.fallbackUsed}><p role="status">An explicitly configured fallback model was used.</p></Show>
+                  <Show when={parallel.discoveryWarning}><p role="status">{parallel.discoveryWarning}</p></Show>
                   <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span></li>}</For></ol>
                   <button class="workflow-plan__primary" onClick={() => void executeParallelPlan()}>Run with parallel agents <span aria-hidden="true">→</span></button>
                 </div>}
