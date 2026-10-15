@@ -153,7 +153,7 @@ function createOpenCode() {
     const route = resolveOmniRouteModel(requested, discovery.models, configuredFallbackModel);
     if (!route.model) throw new Error(route.explanation ?? "The requested OmniRoute model is unavailable.");
     const tasks = await planSubTasksWithOmniRoute(prompt, route.model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
-    return { model: route.model, tasks, discoveryWarning: discovery.warning, fallbackUsed: route.fallbackUsed, routingExplanation: route.explanation };
+    return { model: route.model, models: discovery.models, tasks, discoveryWarning: discovery.warning, fallbackUsed: route.fallbackUsed, routingExplanation: route.explanation };
   }
 
   async function createAgentWorktree(taskId: string, root: string): Promise<string> {

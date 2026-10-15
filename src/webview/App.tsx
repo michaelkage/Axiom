@@ -71,6 +71,9 @@ function App() {
   const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   const [workflowError, setWorkflowError] = createSignal<string | null>(null);
   const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[]; fallbackUsed?: boolean; routingExplanation?: string; discoveryWarning?: string } | null>(null);
+  const [omniRouteModels, setOmniRouteModels] = createSignal<Array<{ id: string; name: string }>>([]);
+  const [requestedOmniRouteModel, setRequestedOmniRouteModel] = createSignal("");
+  const [fallbackOmniRouteModel, setFallbackOmniRouteModel] = createSignal("");
   const [parallelPlanBusy, setParallelPlanBusy] = createSignal(false);
   const [parallelAbortController, setParallelAbortController] = createSignal<AbortController | null>(null);
   const [parallelPlanError, setParallelPlanError] = createSignal<string | null>(null);
@@ -415,7 +418,8 @@ function App() {
     setParallelPlanBusy(true);
     setParallelPlanError(null);
     try {
-      const result = await planParallelTasks(prompt);
+      const result = await planParallelTasks(prompt, requestedOmniRouteModel() || undefined, fallbackOmniRouteModel() || undefined);
+      setOmniRouteModels(result.models ?? []);
       setWorkflowPlan({ prompt, steps: buildWorkflowSteps(prompt) });
       setParallelPlan(result);
     } catch (error) {
@@ -1284,6 +1288,20 @@ function App() {
               </div>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <div class="workflow-plan__actions" aria-label="OmniRoute model routing">
+                  <label>Planner model
+                    <select value={requestedOmniRouteModel()} onChange={event => setRequestedOmniRouteModel(event.currentTarget.value)}>
+                      <option value="">Auto-select first available</option>
+                      <For each={omniRouteModels()}>{model => <option value={model.id}>{model.name} ({model.id})</option>}</For>
+                    </select>
+                  </label>
+                  <label>Fallback model
+                    <select value={fallbackOmniRouteModel()} onChange={event => setFallbackOmniRouteModel(event.currentTarget.value)}>
+                      <option value="">No automatic fallback</option>
+                      <For each={omniRouteModels().filter(model => model.id !== requestedOmniRouteModel())}>{model => <option value={model.id}>{model.name} ({model.id})</option>}</For>
+                    </select>
+                  </label>
+                </div>
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
@@ -1378,6 +1396,20 @@ function App() {
               </ul>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
+                <div class="workflow-plan__actions" aria-label="OmniRoute model routing">
+                  <label>Planner model
+                    <select value={requestedOmniRouteModel()} onChange={event => setRequestedOmniRouteModel(event.currentTarget.value)}>
+                      <option value="">Auto-select first available</option>
+                      <For each={omniRouteModels()}>{model => <option value={model.id}>{model.name} ({model.id})</option>}</For>
+                    </select>
+                  </label>
+                  <label>Fallback model
+                    <select value={fallbackOmniRouteModel()} onChange={event => setFallbackOmniRouteModel(event.currentTarget.value)}>
+                      <option value="">No automatic fallback</option>
+                      <For each={omniRouteModels().filter(model => model.id !== requestedOmniRouteModel())}>{model => <option value={model.id}>{model.name} ({model.id})</option>}</For>
+                    </select>
+                  </label>
+                </div>
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
                 <button class="workflow-plan__primary" onClick={() => void executeWorkflowPlan()}>Run this plan <span aria-hidden="true">→</span></button>
               </div>
