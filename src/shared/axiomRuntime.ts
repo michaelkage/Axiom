@@ -195,7 +195,10 @@ export async function executeTaskBatches<T>(
       completedContext.push({ task: entry.value.task, result: entry.value.result });
     }
     const failures = settled.flatMap((entry, index) => entry.status === "rejected" ? [batch[index].id] : []);
-    if (failures.length) finishFailure(failures, "Parallel task batch failed; successful task results were preserved.");
+    if (failures.length) {
+      const details = settled.flatMap(entry => entry.status === "rejected" ? [entry.reason instanceof Error ? entry.reason.message : String(entry.reason)] : []);
+      finishFailure(failures, "Parallel task batch failed; successful task results were preserved. " + details.join("; "));
+    }
   }
   return completed;
 }
