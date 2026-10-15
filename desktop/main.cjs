@@ -5,6 +5,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
+const { createProjectStore } = require("./project-store.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -403,6 +404,40 @@ async function applyWorktreeChanges(event, message) {
     sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: false, error: error.message, appliedPaths });
   }
 }
+
+function trustedRenderer(event) {
+  return !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
+}
+
+function currentProjectStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createProjectStore(app.getPath("userData"), selectedWorkspace);
+}
+
+ipcMain.handle("axiom:project-bootstrap", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return { workspaceRoot: selectedWorkspace, appVersion: app.getVersion(), platform: process.platform };
+});
+
+ipcMain.handle("axiom:project-state-read", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectStore().read();
+});
+
+ipcMain.handle("axiom:project-context-save", async (event, context) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectStore().saveContext(context);
+});
+
+ipcMain.handle("axiom:change-feed-add", async (event, change) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectStore().addChange(change);
+});
+
+ipcMain.handle("axiom:choose-project", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return chooseWorkspace();
+});
 
 ipcMain.on("axiom:webview-message", async (event, message) => {
   if (!message || typeof message.type !== "string") return;
