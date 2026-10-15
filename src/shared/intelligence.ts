@@ -266,7 +266,8 @@ export function reviewPluginManifest(manifest: PluginManifest): PluginReview {
   if (candidate.sourceUrl) {
     try {
       const url = new URL(candidate.sourceUrl);
-      if (url.protocol !== "https:" || url.username || url.password) warnings.push("Plugin source must use HTTPS and must not embed credentials.");
+      if (url.protocol !== "https:") warnings.push("Plugin source must use HTTPS.");
+      if (url.username || url.password) warnings.push("Plugin source URL must not embed credentials.");
     } catch {
       warnings.push("Plugin source URL is malformed.");
     }
