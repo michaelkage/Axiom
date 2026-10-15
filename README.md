@@ -12,6 +12,19 @@ The installer installs the standalone Axiom desktop application, including its d
 
 If the Releases page does not contain a Windows installer yet, a release has not been published. CI artifacts are not the same as published release assets, because apparently one download location was too straightforward.
 
+## End-user system requirements
+
+- **Operating system:** Windows 10 or Windows 11, 64-bit. The current installer workflow targets Windows x64 only.
+- **AI provider:** internet access and valid provider credentials for hosted models, or a separately configured local model provider. Model access may incur provider charges.
+- **Project tools:** Axiom can open a folder without Git, but Git is needed for worktree-based task isolation and some change-review workflows.
+- **Storage:** keep enough free disk space for the app, its runtime, project dependencies, and any model/provider tools you use. The installer is large because it bundles the desktop runtime.
+
+Axiom does not require VS Code to be installed. Developer tooling such as Node.js and pnpm is required only when building Axiom from source.
+
+## Troubleshooting
+
+See [Desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for startup recovery, provider setup, project access, runtime logs, and known limitations.
+
 ## What Axiom does
 
 - **Outcome-first building:** describe the result you want in plain language.
@@ -131,6 +144,10 @@ Get-Content "$($installer.FullName).sha256"
 Confirm the reported hash matches the hash in the checksum file. Inspect the workflow run and test the downloaded installer before announcing the release. Publishing a build does not mean its interactive installation/startup has been smoke-tested.
 
 A manual workflow run builds an artifact but does not publish a GitHub Release unless triggered by a tag.
+
+## Preview status
+
+The Windows installer can be built by CI, but interactive installation, first launch, provider setup, project switching, and shutdown have **not yet been manually smoke-tested on a Windows machine**. That validation is intentionally deferred. Treat the current build as a preview until those checks are completed; a successful packaging workflow is not proof that the full desktop experience works on every machine.
 
 ## Current limitations
 
