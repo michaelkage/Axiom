@@ -247,6 +247,14 @@ function App() {
   });
   const isThinking = sync.isThinking;
   const sessionError = sync.sessionError;
+  const runtimeStatusMessage = () => {
+    const status = sync.status();
+    return status.status === "error"
+      ? status.message
+      : status.status === "reconnecting"
+        ? `Reconnect attempt ${status.attempt} is in progress.`
+        : "The runtime connection or initial project data could not be loaded.";
+  };
 
   const selectionAttachments = () => selectionAttachmentsBySession().get(sessionKey()) || [];
   const setSelectionAttachmentsForKey = (
