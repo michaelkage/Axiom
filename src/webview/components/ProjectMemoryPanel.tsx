@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
 import type { ProjectMemory } from "../../shared/axiomWorkflow";
 import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
-import { loadProjectMemories, projectMemoryStorageKey } from "../utils/projectMemory";
+import { isProjectMemoryStale, loadProjectMemories, projectMemoryStorageKey } from "../utils/projectMemory";
 
 type MemoryCategory = ProjectMemory["category"];
 const categories: MemoryCategory[] = ["architecture", "convention", "decision", "preference", "fix", "failure"];
@@ -46,6 +46,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   };
   const edit = (item: ProjectMemory) => { setEditingId(item.id); setContent(item.content); setCategory(item.category); setTags(item.tags.join(", ")); setExpanded(true); };
   const remove = (id: string) => { persist(memories().filter(item => item.id !== id)); if (editingId() === id) resetForm(); };
+  const markReviewed = (item: ProjectMemory) => persist(memories().map(memory => memory.id === item.id ? { ...memory, updatedAt: new Date().toISOString() } : memory));
   return <section class="axiom-memory" aria-label="Project intelligence">
     <button class="axiom-memory__toggle" onClick={() => setExpanded(!expanded())} aria-expanded={expanded()}>
       <span><strong>Project intelligence</strong><small>{memories().length} saved memories · workspace scoped</small></span>
@@ -74,10 +75,10 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
         </label>
         <Show when={visible().length === 0}><p class="axiom-memory__empty">No matching project memories yet.</p></Show>
         <For each={visible()}>{item => <article class="axiom-memory__item">
-          <div><span class="axiom-memory__category">{item.category}</span><time>{new Date(item.updatedAt).toLocaleDateString()}</time></div>
+          <div><span class="axiom-memory__category">{item.category}</span><time>{new Date(item.updatedAt).toLocaleDateString()}</time><Show when={isProjectMemoryStale(item)}><span class="axiom-memory__stale" title="This memory has not been reviewed for 180 days or more">Needs review</span></Show></div>
           <p>{item.content}</p>
           <Show when={item.tags.length > 0}><small>{item.tags.join(" · ")}</small></Show>
-          <div class="axiom-memory__actions"><button onClick={() => edit(item)}>Edit</button><button onClick={() => remove(item.id)}>Delete</button></div>
+          <div class="axiom-memory__actions"><button onClick={() => edit(item)}>Edit</button><Show when={isProjectMemoryStale(item)}><button onClick={() => markReviewed(item)}>Mark reviewed</button></Show><button onClick={() => remove(item.id)}>Delete</button></div>
         </article>}</For>
       </div>
     </Show>

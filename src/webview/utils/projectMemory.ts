@@ -11,6 +11,14 @@ export function projectMemoryStorageKey(workspaceRoot?: string): string {
   return "axiom.project-memory.v1:" + (hash >>> 0).toString(16);
 }
 
+export const PROJECT_MEMORY_REVIEW_AFTER_DAYS = 180;
+
+/** Old memories remain visible, but are explicitly flagged so stale decisions can be reviewed. */
+export function isProjectMemoryStale(memory: ProjectMemory, now = Date.now()): boolean {
+  const updatedAt = Date.parse(memory.updatedAt);
+  return !Number.isFinite(updatedAt) || now - updatedAt > PROJECT_MEMORY_REVIEW_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export function loadProjectMemories(workspaceRoot?: string): ProjectMemory[] {
   try {
     const raw = localStorage.getItem(projectMemoryStorageKey(workspaceRoot));
