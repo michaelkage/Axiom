@@ -80,6 +80,17 @@ function App() {
   const [taskOutcomes, setTaskOutcomes] = createSignal<TaskExecutionRecord[]>([]);
   const [taskAcceptanceCriteria, setTaskAcceptanceCriteria] = createSignal<Record<string, string[]>>({});
   const [installedPluginIds, setInstalledPluginIds] = createSignal<string[]>([]);
+  const [desktopProjectState, setDesktopProjectState] = createSignal<{ workspaceRoot: string; context: string; changes: Array<{ id: string; title: string; summary: string; status: string; createdAt: string; checks?: Array<{ name: string; state: string; details: string }>; files?: string[] }>; updatedAt: string | null } | null>(null);
+  const [projectContextDraft, setProjectContextDraft] = createSignal("");
+  const [desktopProjectNotice, setDesktopProjectNotice] = createSignal("");
+  const [desktopProjectBusy, setDesktopProjectBusy] = createSignal(false);
+  const desktopApi = () => (window as Window & { axiomDesktop?: { project?: {
+    bootstrap: () => Promise<{ workspaceRoot: string | null; appVersion: string; platform: string }>;
+    readState: () => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
+    saveContext: (context: string) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
+    addChange: (change: { title: string; summary: string; status: string; files?: string[]; checks?: Array<{ name: string; state: string; details: string }> }) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
+    chooseProject: () => Promise<string | null>;
+  } } }).axiomDesktop;
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
@@ -647,6 +658,79 @@ function App() {
     onCleanup(() => window.removeEventListener("message", handleHostMessage));
   });
 
+  // Hydrate project-scoped memory from the trusted Electron bridge. Browser/extension
+  // development remains usable when the standalone bridge is absent.
+  onMount(() => {
+    const project = desktopApi()?.project;
+    if (!project) return;
+    void project.readState().then(state => {
+      setDesktopProjectState(state);
+      setProjectContextDraft(state.context || "");
+    }).catch(error => {
+      setDesktopProjectNotice("Project memory could not be loaded: " + getSdkErrorMessage(error));
+    });
+  });
+
+  const saveStandaloneProjectContext = async () => {
+    const project = desktopApi()?.project;
+    if (!project) {
+      setDesktopProjectNotice("Persistent project memory is available in the Axiom desktop app.");
+      return;
+    }
+    setDesktopProjectBusy(true);
+    try {
+      const state = await project.saveContext(projectContextDraft());
+      setDesktopProjectState(state);
+      setDesktopProjectNotice("Project context saved on this device.");
+    } catch (error) {
+      setDesktopProjectNotice("Could not save project context: " + getSdkErrorMessage(error));
+    } finally {
+      setDesktopProjectBusy(false);
+    }
+  };
+
+  const recordLatestBuildOutcome = async () => {
+    const project = desktopApi()?.project;
+    if (!project) {
+      setDesktopProjectNotice("The change feed is available in the Axiom desktop app.");
+      return;
+    }
+    const outcomes = taskOutcomes();
+    if (!outcomes.length) {
+      setDesktopProjectNotice("There are no agent outcomes to record yet.");
+      return;
+    }
+    setDesktopProjectBusy(true);
+    try {
+      const failed = outcomes.some(item => item.status === "failed");
+      const active = outcomes.some(item => item.status === "running" || item.status === "queued");
+      const state = await project.addChange({
+        title: outcomes.length === 1 ? outcomes[0].title : "Agent run: " + outcomes.length + " tasks",
+        summary: outcomes.map(item => item.title + " [" + item.status + "]" + (item.error ? ": " + item.error : item.summary ? ": " + item.summary : "")).join("\\n").slice(0, 2000),
+        status: failed ? "failed" : active ? "working" : "review",
+        files: outcomes.flatMap(item => item.worktreePath ? [item.worktreePath] : [])
+      });
+      setDesktopProjectState(state);
+      setDesktopProjectNotice("Build outcome added to the project change feed. Verification remains a separate step.");
+    } catch (error) {
+      setDesktopProjectNotice("Could not update the change feed: " + getSdkErrorMessage(error));
+    } finally {
+      setDesktopProjectBusy(false);
+    }
+  };
+
+  const switchStandaloneProject = async () => {
+    const project = desktopApi()?.project;
+    if (!project) {
+      setDesktopProjectNotice("Project switching is managed by the Axiom desktop host.");
+      return;
+    }
+    const chosen = await project.chooseProject();
+    if (chosen) {
+      setDesktopProjectNotice("Project switch requested. Restarting Axiom will open the selected folder.");
+    }
+  };
+
   // Set default agent from initData once available
   createEffect(() => {
     const init = initData();
@@ -1154,6 +1238,38 @@ function App() {
         onNewSession={handleNewSession}
         onRefreshSessions={refreshSessions}
       />
+
+      <Show when={desktopApi()?.project}>
+        <section class="standalone-project-panel" aria-label="Standalone project workspace">
+          <div class="standalone-project-panel__heading">
+            <div>
+              <span class="standalone-project-panel__eyebrow">PROJECT WORKSPACE</span>
+              <strong>{desktopProjectState()?.workspaceRoot || sync.workspaceRoot() || "Current project"}</strong>
+              <small>Persistent context stays on this device and is kept outside your repository.</small>
+            </div>
+            <button type="button" class="workflow-plan__secondary" onClick={() => void switchStandaloneProject()}>Choose project</button>
+          </div>
+          <label class="standalone-project-panel__label" for="axiom-project-context">Project instructions and durable context</label>
+          <textarea id="axiom-project-context" value={projectContextDraft()} maxLength={50000} rows={3} placeholder="Architecture decisions, constraints, preferred commands, and project-specific conventions…" onInput={event => setProjectContextDraft(event.currentTarget.value)} />
+          <div class="standalone-project-panel__actions">
+            <small>{projectContextDraft().length.toLocaleString()} / 50,000 characters</small>
+            <button type="button" class="workflow-plan__primary" disabled={desktopProjectBusy()} onClick={() => void saveStandaloneProjectContext()}>{desktopProjectBusy() ? "Saving…" : "Save project context"}</button>
+          </div>
+          <div class="standalone-project-panel__feed-heading">
+            <strong>Recent change feed</strong>
+            <button type="button" class="workflow-plan__secondary" disabled={desktopProjectBusy()} onClick={() => void recordLatestBuildOutcome()}>Record latest agent outcome</button>
+          </div>
+          <Show when={(desktopProjectState()?.changes.length || 0) > 0} fallback={<p class="standalone-project-panel__empty">No recorded changes yet. Record an agent outcome to start a project-level history.</p>}>
+            <ol class="standalone-project-panel__feed">
+              <For each={[...(desktopProjectState()?.changes || [])].reverse().slice(0, 6)}>{change => <li>
+                <span class={"standalone-project-panel__status standalone-project-panel__status--" + change.status}>{change.status}</span>
+                <div><strong>{change.title}</strong><p>{change.summary}</p><small>{new Date(change.createdAt).toLocaleString()}</small></div>
+              </li>}</For>
+            </ol>
+          </Show>
+          <Show when={desktopProjectNotice()}><p class="standalone-project-panel__notice" role="status">{desktopProjectNotice()}</p></Show>
+        </section>
+      </Show>
 
       <Show when={workflowRun()}>
         {(run) => (
