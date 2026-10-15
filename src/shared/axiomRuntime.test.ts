@@ -8,6 +8,21 @@ import {
 } from "./axiomRuntime";
 
 describe("Axiom runtime helpers", () => {
+  it("rejects planner tasks without explicit acceptance criteria", () => {
+    expect(() => parseSubTasks([
+      { id: "missing-criteria", title: "Task", scope: "Do work", targetFiles: ["src/task.ts"], dependsOn: [] },
+    ])).toThrow(/explicit, non-empty acceptance criteria/);
+  });
+
+  it("serializes parent-directory and child-file write scopes", () => {
+    const tasks = parseSubTasks([
+      { id: "parent", title: "Parent", scope: "Own the source tree", targetFiles: ["src"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
+      { id: "child", title: "Child", scope: "Change one source file", targetFiles: ["src/app.tsx"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
+      { id: "independent", title: "Independent", scope: "Change unrelated file", targetFiles: ["docs/readme.md"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
+    ]);
+    expect(createIndependentTasks(tasks).map(batch => batch.map(task => task.id))).toEqual([["parent", "independent"], ["child"]]);
+  });
+
   it("batches independent tasks and respects dependencies", () => {
     const tasks = parseSubTasks([
       { id: "a", title: "A", scope: "UI", targetFiles: ["App.tsx"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
