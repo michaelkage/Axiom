@@ -187,12 +187,20 @@ export class OpenCodeService {
     if (!sessionId) throw new Error("OpenCode did not return a session ID");
 
     if (signal?.aborted) throw new Error("Worker task cancelled before prompt submission");
-    const prompted = await client.session.prompt({
-      path: { id: sessionId },
-      body: {
-        parts: [{ type: "text", text: prompt }],
-      },
-    });
+    const abortSession = () => {
+      // Best-effort cancellation of the actual OpenCode session, not only the planner loop.
+      void client.session.abort({ path: { id: sessionId } }).catch(() => undefined);
+    };
+    signal?.addEventListener("abort", abortSession, { once: true });
+    let prompted: any;
+    try {
+      prompted = await client.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: "text", text: prompt }] },
+      });
+    } finally {
+      signal?.removeEventListener("abort", abortSession);
+    }
     if (prompted?.error) throw new Error(`OpenCode worker prompt failed: ${JSON.stringify(prompted.error)}`);
     if (signal?.aborted) throw new Error("Worker task cancelled");
 
