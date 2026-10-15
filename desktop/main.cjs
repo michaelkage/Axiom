@@ -118,7 +118,22 @@ async function startRuntime(workspace) {
   runtimeProcess.on("exit", (code, signal) => {
     void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
     if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
-      void dialog.showMessageBox(mainWindow, { type: "warning", title: "Axiom runtime stopped", message: "The local AI runtime has stopped.", detail: `Exit code: ${code ?? "unknown"}\nSignal: ${signal || "none"}\n\nSave any important work, then restart Axiom. Diagnostics are recorded in the runtime log.`, buttons: ["OK"] });
+      void dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "Axiom runtime stopped",
+        message: "The local AI runtime has stopped unexpectedly.",
+        detail: `Exit code: ${code ?? "unknown"}\nSignal: ${signal || "none"}\n\nYour project files are still on disk. Restart Axiom to reconnect. Diagnostics: ${path.join(app.getPath("userData"), "logs", "runtime.log")}`,
+        buttons: ["Restart Axiom", "Quit"],
+        defaultId: 0,
+        cancelId: 1
+      }).then(({ response }) => {
+        if (isQuitting) return;
+        isQuitting = true;
+        if (response === 0) {
+          app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${selectedWorkspace || ""}`] });
+        }
+        app.quit();
+      }).catch(error => { void appendRuntimeLog(`Runtime-exit dialog failed: ${error.message}`); });
     }
   });
 
@@ -148,13 +163,31 @@ async function createWindow() {
 
   selectedWorkspace = path.resolve(workspace);
   let serverUrl;
-  try {
-    serverUrl = await startRuntime(workspace);
-  } catch (error) {
-    const choice = await dialog.showMessageBox({ type: "error", title: "Axiom could not start", message: "Axiom could not start its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nCheck that the installer completed correctly, then retry.`, buttons: ["Retry", "Quit"], defaultId: 0, cancelId: 1 });
-    if (choice.response === 0) { await createWindow(); return; }
-    app.quit();
-    return;
+  while (!serverUrl) {
+    try {
+      serverUrl = await startRuntime(selectedWorkspace);
+    } catch (error) {
+      const choice = await dialog.showMessageBox({
+        type: "error",
+        title: "Axiom could not start",
+        message: "Axiom could not start its local AI runtime.",
+        detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nYou can retry startup, choose a different project, or quit. No project files have been changed by this startup attempt.`,
+        buttons: ["Retry", "Choose Another Project", "Quit"],
+        defaultId: 0,
+        cancelId: 2
+      });
+      if (choice.response === 0) continue;
+      if (choice.response === 1) {
+        const nextWorkspace = await chooseWorkspace();
+        if (nextWorkspace) {
+          workspace = path.resolve(nextWorkspace);
+          selectedWorkspace = workspace;
+          continue;
+        }
+      }
+      app.quit();
+      return;
+    }
   }
 
   mainWindow = new BrowserWindow({
@@ -421,10 +454,11 @@ app.whenReady().then(() => {
     { label: "File", submenu: [
       { label: "Switch Project…", accelerator: "Ctrl+O", click: async () => {
         const nextWorkspace = await chooseWorkspace();
-        if (!nextWorkspace || nextWorkspace === selectedWorkspace) return;
+        if (!nextWorkspace || path.resolve(nextWorkspace) === path.resolve(selectedWorkspace || "")) return;
         isQuitting = true;
+        await appendRuntimeLog(`Switching project from ${selectedWorkspace} to ${path.resolve(nextWorkspace)}.`);
         await stopRuntime();
-        app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${nextWorkspace}`] });
+        app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${path.resolve(nextWorkspace)}`] });
         app.quit();
       } },
       { type: "separator" },
