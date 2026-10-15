@@ -68,7 +68,7 @@ h1{font-size:24px;font-weight:600;margin-bottom:4px}.muted{color:var(--vscode-de
 <section class="card"><div class="label">OmniRoute gateway</div><div class="value" id="gateway">Checking…</div><p id="connection" class="status">Not checked</p></section>
 <section class="card"><div class="label">OpenCode sessions</div><div class="value" id="opencode">Checking…</div></section>
 <section class="card"><div class="label">Planner model</div><div class="value" id="planner">—</div></section>
-<section class="card"><div class="label">Worker model alias</div><div class="value" id="worker">—</div></section>
+<section class="card"><div class="label">Diagnostic model alias</div><div class="value" id="worker">—</div></section>
 <section class="card"><div class="label">Worker concurrency</div><div class="value" id="workers">—</div></section>
 <section class="card"><div class="label">Error healing</div><div class="value" id="healing">—</div></section>
 <section class="card"><div class="label">Gateway latency</div><div class="value" id="latency">—</div></section>
