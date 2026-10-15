@@ -93,6 +93,47 @@ export interface PackedContext {
   estimatedSavingsPercent: number;
   omittedIds: string[];
 }
+export interface ContextFilterOptions {
+  now?: number;
+  maxAgeMs?: number;
+  excludedPaths?: string[];
+}
+export interface ContextFilterResult {
+  included: ContextItem[];
+  excluded: Array<{ id: string; reason: "stale" | "ignored-path" | "sensitive-content" }>;
+}
+const SECRET_CONTENT_PATTERNS = [
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
+  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password)\s*[:=]\s*\S+/i,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/,
+];
+/** Filter persisted/retrieved context before packing; return reasons so omissions are inspectable. */
+export function filterProjectContext(items: ContextItem[], options: ContextFilterOptions = {}): ContextFilterResult {
+  const now = options.now ?? Date.now();
+  const excludedPaths = (options.excludedPaths ?? []).map(normalizeWorkspacePath).map(path => path.toLowerCase());
+  const included: ContextItem[] = [];
+  const excluded: ContextFilterResult["excluded"] = [];
+  for (const item of items) {
+    const normalizedId = item.id.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+    const normalizedContent = item.content.replace(/\\/g, "/");
+    if (excludedPaths.some(path => normalizedId === path || normalizedId.startsWith(path + "/"))) {
+      excluded.push({ id: item.id, reason: "ignored-path" }); continue;
+    }
+    if (/(^|\/)(?:\.git|node_modules|dist|out|coverage)(\/|$)/i.test(normalizedId) ||
+        /(^|\/)(?:\.env(?:\.[^/]*)?|[^/]*(?:secret|credential|private[-_]?key)[^/]*)$/i.test(normalizedId)) {
+      excluded.push({ id: item.id, reason: "ignored-path" }); continue;
+    }
+    if (SECRET_CONTENT_PATTERNS.some(pattern => pattern.test(normalizedContent))) {
+      excluded.push({ id: item.id, reason: "sensitive-content" }); continue;
+    }
+    if (options.maxAgeMs !== undefined && item.updatedAt !== undefined && now - item.updatedAt > options.maxAgeMs) {
+      excluded.push({ id: item.id, reason: "stale" }); continue;
+    }
+    included.push({ ...item });
+  }
+  return { included, excluded };
+}
 const PRIORITY: Record<ContextItem["kind"], number> = {
   constraint: 7, decision: 6, "open-task": 5, error: 4, file: 3, conversation: 2, "tool-output": 1,
 };
