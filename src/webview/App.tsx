@@ -1111,17 +1111,6 @@ function App() {
     // Permission removal is handled by store via SSE events
   };
 
-  const runtimeStatusMessage = () => {
-    const status = sync.status();
-    if (status.status === "reconnecting") {
-      return "Axiom is trying to restore its event connection. Wait briefly before retrying an operation.";
-    }
-    if (status.status === "error") {
-      return status.message || "The runtime connection or initial project data could not be loaded.";
-    }
-    return "The runtime connection or initial project data could not be loaded.";
-  };
-
   // Refresh sessions - just re-bootstrap
   const refreshSessions = async () => {
     await sync.bootstrap();
