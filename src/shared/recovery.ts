@@ -5,8 +5,9 @@ export interface RecoveryAdvice { kind: RecoveryKind; title: string; explanation
 export function redactDiagnostic(value: unknown): string {
   const message = value instanceof Error ? value.message : String(value ?? "");
   return message
-    .replace(/(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization)\b\s*[:=]\s*)([^\s,;]+)/gi, "$1[REDACTED]")
+    .replace(/(\bauthorization\b\s*[:=]\s*)Bearer\s+[^\s,;]+/gi, "$1Bearer [REDACTED]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password)\b\s*[:=]\s*)([^\s,;]+)/gi, "$1[REDACTED]")
     .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED_API_KEY]")
     .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/gi, "[REDACTED_TOKEN]")
     .replace(/(https?:\/\/)[^/@\s:]+:[^/@\s]+@/gi, "$1[REDACTED]@");
