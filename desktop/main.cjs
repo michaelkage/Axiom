@@ -173,7 +173,8 @@ async function createWindow() {
     }
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow.show());\n  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.on("closed", () => { mainWindow = null; });
   const htmlPath = app.isPackaged
     ? path.join(process.resourcesPath, "out", "src", "webview", "standalone.html")
     : path.join(__dirname, "..", "out", "src", "webview", "standalone.html");
