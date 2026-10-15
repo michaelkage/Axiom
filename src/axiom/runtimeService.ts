@@ -56,7 +56,7 @@ export class AxiomRuntimeService implements vscode.Disposable {
       const workspaceRoot = this.openCode.getWorkspaceRoot();
       const workspaceContext = {
         workspaceRoot,
-        openFiles: vscode.workspace.textDocuments.filter(doc => !doc.isClosed).slice(0, 12).map(doc => ({
+        openFiles: vscode.workspace.textDocuments.slice(0, 12).map(doc => ({
           path: vscode.workspace.asRelativePath(doc.uri),
           language: doc.languageId,
           lineCount: doc.lineCount,
