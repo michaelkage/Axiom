@@ -78,7 +78,8 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
         batch.push(task);
         break;
       }
-      if (batch.some(item => item.targetFiles.length === 0) || paths.some(path => claimedPaths.has(path))) continue;
+      const overlaps = (left: string, right: string) => left === right || left.startsWith(right.endsWith("/") ? right : right + "/") || right.startsWith(left.endsWith("/") ? left : left + "/");
+      if (batch.some(item => item.targetFiles.length === 0) || paths.some(path => [...claimedPaths].some(claimed => overlaps(path, claimed)))) continue;
       batch.push(task);
       for (const path of paths) claimedPaths.add(path);
     }
@@ -171,8 +172,11 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
     if (typeof task.id !== "string" || typeof task.title !== "string" || typeof task.scope !== "string" || !Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn))
       throw new Error(`Task ${index + 1} is missing required fields.`);
     if (![...task.targetFiles, ...task.dependsOn].every(value => typeof value === "string")) throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
-    const acceptanceCriteria = Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.every(value => typeof value === "string" && value.trim()) ? task.acceptanceCriteria as string[] : ["Implement the declared scope and report concrete verification evidence."];
-    return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], acceptanceCriteria, agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
+    if (!task.id.trim() || !task.title.trim() || !task.scope.trim()) throw new Error(`Task ${index + 1} needs non-empty id, title, and scope.`);
+    if (!Array.isArray(task.acceptanceCriteria) || task.acceptanceCriteria.length === 0 || !task.acceptanceCriteria.every(value => typeof value === "string" && value.trim())) {
+      throw new Error(`Task ${task.id} must include explicit, non-empty acceptance criteria.`);
+    }
+    return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], acceptanceCriteria: task.acceptanceCriteria as string[], agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
   });
   if (tasks.length === 0) throw new Error("Planner returned an empty task list.");
   for (const task of tasks) {
