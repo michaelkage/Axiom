@@ -2275,3 +2275,82 @@ body.vscode-high-contrast {
   .provider-onboarding { width: calc(100% - 24px); padding: 18px; }
   .runtime-status-banner { flex-direction: column; margin: 8px 10px; }
 }
+
+
+/* Provider readiness: discovery and opt-in live model checks */
+.provider-readiness {
+  border-color: var(--vscode-focusBorder, var(--vscode-panel-border));
+}
+.provider-readiness__summary,
+.provider-readiness__provider-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.provider-readiness__summary {
+  margin: 14px 0;
+}
+.provider-readiness__providers {
+  display: grid;
+  gap: 12px;
+}
+.provider-readiness__provider {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.provider-readiness__status {
+  color: var(--vscode-testing-iconPassed, var(--vscode-descriptionForeground));
+  font-size: 12px;
+}
+.provider-readiness__provider ul {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.provider-readiness__provider li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.provider-readiness__provider li > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.provider-readiness__provider small {
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+.provider-readiness__issue,
+.provider-readiness__success {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--vscode-textBlockQuote-background);
+  overflow-wrap: anywhere;
+}
+.provider-readiness__issue {
+  border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-editorError-foreground));
+}
+.provider-readiness__success {
+  grid-column: 1 / -1;
+  border-left: 3px solid var(--vscode-testing-iconPassed, var(--vscode-focusBorder));
+}
+.provider-readiness__footnote {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .provider-readiness__provider li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .provider-readiness__provider li > button {
+    justify-self: start;
+  }
+}
