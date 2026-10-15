@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   compressionPercent,
+  discoverOmniRouteModels,
+  resolveOmniRouteModel,
   createIndependentTasks,
   executeTaskBatches,
   TaskBatchExecutionError,
@@ -157,6 +159,32 @@ describe("Axiom runtime helpers", () => {
       requestTimeoutMs: 1000, maxAutomaticRetries: 0,
     }, fetcher);
     expect(tasks[0]?.title).toBe("Update UI");
+  });
+
+  it("discovers OmniRoute models and distinguishes reachable from unavailable gateway", async () => {
+    const config = { gatewayUrl: "http://127.0.0.1:20128/v1", nativeOmniRoute: true, enableSubAgents: true, errorHealing: "notify" as const, requestTimeoutMs: 100, maxAutomaticRetries: 0 };
+    const result = await discoverOmniRouteModels(config, async (input, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:20128/v1/models");
+      expect(init?.method).toBe("GET");
+      return new Response(JSON.stringify({ data: [{ id: "local/qwen", name: "Qwen Local" }, { id: "cloud/fast" }] }), { status: 200 });
+    });
+    expect(result.reachable).toBe(true);
+    expect(result.models).toEqual([{ id: "local/qwen", name: "Qwen Local" }, { id: "cloud/fast", name: "cloud/fast" }]);
+    const offline = await discoverOmniRouteModels(config, async () => { throw new Error("ECONNREFUSED"); });
+    expect(offline.reachable).toBe(false);
+    expect(offline.warning).toContain("local Axiom runtime");
+  });
+
+  it("reports explicit fallback selection instead of silently changing models", () => {
+    const inventory = [{ id: "local/qwen", name: "Qwen" }];
+    expect(resolveOmniRouteModel("missing/model", inventory)).toEqual({
+      model: null, fallbackUsed: false,
+      explanation: "Requested model missing/model is not in the discovered inventory; no usable fallback was configured.",
+    });
+    expect(resolveOmniRouteModel("missing/model", inventory, "local/qwen")).toEqual({
+      model: "local/qwen", fallbackUsed: true,
+      explanation: "Requested model missing/model was unavailable; explicitly configured fallback local/qwen was selected.",
+    });
   });
 
   it("reports compression only from measured token counts", () => {
