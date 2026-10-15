@@ -5,6 +5,7 @@ import type { HostMessage } from "./shared/messages";
 import { openAxiomRuntimeDashboard } from "./axiom/runtimeDashboard";
 import { OmniRouteClient } from "./axiom/omniRouteClient";
 import { AxiomErrorHealing } from "./axiom/errorHealing";
+import { AxiomRuntimeService } from "./axiom/runtimeService";
 
 let logger: vscode.LogOutputChannel;
 
@@ -73,6 +74,19 @@ export async function activate(context: vscode.ExtensionContext) {
   } catch (error) {
     logger.error("Failed to initialize OpenCode service", error);
   }
+
+  const axiomRuntime = new AxiomRuntimeService(openCodeService);
+  context.subscriptions.push(axiomRuntime);
+  context.subscriptions.push(
+    vscode.commands.registerCommand("axiom.runGoal", async () => {
+      const goal = await vscode.window.showInputBox({ title: "Axiom — plan and execute", prompt: "Describe the outcome to plan and execute through OpenCode worker sessions.", ignoreFocusOut: true });
+      if (!goal?.trim()) return;
+      try { await axiomRuntime.runGoal(goal.trim()); }
+      catch (error) { vscode.window.showErrorMessage(`Axiom run failed: ${error instanceof Error ? error.message : String(error)}`); }
+    }),
+    vscode.commands.registerCommand("axiom.cancelRun", () => axiomRuntime.cancelRun()),
+    vscode.commands.registerCommand("axiom.openRuntimeDashboard", () => { openAxiomRuntimeDashboard(context, axiomRuntime); }),
+  );
 
   const provider = new OpenCodeViewProvider(
     context.extensionUri,
