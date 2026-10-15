@@ -432,6 +432,8 @@ function createOpenCode() {
       const dir = workspaceRoot();
       return client()?.config.get(dir ? { directory: dir } : undefined);
     },
+    getProviderReadiness,
+    testProviderConnection,
     abortSession: (id: string) => client()?.session.abort({ sessionID: id }),
     // High-level helpers
     sendPrompt,
