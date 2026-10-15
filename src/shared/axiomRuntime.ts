@@ -144,7 +144,7 @@ export async function executeTaskBatches<T>(
     }
     const failed = tasks.filter(task => outcomeById.get(task.id) === "failed").map(task => task.id);
     const blockedIds = tasks.filter(task => blocked.has(task.id)).map(task => task.id);
-    throw new TaskBatchExecutionError(reason, completed.map(item => ({ task: item.task, result: item.result })), [...new Set([...failed, ...failedIds])], blockedIds);
+    throw new TaskBatchExecutionError(reason, completed.map(item => ({ task: item.task, result: item.result })), [...new Set(failedIds)], blockedIds);
   };
 
   for (const batch of batches) {
