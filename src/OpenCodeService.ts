@@ -168,6 +168,56 @@ export class OpenCodeService {
     return (result.data || []).map((message) => message.info);
   }
 
+  async executeWorkerTask(
+    title: string,
+    prompt: string,
+    signal?: AbortSignal,
+  ): Promise<{ sessionId: string; output: string }> {
+    if (!this.opencode) throw new Error("OpenCode not initialized");
+    if (signal?.aborted) throw new Error("Worker task cancelled");
+
+    // Each planned task gets a real, independently addressable OpenCode session.
+    // Use the SDK surface dynamically here to keep compatibility with the v2 SDK's
+    // generated request/response types while still validating the runtime payload.
+    const client = this.opencode.client as any;
+    const created = await client.session.create({ body: { title: title.slice(0, 120) } });
+    if (created?.error) throw new Error(`OpenCode session creation failed: ${JSON.stringify(created.error)}`);
+    const session = created?.data;
+    const sessionId = typeof session?.id === "string" ? session.id : undefined;
+    if (!sessionId) throw new Error("OpenCode did not return a session ID");
+
+    if (signal?.aborted) throw new Error("Worker task cancelled before prompt submission");
+    const prompted = await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        parts: [{ type: "text", text: prompt }],
+      },
+    });
+    if (prompted?.error) throw new Error(`OpenCode worker prompt failed: ${JSON.stringify(prompted.error)}`);
+    if (signal?.aborted) throw new Error("Worker task cancelled");
+
+    const responseData = prompted?.data;
+    const directText = Array.isArray(responseData?.parts)
+      ? responseData.parts.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\\n")
+      : "";
+    if (directText.trim()) return { sessionId, output: directText.trim() };
+
+    // The standard prompt endpoint may return no message body; retrieve the session
+    // transcript and collect the most recent assistant text parts instead.
+    const messages = await client.session.messages({ path: { id: sessionId }, sessionID: sessionId });
+    if (messages?.error) throw new Error(`OpenCode worker transcript failed: ${JSON.stringify(messages.error)}`);
+    const items: any[] = Array.isArray(messages?.data) ? messages.data : [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      const info = item?.info ?? item;
+      if (info?.role !== "assistant") continue;
+      const parts: any[] = Array.isArray(item?.parts) ? item.parts : Array.isArray(info?.parts) ? info.parts : [];
+      const text = parts.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\\n").trim();
+      if (text) return { sessionId, output: text };
+    }
+    return { sessionId, output: "OpenCode completed the prompt; no assistant text was returned. Inspect this worker session in OpenCode." };
+  }
+
   dispose(): void {
     if (this.opencode) {
       this.opencode.server.close();
