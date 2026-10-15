@@ -40,6 +40,8 @@ export class AxiomRuntimeService implements vscode.Disposable {
     return { dispose: () => this.listeners.delete(listener) };
   }
 
+  isOpenCodeReady(): boolean { return this.openCode.isReady(); }
+
   getEvents(): RuntimeEvent[] {
     return [...this.recentEvents];
   }
