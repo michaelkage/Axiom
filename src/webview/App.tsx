@@ -1111,6 +1111,17 @@ function App() {
     // Permission removal is handled by store via SSE events
   };
 
+  const runtimeStatusMessage = () => {
+    const status = sync.status();
+    if (status.status === "reconnecting") {
+      return "Axiom is trying to restore its event connection. Wait briefly before retrying an operation.";
+    }
+    if (status.status === "error") {
+      return status.message || "The runtime connection or initial project data could not be loaded.";
+    }
+    return "The runtime connection or initial project data could not be loaded.";
+  };
+
   // Refresh sessions - just re-bootstrap
   const refreshSessions = async () => {
     await sync.bootstrap();
@@ -1128,7 +1139,7 @@ function App() {
         <section class="runtime-status-banner" role="status" aria-live="polite">
           <div>
             <strong>{sync.status().status === "reconnecting" ? "Reconnecting to the local runtime" : "The local runtime needs attention"}</strong>
-            <p>{sync.status().status === "reconnecting" ? "Axiom is trying to restore its event connection. Wait briefly before retrying an operation." : sync.status().message || "The runtime connection or initial project data could not be loaded."}</p>
+            <p>{runtimeStatusMessage()}</p>
             <small>Project files are not changed by reconnecting. If this persists, check Help → Open Axiom Runtime Log.</small>
           </div>
           <button type="button" onClick={() => void sync.bootstrap().catch(error => logger.error("Manual runtime reconnect failed", { error }))}>Retry connection</button>
