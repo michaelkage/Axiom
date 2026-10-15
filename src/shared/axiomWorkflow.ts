@@ -24,7 +24,7 @@ export function evaluateQualityGate(input: QualityGateInput): QualityGateResult 
   const unexpectedPaths = expected.size ? input.changes.map(c => c.path).filter(p => !expected.has(normalizePath(p))) : [];
   const unfinishedRequirements = [...(input.unfinishedRequirements ?? [])];
   const failed = input.checks.some(c => c.state === "failed" || (c.exitCode !== undefined && c.exitCode !== 0));
-  const unverified = input.checks.some(c => c.state === "unverified" || c.state === "skipped" || c.exitCode === undefined && c.state !== "passed");
+  const unverified = input.checks.some(c => c.state !== "passed" || c.exitCode !== 0);
   const reasons: string[] = [];
   if (input.blockedReason) reasons.push(input.blockedReason);
   if (failed) reasons.push("One or more verification checks failed.");
