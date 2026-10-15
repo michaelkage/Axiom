@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { OpenCodeService } from "./OpenCodeService";
 import { OpenCodeViewProvider } from "./OpenCodeViewProvider";
 import type { HostMessage } from "./shared/messages";
+import { openAxiomRuntimeDashboard } from "./axiom/runtimeDashboard";
+import { OmniRouteClient } from "./axiom/omniRouteClient";
 
 let logger: vscode.LogOutputChannel;
 
@@ -19,6 +21,20 @@ export async function activate(context: vscode.ExtensionContext) {
     workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     extensionPath: context.extensionPath,
   });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("axiom.openRuntimeDashboard", () => {
+      openAxiomRuntimeDashboard(context);
+    }),
+    vscode.commands.registerCommand("axiom.checkOmniRoute", async () => {
+      const result = await new OmniRouteClient().healthCheck();
+      if (result.ok) {
+        vscode.window.showInformationMessage(`Axiom: OmniRoute responded in ${result.latencyMs ?? "?"} ms at ${result.url}`);
+      } else {
+        vscode.window.showErrorMessage(`Axiom: OmniRoute is unavailable at ${result.url}: ${result.error ?? "unknown error"}`);
+      }
+    }),
+  );
 
   // Create OpenCode service
   const openCodeService = new OpenCodeService();
