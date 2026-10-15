@@ -180,7 +180,7 @@ function createOpenCode() {
     });
   }
 
-  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void }) {
+  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; signal?: AbortSignal; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void }) {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
@@ -219,9 +219,11 @@ function createOpenCode() {
     } catch {
       // A missing agent catalogue should fall back to the OpenCode default agent.
     }
-    return executeTaskBatches(tasks, async (task, completed) => {
+    return executeTaskBatches(tasks, async (task, completed, signal) => {
+      if (signal?.aborted) throw new Error("Parallel task cancelled before worker startup.");
       if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
       const taskDirectory = await createAgentWorktree(task.id, directory);
+      if (signal?.aborted) throw new Error("Parallel task cancelled after worktree setup.");
       const created = await c.session.create({
         directory: taskDirectory,
         parentID: parentSessionId,
@@ -231,6 +233,7 @@ function createOpenCode() {
         throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
       }
       const childSessionId = created.data.id;
+      if (signal?.aborted) throw new Error("Parallel task cancelled before prompting the worker.");
       const packed = contextForSpecialist({
         request: orchestration?.request ?? task.scope,
         taskTitle: task.title,
@@ -261,6 +264,7 @@ function createOpenCode() {
       const agent = task.agentHint && availableAgentNames.has(task.agentHint)
         ? task.agentHint
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
+      if (signal?.aborted) throw new Error("Parallel task cancelled before sending the worker prompt.");
       const result = await c.session.prompt({
         sessionID: childSessionId,
         parts: [{ type: "text", text: taskPrompt }],
@@ -284,7 +288,7 @@ function createOpenCode() {
         // A missing transcript must not turn a successful prompt response into a false failure.
       }
       return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
-    }, orchestration?.onOutcome);
+    }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });
   }
 
   // Subscribe to events for the workspace through the extension proxy
