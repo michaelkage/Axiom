@@ -233,3 +233,14 @@ Relevant commits:
 ### Remaining integration gate
 
 This batch has been committed to the working branch, but automated CI results have not yet been confirmed in this log. The next coordinated batches must integrate outcome-preserving orchestration, explicit cancellation/timeouts, OmniRoute health/fallback reporting, project-context freshness and exclusions, and plugin permission boundaries. Do not publish a release or mark the full program complete until CI and packaged desktop acceptance criteria have been checked. Manual desktop smoke testing remains a separate, explicitly tracked step.
+
+### Verification checkpoint — October 15, 2026
+
+- Confirmed CI passed on commit `76293119198ebf1c813d7ff0bd763b39ba18ae1b`: [Axiom CI run 38730047702](https://github.com/michaelkage/Axiom/actions/runs/38730047702). Webview/extension type-checks and unit tests passed.
+- Confirmed the Windows packaging workflow passed on the same commit: [Desktop workflow run 38730048557](https://github.com/michaelkage/Axiom/actions/runs/38730048557). UI build, launcher validation, version validation, Windows installer build, SHA-256 sidecar generation, and artifact upload succeeded.
+- Artifact inventory confirmed `axiom-standalone-windows-0.4.4` (artifact ID `11969024441`, approximately 221.4 MB). This is a workflow artifact with an expiry date, not a published GitHub Release. The artifact metadata digest is `sha256:bff66bf5cdebf981492bf01d646e55ef8f6c3707ba154155516a08fdd15f7ea3`; it is the artifact archive digest, not a substitute for the installer sidecar checksum.
+- The release workflow's publish step only runs for a `v*` tag. No tag or public release was created during this checkpoint.
+- Follow-up integration adds an in-app cancel action for parallel task runs, passes an abort signal and a 120-second task timeout into the scheduler, and shows routing explanation/fallback/discovery diagnostics beside the selected OmniRoute model. The runtime runner checks cancellation before starting work and before sending a worker prompt; an already-running OpenCode prompt may continue if the SDK/runtime does not support aborting that request.
+- These follow-up changes still require a fresh green CI and packaging run before they can be considered verified. Manual Windows desktop smoke testing remains outstanding and has not been performed.
+- The current package version is `0.4.4`; any release name/tag must match that version (for example, **Axiom Desktop Preview 0.4.4**, tag `v0.4.4`) unless the version is deliberately changed and both package manifests are updated together.
+
