@@ -93,4 +93,6 @@ jobs:
         with:
           name: Axiom ${{ env.AXIOM_VERSION }}
           generate_release_notes: true
-          files: |\n            desktop/release/Axiom-Setup-*-x64.exe\n            desktop/release/Axiom-Setup-*-x64.exe.sha256
+          files: |
+            desktop/release/Axiom-Setup-*-x64.exe
+            desktop/release/Axiom-Setup-*-x64.exe.sha256
