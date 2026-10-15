@@ -88,6 +88,19 @@ describe("Axiom intelligence layer", () => {
     expect(reviewPluginManifest(BUILTIN_PLUGIN_CATALOG.find(item => item.id === "community-command-runner")!).requiredApprovals).toContain("run-commands");
   });
 
+  it("fails closed on malformed manifests and unknown plugin capabilities", () => {
+    const malformed = reviewPluginManifest({ id: "bad", version: "", publisher: "", description: "", permissions: undefined as unknown as ["read-files"], verified: true });
+    expect(malformed.installable).toBe(false);
+    expect(malformed.warnings).toContain("Plugin permissions must be declared as an array.");
+
+    const unknown = reviewPluginManifest({
+      id: "community-tools", version: "1.0.0", publisher: "community", description: "Tools",
+      permissions: ["read-files", "root-access" as "read-files"], verified: true,
+    });
+    expect(unknown.installable).toBe(false);
+    expect(unknown.warnings.some(warning => warning.includes("unknown capability"))).toBe(true);
+  });
+
   it("requires verification and explicit approval for sensitive plugin permissions", () => {
     const review = reviewPluginManifest({
       id: "community-tools", version: "1.0.0", publisher: "community", description: "Tools",
