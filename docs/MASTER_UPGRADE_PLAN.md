@@ -214,6 +214,22 @@ Relevant commits:
 - `38a61f1d9914c5bc51a1bef424b0b1dedd856295` — HTTPS/credential warning compatibility
 - `8c08646159b816f1779d66c458bf04bc95f2f792` — plugin manifest regression tests
 
+### Batch 3 — orchestration, routing, and project context
+
+Implemented on `axiom/product-rebuild`:
+- Parallel execution now preserves successful peer results when a worker fails, carries failure details forward, and reports dependent tasks blocked by failed prerequisites.
+- Added per-task timeouts and caller cancellation signals; runners receive an abort signal and the scheduler stops waiting when cancellation is requested. Runners that ignore abort may still continue externally, so integrations must honor the signal.
+- Added regression tests for partial success, blocked dependencies, timeouts, and cancellation.
+- Added an OmniRoute `GET /models` discovery/health probe with timeout handling and distinct unreachable, unexpected-format, and empty-inventory results.
+- Added an explicit fallback-selection helper. It never silently changes models: a fallback is used only when explicitly configured and present in the discovered inventory, and the result reports that it was used.
+- Added project-context filtering for stale records, common generated/ignored paths, explicitly excluded paths, and common credential/private-key patterns. Exclusions carry reasons so callers can explain why context was omitted.
+- Added regression tests for routing discovery/fallback and context filtering.
+
+Relevant commits:
+- `908e567259f1479276dd6528a8b4969ec53448db`, `919bed45ccd1aaa1d3a55bb1d377268316ebb1f5`, `42373289448726989000bece2208576737043b9e`, `3d51d51450824768d959cf992242ecbc1a7cb8df`, `7452fd3fd7a4e1cce865b1af13a7fcd908c26855` — orchestration failure preservation, cancellation, timeouts, tests
+- `24f19d351a7be0f67b4c96115a4dc602c65bbdee`, `37c99f8b41bd22ee835103d6543335a030fc9d5a` — OmniRoute discovery and explicit fallback tests
+- `be758b9aec207653c90b0451860b55d723bb9dcf`, `b46d8df1b78ad889510f687354c8a522233a5a12` — context filtering and regression tests
+
 ### Remaining integration gate
 
 This batch has been committed to the working branch, but automated CI results have not yet been confirmed in this log. The next coordinated batches must integrate outcome-preserving orchestration, explicit cancellation/timeouts, OmniRoute health/fallback reporting, project-context freshness and exclusions, and plugin permission boundaries. Do not publish a release or mark the full program complete until CI and packaged desktop acceptance criteria have been checked. Manual desktop smoke testing remains a separate, explicitly tracked step.
