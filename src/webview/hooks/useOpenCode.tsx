@@ -16,8 +16,8 @@ import {
 import { hasAxiomDesktopApi, hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
-import { DEFAULT_AXIOM_RUNTIME, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
-import { contextForSpecialist, inferSpecialist } from "../../shared/intelligence";
+import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, type AxiomSubTask } from "../../shared/axiomRuntime";
+import { contextForSpecialist, filterProjectContext, inferSpecialist } from "../../shared/intelligence";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -140,17 +140,18 @@ function createOpenCode() {
   }
 
   async function planParallelTasks(prompt: string) {
-    const gateway = DEFAULT_AXIOM_RUNTIME.gatewayUrl.replace(/\/+$/, "");
-    const response = await proxyFetch(gateway + "/models", {
-      method: "GET",
-      headers: { "Accept": "application/json" },
-    });
-    if (!response.ok) throw new Error(`OmniRoute model discovery failed (HTTP ${response.status}). Check that the local gateway is running.`);
-    const modelResponse = await response.json() as { data?: Array<{ id?: string }> };
-    const model = modelResponse.data?.find(item => typeof item.id === "string" && item.id.trim())?.id;
-    if (!model) throw new Error("OmniRoute returned no available model IDs.");
+    const discovery = await discoverOmniRouteModels(DEFAULT_AXIOM_RUNTIME, proxyFetch);
+    if (!discovery.reachable) {
+      throw new Error(discovery.warning ?? "OmniRoute is unreachable. Start the local gateway and retry.");
+    }
+    if (!discovery.models.length) {
+      throw new Error(discovery.warning ?? "OmniRoute returned no available model IDs.");
+    }
+    // The planner has no model picker yet; choose the first advertised model explicitly
+    // and report that exact ID to the UI. Do not silently substitute a different model.
+    const model = discovery.models[0].id;
     const tasks = await planSubTasksWithOmniRoute(prompt, model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
-    return { model, tasks };
+    return { model, tasks, discoveryWarning: discovery.warning };
   }
 
   async function createAgentWorktree(taskId: string, root: string): Promise<string> {
@@ -202,6 +203,13 @@ function createOpenCode() {
     } catch {
       // Context packing still works from the original request and plan if history is unavailable.
     }
+    // Apply the shared safety filter before conversation history is packed into agent prompts.
+    // These are conversation records, not filesystem paths; filtering here primarily prevents
+    // credentials/private-key material from being propagated to sibling-agent context.
+    const safeHistory = filterProjectContext(
+      historyItems.map(item => ({ ...item, kind: "conversation" as const })),
+    ).included.map(({ id, content, relevance, updatedAt }) => ({ id, content, relevance, updatedAt }));
+
     let availableAgentNames = new Set<string>();
     try {
       const agentResponse = await c.app.agents();
@@ -227,7 +235,7 @@ function createOpenCode() {
         taskScope: task.scope,
         targetFiles: task.targetFiles,
         planSteps: orchestration?.planSteps,
-        conversation: historyItems,
+        conversation: safeHistory,
         completedTasks: completed.map(entry => ({
           title: entry.task.title,
           status: "succeeded",
