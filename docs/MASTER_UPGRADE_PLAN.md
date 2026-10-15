@@ -1,6 +1,6 @@
 # Axiom Master Upgrade Plan
 
-**Status:** Proposed implementation program  
+**Status:** In progress — coordinated implementation wave  
 **Product constraint:** Axiom remains a standalone desktop application. It must not become an editor extension or depend on a host IDE for its core product experience.  
 **Planning principle:** Build the next upgrade set as one coordinated program with parallel workstreams, shared contracts, and one integration/verification gate—not as a series of unrelated feature requests.
 
@@ -176,3 +176,31 @@ This is one coordinated program, not a promise that unrelated changes can be saf
 ## Suggested delivery definition
 
 The upgrade program is ready when a clean install can: open a project; show provider/model readiness; run a user-triggered model test; complete a small task; show acceptance criteria and real verification evidence; recover from a common provider/runtime failure; review changes before integration; and shut down cleanly. Advanced orchestration, OmniRoute routing, project context, and plugin capabilities must be feature-tested and explicitly reported as available or not yet supported.
+
+
+## Implementation log
+
+### Batch 1 — execution safety and honest verification
+
+Implemented on `axiom/product-rebuild`:
+- Recovery diagnostics now redact common API-key, bearer-token, GitHub-token, and credential-bearing URL patterns before display.
+- Recovery guidance more explicitly distinguishes authentication, model availability, quota/billing, rate limits, connectivity, timeouts, permissions, and potentially side-effecting tool failures.
+- Provider-readiness load/test failures pass through diagnostic redaction before rendering in the UI.
+- Planner task parsing now rejects missing/empty acceptance criteria instead of silently inventing a generic criterion.
+- Parallel task scheduling now treats parent-directory and child-file write scopes as overlapping, not only exact file-name matches.
+- Quality-gate evaluation requires at least one check and explicit `state: passed` plus `exitCode: 0`; an agent-supplied green label alone is not verification evidence.
+- Added regression tests for diagnostic redaction, recovery categories, planner acceptance criteria, nested path conflicts, missing verification evidence, and empty check sets.
+
+Relevant commits:
+- `1b0baa926fffd8cb2cb00d0e1fc814a4c720bd7a` — recovery classification and redaction
+- `a2b1da175720b2d8dfce038684605f7efba7fb38` — recovery regression tests
+- `1077dad39512bdda7e9b5485b8ea4eb07cce5899` — planner criteria and conflict detection
+- `5aa71b9732b90c1e5a56e5d3379573237477eaa7` — planner regression tests
+- `f436d8ca1a37263ed0db19e7f429afd9c37b640a` — provider diagnostic redaction
+- `38750be45cbf56c78d5c78e587e3df0fe9eaa4b1` — planner/path regression tests
+- `f259e9476c20130b3870fc4246dad4df25bd8229` and `03056d7842d0bacbf48bc9e7893ff72c8914519e` — strict verification evidence
+- `bdadeadba381a13704f478e80cd079fa91ec97c9` and `cb48682748cee82b7df652ec29e5e1ec100175db` — quality-gate regression tests
+
+### Remaining integration gate
+
+This batch has been committed to the working branch, but automated CI results have not yet been confirmed in this log. The next coordinated batches must integrate outcome-preserving orchestration, explicit cancellation/timeouts, OmniRoute health/fallback reporting, project-context freshness and exclusions, and plugin permission boundaries. Do not publish a release or mark the full program complete until CI and packaged desktop acceptance criteria have been checked. Manual desktop smoke testing remains a separate, explicitly tracked step.
