@@ -1261,6 +1261,10 @@ function App() {
               <ul class="workflow-acceptance-criteria">
                 <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
               </ul>
+              <div class="workflow-plan__eyebrow">ACCEPTANCE CHECKLIST</div>
+              <ul class="workflow-acceptance-criteria">
+                <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
+              </ul>
               <div class="workflow-plan__eyebrow">QUICK COMBOS</div>
               <div class="workflow-plan__actions" aria-label="Reusable workflows">
                 <For each={getAvailableCombos(installedPluginIds())}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title}</button>}</For>
@@ -1352,6 +1356,10 @@ function App() {
               <ol>
                 <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
               </ol>
+              <div class="workflow-plan__eyebrow">ACCEPTANCE CHECKLIST</div>
+              <ul class="workflow-acceptance-criteria">
+                <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
+              </ul>
               <div class="workflow-plan__actions">
                 <button class="workflow-plan__secondary" onClick={() => setWorkflowPlan(null)}>Keep editing</button>
                 <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => void prepareParallelPlan()}>{parallelPlanBusy() ? "Planning tasks…" : "Plan with OmniRoute"}</button>
