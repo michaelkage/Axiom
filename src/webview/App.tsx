@@ -133,12 +133,12 @@ function App() {
 
   // Get the current session key for drafts/agents
   const sessionKey = () => sync.currentSessionId() || NEW_SESSION_KEY;
-  const withAxiomProjectContext = (prompt: string, workspaceRoot: string) => {
+  const withAxiomProjectContext = (prompt: string, workspaceRoot: string | undefined) => {
     const durableContext = desktopProjectState()?.context?.trim();
     const combined = durableContext
       ? "Persistent Axiom project context (user-maintained):\n" + durableContext + "\n\nCurrent request:\n" + prompt
       : prompt;
-    return withProjectMemory(combined, workspaceRoot);
+    return withProjectMemory(combined, workspaceRoot || "");
   };
 
   const getSdkErrorMessage = (error: unknown): string => {
