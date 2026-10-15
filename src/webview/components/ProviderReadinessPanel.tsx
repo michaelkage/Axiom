@@ -1,4 +1,5 @@
 import { createSignal, For, Show, onMount } from "solid-js";
+import { redactDiagnostic } from "../../shared/recovery";
 
 export interface ProviderReadinessModel {
   providerID: string;
@@ -37,7 +38,7 @@ export function ProviderReadinessPanel(props: Props) {
     try {
       setSnapshot(await props.loadReadiness());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(redactDiagnostic(cause));
       setSnapshot(null);
     } finally {
       setLoading(false);
@@ -54,7 +55,7 @@ export function ProviderReadinessPanel(props: Props) {
       await props.testConnection(providerID, modelID);
       setTestResults(previous => ({ ...previous, [key]: { ok: true, message: "Model responded successfully. Connection and credentials are working." } }));
     } catch (cause) {
-      setTestResults(previous => ({ ...previous, [key]: { ok: false, message: cause instanceof Error ? cause.message : String(cause) } }));
+      setTestResults(previous => ({ ...previous, [key]: { ok: false, message: redactDiagnostic(cause) } }));
     } finally {
       setTesting(null);
     }
