@@ -426,6 +426,17 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
     await runQualityGate(event, message);
   } else if (message.type === "apply-agent-worktree-changes") {
     await applyWorktreeChanges(event, message);
+  } else if (message.type === "open-external-url" && typeof message.url === "string") {
+    try {
+      const url = new URL(message.url);
+      if (url.protocol === "https:" && url.hostname === "opencode.ai" && url.pathname === "/docs/providers/") {
+        await shell.openExternal(url.toString());
+      } else {
+        throw new Error("Blocked an external URL that is not on the approved provider documentation page.");
+      }
+    } catch (error) {
+      await appendRuntimeLog(`Blocked or failed external navigation: ${error.message}`);
+    }
   } else if (message.type === "open-file" && typeof message.url === "string") {
     const filePath = message.url.startsWith("file://") ? new URL(message.url).pathname : message.url;
     if (path.isAbsolute(filePath) && insidePath(selectedWorkspace, filePath)) {
