@@ -31,7 +31,6 @@ export function openAxiomRuntimeDashboard(context: vscode.ExtensionContext, runt
         enabled: config.enableSubAgents, healing: config.errorHealingLevel, ...gateway,
         openCodeReady: openCode.ready,
       });
-      for (const event of runtime.getEvents()) postEvent(event);
     } else if (type === "openSettings") {
       await vscode.commands.executeCommand("workbench.action.openSettings", "axiom");
     } else if (type === "runGoal") {
