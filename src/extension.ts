@@ -25,9 +25,6 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("axiom.openRuntimeDashboard", () => {
-      openAxiomRuntimeDashboard(context);
-    }),
     vscode.commands.registerCommand("axiom.checkOmniRoute", async () => {
       const result = await new OmniRouteClient().healthCheck();
       if (result.ok) {
