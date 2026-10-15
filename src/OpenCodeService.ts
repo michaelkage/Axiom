@@ -190,7 +190,7 @@ export class OpenCodeService {
     const abortSession = () => {
       // Best-effort cancellation of the actual OpenCode session, not only the planner loop.
       try {
-        const abortRequest = client.session.abort({ path: { id: sessionId } });
+        const abortRequest = client.session.abort({ sessionID: sessionId });
         if (abortRequest && typeof abortRequest.catch === "function") void abortRequest.catch(() => undefined);
       } catch { /* cancellation is best-effort if this SDK/server version lacks abort */ }
     };
@@ -198,7 +198,7 @@ export class OpenCodeService {
     let prompted: any;
     try {
       prompted = await client.session.prompt({
-        path: { id: sessionId },
+        sessionID: sessionId,
         body: { parts: [{ type: "text", text: prompt }] },
       });
     } finally {
@@ -215,7 +215,7 @@ export class OpenCodeService {
 
     // The standard prompt endpoint may return no message body; retrieve the session
     // transcript and collect the most recent assistant text parts instead.
-    const messages = await client.session.messages({ path: { id: sessionId }, sessionID: sessionId });
+    const messages = await client.session.messages({ sessionID: sessionId });
     if (messages?.error) throw new Error(`OpenCode worker transcript failed: ${JSON.stringify(messages.error)}`);
     const items: any[] = Array.isArray(messages?.data) ? messages.data : [];
     for (let i = items.length - 1; i >= 0; i--) {
