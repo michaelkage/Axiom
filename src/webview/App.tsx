@@ -12,6 +12,7 @@ import { ProjectMemoryPanel } from "./components/ProjectMemoryPanel";
 import { WorktreeReviewPanel } from "./components/WorktreeReviewPanel";
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
+import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -365,8 +366,28 @@ function App() {
       steps.push("Break the requested outcome into small, coherent implementation changes");
     }
     steps.push("Implement the changes while preserving unrelated behavior");
-    steps.push("Run available checks and review the resulting changes");
+    steps.push("Run relevant checks and inspect the actual diff");
+    steps.push("Report changed files, verification evidence, remaining risks, and anything not tested");
     return steps;
+  };
+
+  const buildAcceptanceCriteria = (prompt: string): string[] => {
+    const criteria = [
+      "The requested outcome is implemented; unrelated behavior remains unchanged.",
+      "The final diff is reviewable and limited to relevant files.",
+      "Relevant checks are run where available, with actual results reported.",
+      "Anything not run, blocked, or still uncertain is explicitly called out."
+    ];
+    if (/bug|fix|error|broken|crash|fail/i.test(prompt)) {
+      criteria.unshift("The reported failure is traced to a cause and the fix addresses that cause.");
+    }
+    if (/test|coverage|verify|quality/i.test(prompt)) {
+      criteria.unshift("The requested behavior has explicit pass/fail verification evidence.");
+    }
+    if (/ui|interface|design|page|dashboard|visual/i.test(prompt)) {
+      criteria.unshift("The requested user flow and relevant empty, loading, and error states are addressed.");
+    }
+    return [...new Set(criteria)];
   };
 
   const requestWorkflowPlan = (prompt: string) => {
@@ -457,7 +478,7 @@ function App() {
     const currentSessionId = sync.currentSessionId();
     if (currentSessionId) sync.setSessionError(currentSessionId, null);
     setWorkflowRun({ prompt: plan.prompt, status: "running" });
-    const executionPrompt = `${plan.prompt}\n\nImplementation plan:\n${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nAfter implementing, run the relevant checks available in this workspace and summarize what changed and what was verified.`;
+    const executionPrompt = `${plan.prompt}\n\nImplementation plan:\n${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nAcceptance criteria (treat these as a checklist, not as claims):\n${buildAcceptanceCriteria(plan.prompt).map(item => "- [ ] " + item).join("\n")}\n\nBefore reporting completion, inspect the actual changed-file list and diff. Run relevant checks that are available and report the exact result for each. Never infer that tests or builds passed because the agent finished. Clearly list checks not run, known limitations, and any manual review still needed. Leave changes reviewable; do not claim the task is verified unless the recorded evidence supports it.`;
     setInput(executionPrompt);
     skipPlanOnce = true;
     await handleSubmit();
@@ -1092,6 +1113,16 @@ function App() {
           <button class="error-banner__dismiss" onClick={clearHostError} aria-label="Dismiss error">×</button>
         </div>
       </Show>
+      <Show when={sync.status().status === "error" || sync.status().status === "reconnecting"}>
+        <section class="runtime-status-banner" role="status" aria-live="polite">
+          <div>
+            <strong>{sync.status().status === "reconnecting" ? "Reconnecting to the local runtime" : "The local runtime needs attention"}</strong>
+            <p>{sync.status().status === "reconnecting" ? "Axiom is trying to restore its event connection. Wait briefly before retrying an operation." : sync.status().message || "The runtime connection or initial project data could not be loaded."}</p>
+            <small>Project files are not changed by reconnecting. If this persists, check Help → Open Axiom Runtime Log.</small>
+          </div>
+          <button type="button" onClick={() => void sync.bootstrap().catch(error => logger.error("Manual runtime reconnect failed", { error }))}>Retry connection</button>
+        </section>
+      </Show>
       
       <TopBar
         sessions={sessionsToShow()}
@@ -1166,6 +1197,7 @@ function App() {
 
       <Show when={!hasMessages()}>
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
+        <ProviderOnboardingPanel />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">
@@ -1217,6 +1249,10 @@ function App() {
               <ol>
                 <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
               </ol>
+              <div class="workflow-plan__eyebrow">ACCEPTANCE CHECKLIST</div>
+              <ul class="workflow-acceptance-criteria">
+                <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
+              </ul>
               <div class="workflow-plan__eyebrow">QUICK COMBOS</div>
               <div class="workflow-plan__actions" aria-label="Reusable workflows">
                 <For each={getAvailableCombos(installedPluginIds())}>{(combo) => <button class="workflow-plan__secondary" title={combo.description} onClick={() => setInput(combo.prompt)}>{combo.title}</button>}</For>
