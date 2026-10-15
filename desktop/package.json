@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
-    "dist:dir": "electron-builder --dir --win --x64"
+    "dist:dir": "electron-builder --dir --win --x64",
+    "test": "node --test project-store.test.cjs"
   },
   "dependencies": {
     "opencode-ai": "^1.19.0"
@@ -27,6 +28,7 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "project-store.cjs",
       "package.json",
       "node_modules/**"
     ],
