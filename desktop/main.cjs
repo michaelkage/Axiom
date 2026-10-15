@@ -438,13 +438,48 @@ async function stopRuntime() {
   stoppingRuntime = true;
   const child = runtimeProcess;
   runtimeProcess = null;
-  if (!child || child.exitCode !== null || child.signalCode !== null) { stoppingRuntime = false; return; }
+  if (!child || child.exitCode !== null || child.signalCode !== null) {
+    stoppingRuntime = false;
+    return;
+  }
+
+  await appendRuntimeLog("Requesting local runtime shutdown.");
   if (process.platform === "win32" && child.pid) {
-    try { await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { timeout: 10000, windowsHide: true }); }
-    catch { try { child.kill(); } catch {} }
-  } else { try { child.kill("SIGTERM"); } catch {} }
-  await Promise.race([new Promise(resolve => child.once("exit", resolve)), new Promise(resolve => setTimeout(resolve, 3000))]);
-  if (child.exitCode === null && process.platform !== "win32") { try { child.kill("SIGKILL"); } catch {} }
+    // Ask the process tree to close before falling back to a forced termination.
+    try {
+      await execFileAsync("taskkill", ["/pid", String(child.pid), "/t"], { timeout: 5000, windowsHide: true });
+    } catch {
+      // A process may already have exited; verify below before escalating.
+    }
+  } else {
+    try { child.kill("SIGTERM"); } catch {}
+  }
+
+  const exited = await Promise.race([
+    new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) resolve(true);
+      else child.once("exit", () => resolve(true));
+    }),
+    new Promise(resolve => setTimeout(() => resolve(false), 3000))
+  ]);
+
+  if (!exited && child.exitCode === null && child.signalCode === null) {
+    await appendRuntimeLog("Runtime did not stop within 3 seconds; forcing process termination.");
+    if (process.platform === "win32" && child.pid) {
+      try {
+        await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { timeout: 10000, windowsHide: true });
+      } catch {
+        try { child.kill(); } catch {}
+      }
+    } else {
+      try { child.kill("SIGKILL"); } catch {}
+    }
+    await Promise.race([
+      new Promise(resolve => child.once("exit", resolve)),
+      new Promise(resolve => setTimeout(resolve, 1000))
+    ]);
+  }
+  await appendRuntimeLog("Runtime shutdown sequence completed.");
   stoppingRuntime = false;
 }
 
