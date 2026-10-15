@@ -8,7 +8,7 @@ Axiom is a standalone desktop app for AI-first project building. Describe the fe
 
 **Windows x64:** open the [Axiom Releases page](https://github.com/michaelkage/Axiom/releases) and download `Axiom-Setup-<version>-x64.exe`.
 
-The installer installs the standalone Axiom desktop application, including its desktop shell and local OpenCode runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app.
+The installer installs the standalone Axiom desktop application, including its desktop shell and local OpenCode runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app. Use **File → Switch Project** (Ctrl+O) to change folders without manually restarting. If the runtime fails to start, Axiom offers a retry and records diagnostics in its application user-data folder; **Help → Open Axiom Runtime Log** opens that log.
 
 If the Releases page does not contain a Windows installer yet, a release has not been published. CI artifacts are not the same as published release assets, because apparently one download location was too straightforward.
 
@@ -120,7 +120,7 @@ The installer is emitted to `desktop/release/`. The release workflow performs th
 2. Set the version in both the root `package.json` and `desktop/package.json`.
 3. Push a tag matching `v*` (for example `v0.4.4`) to that commit.
 4. The **Build Axiom Desktop Release** workflow builds the standalone UI, installs desktop packaging dependencies, packages the app and runtime, and creates `Axiom-Setup-<version>-x64.exe`.
-5. The workflow attaches the installer to the GitHub Release. Inspect the workflow run and test the downloaded installer before announcing the release.
+5. The workflow creates a SHA-256 checksum file alongside the installer and attaches both to the GitHub Release. Verify the downloaded installer against the `.sha256` asset before running it. Inspect the workflow run and test the downloaded installer before announcing the release. Publishing a build does not mean its interactive installation/startup has been smoke-tested.
 
 A manual workflow run builds an artifact but does not publish a GitHub Release unless triggered by a tag.
 
