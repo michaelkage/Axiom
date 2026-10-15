@@ -142,6 +142,16 @@ describe("Axiom runtime helpers", () => {
     expect(receivedSignal?.aborted).toBe(true);
   });
 
+  it("stops waiting when the caller cancels task execution", async () => {
+    const tasks = parseSubTasks([
+      { id: "waiting", title: "Waiting", scope: "wait", targetFiles: ["waiting.ts"], dependsOn: [], acceptanceCriteria: ["Cancellation is surfaced"] },
+    ]);
+    const controller = new AbortController();
+    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), undefined, { signal: controller.signal });
+    controller.abort();
+    await expect(execution).rejects.toThrow(/cancelled/i);
+  });
+
   it("plans tasks through an OpenAI-compatible OmniRoute endpoint", async () => {
     const fetcher: typeof fetch = async (_input, init) => {
       expect(init?.method).toBe("POST");
