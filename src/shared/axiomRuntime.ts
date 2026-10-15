@@ -203,6 +203,54 @@ export async function executeTaskBatches<T>(
   return completed;
 }
 
+export interface OmniRouteModel { id: string; name: string; }
+export interface OmniRouteDiscovery {
+  reachable: boolean;
+  models: OmniRouteModel[];
+  checkedAt: number;
+  warning?: string;
+}
+/** GET /models is both a gateway reachability probe and the source of its advertised model inventory. */
+export async function discoverOmniRouteModels(
+  config: AxiomRuntimeConfig = DEFAULT_AXIOM_RUNTIME,
+  fetcher: typeof fetch = fetch,
+): Promise<OmniRouteDiscovery> {
+  const checkedAt = Date.now();
+  const base = config.gatewayUrl.replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+  try {
+    const response = await fetcher(base + "/models", { method: "GET", headers: { Accept: "application/json" }, signal: controller.signal });
+    if (!response.ok) return { reachable: true, models: [], checkedAt, warning: "OmniRoute is reachable but model discovery returned HTTP " + response.status + "." };
+    const payload = await response.json() as { data?: unknown };
+    if (!Array.isArray(payload?.data)) return { reachable: true, models: [], checkedAt, warning: "OmniRoute responded, but its model inventory was not in the expected OpenAI-compatible format." };
+    const models = payload.data.flatMap((item): OmniRouteModel[] => {
+      if (!item || typeof item !== "object" || typeof (item as Record<string, unknown>).id !== "string") return [];
+      const model = item as Record<string, unknown>;
+      return [{ id: model.id as string, name: typeof model.name === "string" ? model.name : model.id as string }];
+    });
+    return { reachable: true, models, checkedAt, ...(models.length ? {} : { warning: "OmniRoute is reachable but advertises no models." }) };
+  } catch (error) {
+    const advice = classifyRecovery(error);
+    return { reachable: false, models: [], checkedAt, warning: advice.explanation };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+/** Choose a fallback only when explicitly configured; report the route change to the caller. */
+export function resolveOmniRouteModel(
+  requestedModel: string,
+  availableModels: OmniRouteModel[],
+  fallbackModel?: string,
+): { model: string | null; fallbackUsed: boolean; explanation?: string } {
+  const available = new Set(availableModels.map(model => model.id));
+  if (available.has(requestedModel)) return { model: requestedModel, fallbackUsed: false };
+  if (fallbackModel && available.has(fallbackModel)) {
+    return { model: fallbackModel, fallbackUsed: true, explanation: "Requested model " + requestedModel + " was unavailable; explicitly configured fallback " + fallbackModel + " was selected." };
+  }
+  return { model: null, fallbackUsed: false, explanation: "Requested model " + requestedModel + " is not in the discovered inventory; no usable fallback was configured." };
+}
+
 export async function planSubTasksWithOmniRoute(
   prompt: string,
   model: string,
