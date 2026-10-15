@@ -120,7 +120,11 @@ The installer is emitted to `desktop/release/`. The release workflow performs th
 2. Set the version in both the root `package.json` and `desktop/package.json`.
 3. Push a tag matching `v*` (for example `v0.4.4`) to that commit.
 4. The **Build Axiom Desktop Release** workflow builds the standalone UI, installs desktop packaging dependencies, packages the app and runtime, and creates `Axiom-Setup-<version>-x64.exe`.
-5. The workflow creates a SHA-256 checksum file alongside the installer and attaches both to the GitHub Release. Verify the downloaded installer against the `.sha256` asset before running it. In PowerShell, from the folder containing the installer, run:\n\n```powershell\nGet-FileHash .\\Axiom-Setup-<version>-x64.exe -Algorithm SHA256\nGet-Content .\\Axiom-Setup-<version>-x64.exe.sha256\n```\n\nConfirm the reported hash matches the hash in the checksum file. Inspect the workflow run and test the downloaded installer before announcing the release. Publishing a build does not mean its interactive installation/startup has been smoke-tested.
+5. The workflow creates a SHA-256 checksum file alongside the installer and attaches both to the GitHub Release. Verify the downloaded installer against the `.sha256` asset before running it. In PowerShell, from the folder containing the installer, run:\n\n```powershell
+$installer = Get-ChildItem .\Axiom-Setup-*-x64.exe | Select-Object -First 1
+Get-FileHash $installer.FullName -Algorithm SHA256
+Get-Content "$($installer.FullName).sha256"
+```\n\nConfirm the reported hash matches the hash in the checksum file. Inspect the workflow run and test the downloaded installer before announcing the release. Publishing a build does not mean its interactive installation/startup has been smoke-tested.
 
 A manual workflow run builds an artifact but does not publish a GitHub Release unless triggered by a tag.
 
