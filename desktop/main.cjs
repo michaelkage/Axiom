@@ -436,7 +436,15 @@ ipcMain.handle("axiom:change-feed-add", async (event, change) => {
 
 ipcMain.handle("axiom:choose-project", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  return chooseWorkspace();
+  const nextWorkspace = await chooseWorkspace();
+  if (!nextWorkspace || path.resolve(nextWorkspace) === path.resolve(selectedWorkspace || "")) return null;
+  const resolvedWorkspace = path.resolve(nextWorkspace);
+  isQuitting = true;
+  await appendRuntimeLog(`Switching project from ${selectedWorkspace} to ${resolvedWorkspace}.`);
+  await stopRuntime();
+  app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${resolvedWorkspace}`] });
+  app.quit();
+  return resolvedWorkspace;
 });
 
 ipcMain.on("axiom:webview-message", async (event, message) => {

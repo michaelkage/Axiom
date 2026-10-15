@@ -133,6 +133,13 @@ function App() {
 
   // Get the current session key for drafts/agents
   const sessionKey = () => sync.currentSessionId() || NEW_SESSION_KEY;
+  const withAxiomProjectContext = (prompt: string, workspaceRoot: string) => {
+    const durableContext = desktopProjectState()?.context?.trim();
+    const combined = durableContext
+      ? "Persistent Axiom project context (user-maintained):\\n" + durableContext + "\\n\\nCurrent request:\\n" + prompt
+      : prompt;
+    return withProjectMemory(combined, workspaceRoot);
+  };
 
   const getSdkErrorMessage = (error: unknown): string => {
     if (typeof error === "string" && error.length > 0) return error;
@@ -727,7 +734,7 @@ function App() {
     }
     const chosen = await project.chooseProject();
     if (chosen) {
-      setDesktopProjectNotice("Project switch requested. Restarting Axiom will open the selected folder.");
+      setDesktopProjectNotice("Switching project. Axiom will restart with the selected folder.");
     }
   };
 
@@ -781,7 +788,7 @@ function App() {
 
   // Handlers
   const handleSubmit = async () => {
-    const text = withProjectMemory(input().trim(), sync.workspaceRoot());
+    const text = withAxiomProjectContext(input().trim(), sync.workspaceRoot());
     if (!text || !sync.isReady()) {
       if (workflowRun()?.status === "running") {
         const message = !text ? "No prompt was available to run." : "Axiom is not connected to the OpenCode runtime.";
@@ -971,7 +978,7 @@ function App() {
     try {
       const extraParts = buildSelectionParts(next.attachments);
       
-      const result = await sendPrompt(sessionId, withProjectMemory(next.text, sync.workspaceRoot()), next.agent, extraParts, messageID);
+      const result = await sendPrompt(sessionId, withAxiomProjectContext(next.text, sync.workspaceRoot()), next.agent, extraParts, messageID);
       const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
@@ -1321,7 +1328,7 @@ function App() {
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
               <span>{task.status === "succeeded" ? "AGENT SUCCEEDED · REVIEW REQUIRED" : task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
-              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} acceptanceCriteria={taskAcceptanceCriteria()[task.taskId] ?? []} onRepair={async failure => { if (!task.sessionId) throw new Error("No task session is available for a bounded repair."); await sendPrompt(task.sessionId, withProjectMemory("Repair this task in its isolated worktree. Fix only the reported verification failures, preserve the task scope, and do not claim checks passed unless their exit status confirms it.\n\nFailure evidence:\n" + failure, sync.workspaceRoot()), task.agent); }} /></Show>
+              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} acceptanceCriteria={taskAcceptanceCriteria()[task.taskId] ?? []} onRepair={async failure => { if (!task.sessionId) throw new Error("No task session is available for a bounded repair."); await sendPrompt(task.sessionId, withAxiomProjectContext("Repair this task in its isolated worktree. Fix only the reported verification failures, preserve the task scope, and do not claim checks passed unless their exit status confirms it.\n\nFailure evidence:\n" + failure, sync.workspaceRoot()), task.agent); }} /></Show>
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
