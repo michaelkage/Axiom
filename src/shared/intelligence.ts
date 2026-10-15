@@ -234,6 +234,7 @@ export function contextForSpecialist(input: {
   planSteps?: string[]; completedTasks?: Array<{ title: string; status: string; summary?: string; error?: string }>;
   constraints?: string[]; tokenBudget?: number;
   conversation?: Array<{ id: string; content: string; relevance?: number; updatedAt?: number }>;
+  projectMemories?: Array<{ id: string; content: string; relevance?: number; updatedAt?: number }>;
 }): PackedContext {
   const items: ContextItem[] = [
     { id: "request", content: "Original request: " + input.request, kind: "constraint", relevance: 99 },
@@ -242,6 +243,7 @@ export function contextForSpecialist(input: {
     ...(input.planSteps ?? []).map((step, index) => ({ id: "plan-" + index, content: "Plan step " + (index + 1) + ": " + step, kind: "decision" as const, relevance: 80 })),
     ...(input.constraints ?? []).map((value, index) => ({ id: "constraint-" + index, content: value, kind: "constraint" as const, relevance: 95 })),
     ...(input.conversation ?? []).map((message, index) => ({ id: "conversation-" + message.id + "-" + index, content: message.content, kind: "conversation" as const, relevance: message.relevance ?? 50, updatedAt: message.updatedAt })),
+    ...(input.projectMemories ?? []).map((memory, index) => ({ id: "project-memory-" + memory.id + "-" + index, content: "Relevant saved project memory: " + memory.content, kind: "decision" as const, relevance: memory.relevance ?? 85, updatedAt: memory.updatedAt })),
     ...(input.completedTasks ?? []).map((task, index) => ({ id: "completed-" + index, content: "Prior task: " + task.title + " [" + task.status + "]" + (task.summary ? "\nSummary: " + task.summary : "") + (task.error ? "\nError: " + task.error : ""), kind: task.error ? "error" as const : "decision" as const, relevance: 75 })),
   ];
   return packContext(items, input.tokenBudget ?? 4000);

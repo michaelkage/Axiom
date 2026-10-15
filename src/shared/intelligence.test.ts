@@ -23,6 +23,17 @@ describe("Axiom intelligence layer", () => {
     ])).toThrow(/dependency cycle/);
   });
 
+  it("packs relevant project memories as high-priority decisions for specialist agents", () => {
+    const packed = contextForSpecialist({
+      request: "Update the authentication flow",
+      taskTitle: "Implement auth changes",
+      taskScope: "Update the auth flow",
+      targetFiles: ["src/auth.ts"],
+      projectMemories: [{ id: "auth-convention", content: "[convention] Keep auth handlers thin", updatedAt: 1_800_000_000_000 }],
+    });
+    expect(packed.items.some(item => item.content.includes("Keep auth handlers thin") && item.kind === "decision")).toBe(true);
+  });
+
   it("normalizes target paths and blocks traversal", () => {
     expect(coordinateTasks([{ id: "a", title: "A", prompt: "implement", targetFiles: ["./src\\app.tsx", "src/app.tsx"] }])[0]?.targetFiles).toEqual(["src/app.tsx"]);
     expect(() => coordinateTasks([{ id: "bad", title: "Bad", prompt: "change", targetFiles: ["../secrets"] }])).toThrow(/Unsafe/);

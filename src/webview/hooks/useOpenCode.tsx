@@ -18,6 +18,8 @@ import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 import { contextForSpecialist, filterProjectContext, inferSpecialist } from "../../shared/intelligence";
+import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
+import { isProjectMemoryStale, loadProjectMemories } from "../utils/projectMemory";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -211,6 +213,23 @@ function createOpenCode() {
     const safeHistory = filterProjectContext(
       historyItems.map(item => ({ ...item, kind: "conversation" as const })),
     ).included.map(({ id, content, relevance, updatedAt }) => ({ id, content, relevance, updatedAt }));
+    // Only pass relevant, recently reviewed, secret-screened project memories to sibling agents.
+    const safeProjectMemories = (() => {
+      try {
+        const relevant = retrieveProjectMemories(loadProjectMemories(directory), orchestration?.request ?? "", 8)
+          .filter(memory => !isProjectMemoryStale(memory))
+          .map(memory => ({
+            id: memory.id,
+            content: "[" + memory.category + (memory.tags.length ? "; " + memory.tags.join(", ") : "") + "] " + memory.content,
+            kind: "decision" as const,
+            relevance: 85,
+            updatedAt: Date.parse(memory.updatedAt),
+          }));
+        return filterProjectContext(relevant).included.map(({ id, content, relevance, updatedAt }) => ({ id, content, relevance, updatedAt }));
+      } catch {
+        return [];
+      }
+    })();
 
     let availableAgentNames = new Set<string>();
     try {
@@ -241,6 +260,7 @@ function createOpenCode() {
         targetFiles: task.targetFiles,
         planSteps: orchestration?.planSteps,
         conversation: safeHistory,
+        projectMemories: safeProjectMemories,
         completedTasks: completed.map(entry => ({
           title: entry.task.title,
           status: "succeeded",
