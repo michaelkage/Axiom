@@ -7,9 +7,27 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
-
 let runtimeProcess;
 let mainWindow;
+let isQuitting = false;
+let shutdownStarted = false;
+
+app.setName("Axiom");
+if (process.platform === "win32") app.setAppUserModelId("com.axiom.desktop");
+
+function workspaceArgument() {
+  const prefix = "--axiom-workspace=";
+  const value = process.argv.find(arg => arg.startsWith(prefix));
+  return value ? value.slice(prefix.length) : null;
+}
+
+async function appendRuntimeLog(text) {
+  try {
+    const logPath = path.join(app.getPath("userData"), "logs", "runtime.log");
+    await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
+    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${text}\\n`, "utf8");
+  } catch { /* Diagnostics must never prevent startup or shutdown. */ }
+}
 
 function runtimeExecutable() {
   const base = app.isPackaged
@@ -140,7 +158,7 @@ async function createWindow() {
     }
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => mainWindow.show());\n  mainWindow.on("closed", () => { mainWindow = null; });
   const htmlPath = app.isPackaged
     ? path.join(process.resourcesPath, "out", "src", "webview", "standalone.html")
     : path.join(__dirname, "..", "out", "src", "webview", "standalone.html");
