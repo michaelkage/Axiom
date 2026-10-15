@@ -405,7 +405,7 @@ async function stopRuntime() {
   stoppingRuntime = true;
   const child = runtimeProcess;
   runtimeProcess = null;
-  if (!child || child.exitCode !== null || child.killed) { stoppingRuntime = false; return; }
+  if (!child || child.exitCode !== null || child.signalCode !== null) { stoppingRuntime = false; return; }
   if (process.platform === "win32" && child.pid) {
     try { await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { timeout: 10000, windowsHide: true }); }
     catch { try { child.kill(); } catch {} }
