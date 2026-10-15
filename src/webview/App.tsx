@@ -136,7 +136,7 @@ function App() {
   const withAxiomProjectContext = (prompt: string, workspaceRoot: string) => {
     const durableContext = desktopProjectState()?.context?.trim();
     const combined = durableContext
-      ? "Persistent Axiom project context (user-maintained):\\n" + durableContext + "\\n\\nCurrent request:\\n" + prompt
+      ? "Persistent Axiom project context (user-maintained):\n" + durableContext + "\n\nCurrent request:\n" + prompt
       : prompt;
     return withProjectMemory(combined, workspaceRoot);
   };
@@ -715,7 +715,7 @@ function App() {
         title: outcomes.length === 1 ? outcomes[0].title : "Agent run: " + outcomes.length + " tasks",
         summary: outcomes.map(item => item.title + " [" + item.status + "]" + (item.error ? ": " + item.error : item.summary ? ": " + item.summary : "")).join("\\n").slice(0, 2000),
         status: failed ? "failed" : active ? "working" : "review",
-        files: outcomes.flatMap(item => item.worktreePath ? [item.worktreePath] : [])
+        files: []
       });
       setDesktopProjectState(state);
       setDesktopProjectNotice("Build outcome added to the project change feed. Verification remains a separate step.");
