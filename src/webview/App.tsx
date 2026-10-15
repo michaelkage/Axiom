@@ -70,8 +70,9 @@ function App() {
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   const [workflowError, setWorkflowError] = createSignal<string | null>(null);
-  const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[] } | null>(null);
+  const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[]; fallbackUsed?: boolean; routingExplanation?: string; discoveryWarning?: string } | null>(null);
   const [parallelPlanBusy, setParallelPlanBusy] = createSignal(false);
+  const [parallelAbortController, setParallelAbortController] = createSignal<AbortController | null>(null);
   const [parallelPlanError, setParallelPlanError] = createSignal<string | null>(null);
   const [taskOutcomes, setTaskOutcomes] = createSignal<TaskExecutionRecord[]>([]);
   const [taskAcceptanceCriteria, setTaskAcceptanceCriteria] = createSignal<Record<string, string[]>>({});
@@ -433,6 +434,8 @@ function App() {
     setParallelPlanError(null);
     const activeSession = sync.currentSessionId();
     if (activeSession) sync.setSessionError(activeSession, null);
+    const abortController = new AbortController();
+    setParallelAbortController(abortController);
     setWorkflowRun({ prompt: plan.prompt, status: "running" });
     setTaskOutcomes([]);
     setTaskAcceptanceCriteria(Object.fromEntries(parallel.tasks.map(task => [task.id, task.acceptanceCriteria ?? ["Implement scope and report concrete verification evidence."]])));
@@ -449,6 +452,7 @@ function App() {
       const results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), {
         request: plan.prompt,
         planSteps: plan.steps,
+        signal: abortController.signal,
         onOutcome: record => setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]),
       });
       const completed = results.map(({ task, result }) => {
@@ -464,8 +468,10 @@ function App() {
       logger.info("Parallel task execution finished; changes remain isolated pending explicit review and integration.", { outcomes: completed });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setWorkflowError(`Parallel execution stopped: ${message}. Some sibling tasks may already have changed files; review the workspace before retrying.`);
+      setWorkflowError(`${abortController.signal.aborted ? "Parallel execution cancelled" : "Parallel execution stopped"}: ${message}. Some sibling tasks may already have changed files; review the workspace before retrying.`);
       setWorkflowRun({ prompt: plan.prompt, status: "failed" });
+    } finally {
+      setParallelAbortController(null);
     }
   };
 
@@ -1153,6 +1159,9 @@ function App() {
               <strong>{run().status === "running" ? "Axiom is building" : run().status === "complete" ? "Response finished" : "Run needs attention"}</strong>
               <span>{run().status === "running" ? "Your plan was sent to the agent. Follow progress in the conversation." : run().status === "complete" ? "The agent response finished. This is not a quality-gate pass: review changed files and check results before accepting the work." : "The request did not complete successfully. Check the error in the conversation, then retry when ready."}</span>
             </div>
+            <Show when={run().status === "running" && parallelAbortController()}>
+              <button type="button" class="workflow-plan__secondary" onClick={() => parallelAbortController()?.abort(new Error("Cancelled by user"))}>Cancel parallel tasks</button>
+            </Show>
             <button type="button" class="workflow-run__dismiss" onClick={() => setWorkflowRun(null)} aria-label="Dismiss run status">×</button>
           </section>
         )}
@@ -1282,6 +1291,9 @@ function App() {
               <Show when={parallelPlan()} keyed>
                 {(parallel) => <div class="workflow-plan__parallel">
                   <p>OmniRoute selected <strong>{parallel.model}</strong> and proposed {parallel.tasks.length} tasks. Tasks with overlapping target files are scheduled sequentially.</p>
+                  <Show when={parallel.routingExplanation}><p>{parallel.routingExplanation}</p></Show>
+                  <Show when={parallel.fallbackUsed}><p role="status">An explicitly configured fallback model was used.</p></Show>
+                  <Show when={parallel.discoveryWarning}><p role="status">{parallel.discoveryWarning}</p></Show>
                   <ol><For each={parallel.tasks}>{(task) => <li><strong>{task.title}</strong><span>{task.targetFiles.length ? task.targetFiles.join(", ") : task.scope}</span><Show when={task.dependsOn.length > 0}><small>Depends on: {task.dependsOn.join(", ")}</small></Show><ul><For each={task.acceptanceCriteria ?? ["Implement scope and report concrete verification evidence."]}>{criterion => <li>{criterion}</li>}</For></ul></li>}</For></ol>
                   <button class="workflow-plan__primary" onClick={() => void executeParallelPlan()}>Run with parallel agents <span aria-hidden="true">→</span></button>
                 </div>}
