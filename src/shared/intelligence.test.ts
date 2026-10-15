@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_PLUGIN_CATALOG, comboPromptForState, contextForSpecialist, coordinateTasks, DEFAULT_COMBOS, getAvailableCombos, getCombo, inferSpecialist, packContext,
-  reviewPluginManifest, suggestNextActions,
+  reviewPluginManifest, suggestNextActions, filterProjectContext,
 } from "./intelligence";
 
 describe("Axiom intelligence layer", () => {
@@ -26,6 +26,23 @@ describe("Axiom intelligence layer", () => {
   it("normalizes target paths and blocks traversal", () => {
     expect(coordinateTasks([{ id: "a", title: "A", prompt: "implement", targetFiles: ["./src\\app.tsx", "src/app.tsx"] }])[0]?.targetFiles).toEqual(["src/app.tsx"]);
     expect(() => coordinateTasks([{ id: "bad", title: "Bad", prompt: "change", targetFiles: ["../secrets"] }])).toThrow(/Unsafe/);
+  });
+
+  it("filters stale, ignored-path, and secret-bearing context with visible reasons", () => {
+    const result = filterProjectContext([
+      { id: "src/current.ts", content: "safe current design", kind: "file", relevance: 1, updatedAt: 900 },
+      { id: ".env", content: "not displayed", kind: "file", relevance: 1, updatedAt: 900 },
+      { id: "src/key.ts", content: "api_key=sk-12345678901234567890", kind: "file", relevance: 1, updatedAt: 900 },
+      { id: "docs/old.md", content: "old decision", kind: "decision", relevance: 1, updatedAt: 100 },
+      { id: "generated/output.txt", content: "generated", kind: "file", relevance: 1, updatedAt: 900 },
+    ], { now: 1000, maxAgeMs: 500, excludedPaths: ["generated"] });
+    expect(result.included.map(item => item.id)).toEqual(["src/current.ts"]);
+    expect(result.excluded).toEqual([
+      { id: ".env", reason: "ignored-path" },
+      { id: "src/key.ts", reason: "sensitive-content" },
+      { id: "docs/old.md", reason: "stale" },
+      { id: "generated/output.txt", reason: "ignored-path" },
+    ]);
   });
 
   it("packs highest-value context first, deduplicates IDs, and respects the budget", () => {
