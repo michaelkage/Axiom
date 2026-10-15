@@ -3,6 +3,7 @@ import {
   compressionPercent,
   createIndependentTasks,
   executeTaskBatches,
+  TaskBatchExecutionError,
   parseSubTasks,
   planSubTasksWithOmniRoute,
 } from "./axiomRuntime";
@@ -106,6 +107,37 @@ describe("Axiom runtime helpers", () => {
     }, record => outcomes.push(record.taskId + ":" + record.status))).rejects.toThrow(/agent unavailable/);
     expect(outcomes).toContain("a:failed");
     expect(outcomes).not.toContain("b:running");
+  });
+
+  it("preserves successful peer results and reports blocked dependents after a worker fails", async () => {
+    const tasks = parseSubTasks([
+      { id: "good", title: "Good", scope: "independent", targetFiles: ["good.ts"], dependsOn: [], acceptanceCriteria: ["Result is returned"] },
+      { id: "bad", title: "Bad", scope: "independent", targetFiles: ["bad.ts"], dependsOn: [], acceptanceCriteria: ["Error is reported"] },
+      { id: "downstream", title: "Downstream", scope: "depends on bad", targetFiles: ["downstream.ts"], dependsOn: ["bad"], acceptanceCriteria: ["Does not run after failure"] },
+    ]);
+    let failure: unknown;
+    try {
+      await executeTaskBatches(tasks, async task => {
+        if (task.id === "bad") throw new Error("worker exploded");
+        return { value: task.id };
+      });
+    } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(TaskBatchExecutionError);
+    expect((failure as TaskBatchExecutionError).successfulResults.map(item => item.task.id)).toContain("good");
+    expect((failure as TaskBatchExecutionError).failedTaskIds).toContain("bad");
+    expect((failure as TaskBatchExecutionError).blockedTaskIds).toContain("downstream");
+  });
+
+  it("times out a task and passes an abort signal to the runner", async () => {
+    const tasks = parseSubTasks([
+      { id: "slow", title: "Slow", scope: "wait", targetFiles: ["slow.ts"], dependsOn: [], acceptanceCriteria: ["Timeout is surfaced"] },
+    ]);
+    let receivedSignal: AbortSignal | undefined;
+    await expect(executeTaskBatches(tasks, async (_task, _completed, signal) => {
+      receivedSignal = signal;
+      return new Promise<string>(() => {});
+    }, undefined, { timeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
+    expect(receivedSignal?.aborted).toBe(true);
   });
 
   it("plans tasks through an OpenAI-compatible OmniRoute endpoint", async () => {
