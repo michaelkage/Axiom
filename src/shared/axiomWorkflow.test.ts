@@ -13,6 +13,11 @@ describe("Axiom product workflow primitives", () => {
     expect(result.status).toBe("Needs fixes");
     expect(result.unexpectedPaths).toEqual(["secrets.txt"]);
   });
+  it("does not treat a passed label without exit-code evidence as verified", () => {
+    const result = evaluateQualityGate({ checks: [{ name: "tests", state: "passed" }], changes: [] });
+    expect(result.status).toBe("Needs fixes");
+    expect(result.reasons).toContain("One or more checks lack passing evidence.");
+  });
   it("blocks when execution is blocked and flags failed checks", () => {
     expect(evaluateQualityGate({ checks: [], changes: [], blockedReason: "Gateway unavailable" }).status).toBe("Blocked");
     expect(evaluateQualityGate({ checks: [{ name: "lint", state: "failed", exitCode: 1 }], changes: [] }).status).toBe("Needs fixes");
