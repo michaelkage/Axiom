@@ -61,8 +61,8 @@ function parseTasks(raw: string): AxiomSubTask[] {
 
 export class AxiomOrchestrator {
   constructor(
-    private readonly gateway = new OmniRouteClient(),
     private readonly executeWorker: WorkerExecutor,
+    private readonly gateway = new OmniRouteClient(),
   ) {}
 
   async plan(goal: string, workspaceContext: unknown, signal?: AbortSignal): Promise<AxiomSubTask[]> {
