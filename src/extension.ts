@@ -2,6 +2,9 @@ import * as vscode from "vscode";
 import { OpenCodeService } from "./OpenCodeService";
 import { OpenCodeViewProvider } from "./OpenCodeViewProvider";
 import type { HostMessage } from "./shared/messages";
+import { openAxiomRuntimeDashboard } from "./axiom/runtimeDashboard";
+import { OmniRouteClient } from "./axiom/omniRouteClient";
+import { AxiomErrorHealing } from "./axiom/errorHealing";
 
 let logger: vscode.LogOutputChannel;
 
@@ -19,6 +22,44 @@ export async function activate(context: vscode.ExtensionContext) {
     workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     extensionPath: context.extensionPath,
   });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("axiom.openRuntimeDashboard", () => {
+      openAxiomRuntimeDashboard(context);
+    }),
+    vscode.commands.registerCommand("axiom.checkOmniRoute", async () => {
+      const result = await new OmniRouteClient().healthCheck();
+      if (result.ok) {
+        vscode.window.showInformationMessage(`Axiom: OmniRoute responded in ${result.latencyMs ?? "?"} ms at ${result.url}`);
+      } else {
+        vscode.window.showErrorMessage(`Axiom: OmniRoute is unavailable at ${result.url}: ${result.error ?? "unknown error"}`);
+      }
+    }),
+    vscode.commands.registerCommand("axiom.analyzeDiagnostics", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage("Axiom: Open a file to analyze its diagnostics.");
+        return;
+      }
+      const diagnostics = vscode.languages.getDiagnostics(editor.document.uri)
+        .filter(item => item.severity === vscode.DiagnosticSeverity.Error);
+      if (!diagnostics.length) {
+        vscode.window.showInformationMessage("Axiom: No compiler or language-service errors found in the active file.");
+        return;
+      }
+      const healing = new AxiomErrorHealing();
+      let analyzed = 0;
+      for (const diagnostic of diagnostics.slice(0, 5)) {
+        try {
+          await healing.suggestRepair(editor.document, diagnostic);
+          analyzed++;
+        } catch (error) {
+          logger.warn("Axiom diagnostic analysis failed", error);
+        }
+      }
+      vscode.window.showInformationMessage(`Axiom: Analyzed ${analyzed} of ${Math.min(diagnostics.length, 5)} diagnostics. Suggestions require review; no files were modified.`);
+    }),
+  );
 
   // Create OpenCode service
   const openCodeService = new OpenCodeService();
