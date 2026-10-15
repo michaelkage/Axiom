@@ -84,6 +84,16 @@
         "command": "axiom.analyzeDiagnostics",
         "title": "Analyze Current File Diagnostics",
         "category": "Axiom"
+      },
+      {
+        "command": "axiom.runGoal",
+        "title": "Plan and Run Axiom Goal",
+        "category": "Axiom"
+      },
+      {
+        "command": "axiom.cancelRun",
+        "title": "Cancel Axiom Run",
+        "category": "Axiom"
       }
     ],
     "configuration": {
