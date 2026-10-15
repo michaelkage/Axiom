@@ -201,6 +201,19 @@ Relevant commits:
 - `f259e9476c20130b3870fc4246dad4df25bd8229` and `03056d7842d0bacbf48bc9e7893ff72c8914519e` — strict verification evidence
 - `bdadeadba381a13704f478e80cd079fa91ec97c9` and `cb48682748cee82b7df652ec29e5e1ec100175db` — quality-gate regression tests
 
+### Batch 2 — plugin trust boundaries
+
+Implemented on `axiom/product-rebuild`:
+- Plugin manifest review now fails closed when the manifest is absent/malformed, version/publisher/description are missing, permissions are missing, or an unknown capability is requested.
+- Sensitive plugin permissions continue to require explicit approval.
+- Plugin source URLs must be HTTPS and cannot embed URL credentials.
+- Added regression coverage for malformed manifests and unknown capabilities.
+
+Relevant commits:
+- `5476ebee4ea9ca46d839a9a80e8ec96d399180ed` — fail-closed manifest validation
+- `38a61f1d9914c5bc51a1bef424b0b1dedd856295` — HTTPS/credential warning compatibility
+- `8c08646159b816f1779d66c458bf04bc95f2f792` — plugin manifest regression tests
+
 ### Remaining integration gate
 
 This batch has been committed to the working branch, but automated CI results have not yet been confirmed in this log. The next coordinated batches must integrate outcome-preserving orchestration, explicit cancellation/timeouts, OmniRoute health/fallback reporting, project-context freshness and exclusions, and plugin permission boundaries. Do not publish a release or mark the full program complete until CI and packaged desktop acceptance criteria have been checked. Manual desktop smoke testing remains a separate, explicitly tracked step.
