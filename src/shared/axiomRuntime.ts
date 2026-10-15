@@ -160,14 +160,24 @@ export async function executeTaskBatches<T>(
         outcomeById.set(task.id, "running");
         emit({ taskId: task.id, title: task.title, status: "running", startedAt });
         const runnerPromise = runner(task, [...completedContext], controller.signal);
-        const result = options.timeoutMs && options.timeoutMs > 0
-          ? await Promise.race([runnerPromise, new Promise<never>((_, reject) => {
-              timeoutHandle = setTimeout(() => {
-                controller.abort(new Error("Task timed out"));
-                reject(new Error("Task timed out after " + options.timeoutMs + "ms"));
-              }, options.timeoutMs);
-            })])
-          : await runnerPromise;
+        let removeCancellationListener = () => {};
+        const cancellation = options.signal ? new Promise<never>((_, reject) => {
+          const cancel = () => reject(new Error("Task execution cancelled."));
+          if (options.signal!.aborted) cancel();
+          else {
+            options.signal!.addEventListener("abort", cancel, { once: true });
+            removeCancellationListener = () => options.signal!.removeEventListener("abort", cancel);
+          }
+        }) : new Promise<never>(() => {});
+        const timeoutPromise = options.timeoutMs && options.timeoutMs > 0 ? new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            controller.abort(new Error("Task timed out"));
+            reject(new Error("Task timed out after " + options.timeoutMs + "ms"));
+          }, options.timeoutMs);
+        }) : new Promise<never>(() => {});
+        let result: T;
+        try { result = await Promise.race([runnerPromise, timeoutPromise, cancellation]); }
+        finally { removeCancellationListener(); }
         outcomeById.set(task.id, "succeeded");
         const detail = result && typeof result === "object" ? result as Record<string, unknown> : {};
         emit({
