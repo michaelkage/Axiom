@@ -242,12 +242,34 @@ export interface PluginReview {
 export function reviewPluginManifest(manifest: PluginManifest): PluginReview {
   const warnings: string[] = [];
   const requiredApprovals: string[] = [];
-  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(manifest.id)) warnings.push("Plugin ID is missing or malformed.");
-  if (!manifest.version.trim() || !manifest.publisher.trim()) warnings.push("Version and publisher must be declared.");
-  if (!manifest.verified) warnings.push("Publisher or package integrity has not been verified.");
-  for (const permission of new Set(manifest.permissions)) {
-    if (permission === "write-files" || permission === "run-commands" || permission === "network") requiredApprovals.push(permission);
+  const candidate = manifest as Partial<PluginManifest> | null | undefined;
+  if (!candidate || typeof candidate !== "object") {
+    return { installable: false, warnings: ["Plugin manifest must be an object."], requiredApprovals };
   }
-  if (manifest.sourceUrl && !/^https:\/\//i.test(manifest.sourceUrl)) warnings.push("Plugin source must use HTTPS.");
+  if (typeof candidate.id !== "string" || !/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(candidate.id)) warnings.push("Plugin ID is missing or malformed.");
+  if (typeof candidate.version !== "string" || !candidate.version.trim() || typeof candidate.publisher !== "string" || !candidate.publisher.trim()) warnings.push("Version and publisher must be declared.");
+  if (typeof candidate.description !== "string" || !candidate.description.trim()) warnings.push("Plugin description must be declared.");
+  if (candidate.verified !== true) warnings.push("Publisher or package integrity has not been verified.");
+
+  const allowed = new Set<PluginManifest["permissions"][number]>(["read-files", "write-files", "run-commands", "network", "models"]);
+  if (!Array.isArray(candidate.permissions)) {
+    warnings.push("Plugin permissions must be declared as an array.");
+  } else {
+    for (const permission of new Set(candidate.permissions as string[])) {
+      if (!allowed.has(permission as PluginManifest["permissions"][number])) {
+        warnings.push("Plugin requests an unknown capability: " + String(permission) + ".");
+        continue;
+      }
+      if (permission === "write-files" || permission === "run-commands" || permission === "network") requiredApprovals.push(permission);
+    }
+  }
+  if (candidate.sourceUrl) {
+    try {
+      const url = new URL(candidate.sourceUrl);
+      if (url.protocol !== "https:" || url.username || url.password) warnings.push("Plugin source must use HTTPS and must not embed credentials.");
+    } catch {
+      warnings.push("Plugin source URL is malformed.");
+    }
+  }
   return { installable: warnings.length === 0, warnings, requiredApprovals };
 }
