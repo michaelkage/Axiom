@@ -70,11 +70,21 @@ jobs:
         working-directory: desktop
         run: npm run dist
 
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "desktop/release/Axiom-Setup-*-x64.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Installer was not produced." }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii "$($installer.FullName).sha256"
+
       - name: Upload standalone installer
         uses: actions/upload-artifact@v4
         with:
           name: axiom-standalone-windows-${{ env.AXIOM_VERSION }}
-          path: desktop/release/Axiom-Setup-*-x64.exe
+          path: |
+            desktop/release/Axiom-Setup-*-x64.exe
+            desktop/release/Axiom-Setup-*-x64.exe.sha256
           if-no-files-found: error
 
       - name: Publish GitHub Release
