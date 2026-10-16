@@ -65,7 +65,7 @@ export function McpIntegrationsPanel() {
       await connectedApi.saveSecret({ id: entry.id, secret });
       setSecrets(previous => ({ ...previous, [entry.id]: "" }));
       await refresh();
-      setNotice(entry.name + " credential encrypted in OS-backed secure storage. Restart Axiom to load the server. Axiom does not verify the key until the runtime connects.");
+      setNotice(entry.name + " credential encrypted in OS-backed secure storage. Explicitly enable the server when ready; this may download and execute its published MCP package. Axiom does not verify the key until the runtime connects.");
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setBusyId(""); }
   }
@@ -108,6 +108,7 @@ export function McpIntegrationsPanel() {
               </label>
               <div class="workflow-plan__actions">
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !(secrets()[entry.id] || "").trim()} onClick={() => void saveSecret(entry)}>{busyId() === entry.id ? "Saving…" : "Save key securely"}</button>
+                <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !entry.hasSecret} onClick={() => void enable(entry)}>{entry.enabled ? "Disable server" : "Enable server (may download package)"}</button>
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !entry.hasSecret} onClick={() => void remove(entry)}>Remove saved key</button>
               </div>
             </Show>
