@@ -12,11 +12,9 @@
       "disable": true
     }
   },
-  "username": "",
   "permission": {
     "bash": {
       "*": "allow",
-      "gcloud *": "ask",
       "*DB_TARGET=production*": "ask",
       "*NODE_ENV=production*": "ask"
     }
