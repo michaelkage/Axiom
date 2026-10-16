@@ -6,164 +6,51 @@
 }
 
 :root {
-  /* ===========================================
-   * Theme Variables with VS Code fallbacks
-   * These use VS Code theme variables when available,
-   * falling back to light-dark() for browser UIKit
-   * Light values from VS Code Light Default, Dark from VS Code Dark Default
-   * =========================================== */
+  color-scheme: light dark;
 
-  /* Core Colors */
-  --foreground: var(--vscode-foreground, light-dark(#3b3b3b, #cccccc));
-  --description-foreground: var(
-    --vscode-descriptionForeground,
-    light-dark(#3b3b3b, #9d9d9d)
-  );
-  --error-foreground: var(--vscode-errorForeground, oklch(0.65 0.18 25));
-  --focus-border: var(--vscode-focusBorder, light-dark(#005fb8, #0078d4));
-
-  /* Sidebar */
-  --sidebar-background: var(
-    --vscode-sideBar-background,
-    light-dark(#f8f8f8, #181818)
-  );
-
-  /* Editor */
-  --editor-background: var(
-    --vscode-editor-background,
-    light-dark(#ffffff, #1e1e1e)
-  );
-
-  /* Input */
-  --input-foreground: var(
-    --vscode-input-foreground,
-    light-dark(#3b3b3b, #cccccc)
-  );
-  --input-border: var(
-    --vscode-editorWidget-border,
-    light-dark(#c8c8c8, #454545)
-  );
-  --input-placeholder-foreground: var(
-    --vscode-input-placeholderForeground,
-    light-dark(#767676, #989898)
-  );
-  --input-validation-error-background: var(
-    --vscode-inputValidation-errorBackground,
-    light-dark(#f2dede, #5a1d1d)
-  );
-  --input-validation-error-border: var(
-    --vscode-inputValidation-errorBorder,
-    #be1100
-  );
-
-  /* Button */
-  --button-secondary-background: var(
-    --vscode-button-secondaryBackground,
-    light-dark(#e5e5e5, #313131)
-  );
-  --button-secondary-foreground: var(
-    --vscode-button-secondaryForeground,
-    light-dark(#3b3b3b, #cccccc)
-  );
-  --button-secondary-hover-background: var(
-    --vscode-button-secondaryHoverBackground,
-    light-dark(#cccccc, #3c3c3c)
-  );
-
-  /* Panel */
-  --panel-border: var(--vscode-panel-border, light-dark(#e5e5e5, #2b2b2b));
-
-  /* Text */
-  --text-link-foreground: var(
-    --vscode-textLink-foreground,
-    light-dark(#005fb8, #4daafc)
-  );
-  --text-link-active-foreground: var(
-    --vscode-textLink-activeForeground,
-    light-dark(#005fb8, #4daafc)
-  );
-  --text-code-block-background: var(
-    --vscode-textCodeBlock-background,
-    light-dark(#f8f8f8, #2b2b2b)
-  );
-  --text-blockquote-border: var(
-    --vscode-textBlockQuote-border,
-    light-dark(#e5e5e5, #616161)
-  );
-  --text-blockquote-foreground: var(
-    --vscode-textBlockQuote-foreground,
-    light-dark(#3b3b3b, #cccccc)
-  );
-  --text-blockquote-background: var(
-    --vscode-textBlockQuote-background,
-    light-dark(#f8f8f8, #2b2b2b)
-  );
-
-  /* Editor */
-  --editor-font-family: var(
-    --vscode-editor-font-family,
-    "SF Mono",
-    Monaco,
-    "Cascadia Code",
-    "Roboto Mono",
-    Consolas,
-    "Courier New",
-    monospace
-  );
-  --editor-line-number-foreground: var(
-    --vscode-editorLineNumber-foreground,
-    #6e7681
-  );
-
-  /* Diff */
-  --diff-inserted-line-background: var(
-    --vscode-diffEditor-insertedLineBackground,
-    rgba(155, 185, 85, 0.2)
-  );
-  --diff-removed-line-background: var(
-    --vscode-diffEditor-removedLineBackground,
-    rgba(255, 0, 0, 0.2)
-  );
-
-  /* Git Decorations */
-  --git-added-foreground: var(
-    --vscode-gitDecoration-addedResourceForeground,
-    light-dark(#587c0c, #89d185)
-  );
-  --git-deleted-foreground: var(
-    --vscode-gitDecoration-deletedResourceForeground,
-    light-dark(#ad0707, #f48771)
-  );
-
-  /* Scrollbar */
-  --scrollbar-slider-background: var(
-    --vscode-scrollbarSlider-background,
-    rgba(121, 121, 121, 0.4)
-  );
-  --scrollbar-slider-hover-background: var(
-    --vscode-scrollbarSlider-hoverBackground,
-    rgba(100, 100, 100, 0.7)
-  );
-  --scrollbar-slider-active-background: var(
-    --vscode-scrollbarSlider-activeBackground,
-    rgba(191, 191, 191, 0.4)
-  );
-
-  /* Card background - relative lightness reduction for perceptual consistency */
-  --card-background: oklch(from var(--sidebar-background) calc(l * 0.98) c h);
-
-  /* Fonts */
-  --font-family: var(
-    --vscode-font-family,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif
-  );
-  --font-size: var(--vscode-font-size, 13px);
+  --foreground: light-dark(#3b3b3b, #cccccc);
+  --description-foreground: light-dark(#3b3b3b, #9d9d9d);
+  --error-foreground: oklch(0.65 0.18 25);
+  --focus-border: light-dark(#005fb8, #0078d4);
+  --sidebar-background: light-dark(#f8f8f8, #181818);
+  --editor-background: light-dark(#ffffff, #1e1e1e);
+  --input-foreground: var(--foreground);
+  --input-border: light-dark(#c8c8c8, #454545);
+  --input-placeholder-foreground: light-dark(#767676, #989898);
+  --input-validation-error-background: light-dark(#f2dede, #5a1d1d);
+  --input-validation-error-border: #be1100;
+  --warning-background: light-dark(#fff4ce, #4b3a1b);
+  --warning-border: light-dark(#d6a243, #8b6b2e);
+  --button-background: #0e639c;
+  --button-foreground: #ffffff;
+  --button-border: transparent;
+  --button-secondary-background: light-dark(#e5e5e5, #313131);
+  --button-secondary-foreground: var(--foreground);
+  --button-secondary-hover-background: light-dark(#cccccc, #3c3c3c);
+  --panel-border: light-dark(#e5e5e5, #2b2b2b);
+  --text-link-foreground: light-dark(#005fb8, #4daafc);
+  --text-link-active-foreground: light-dark(#005fb8, #4daafc);
+  --text-code-block-background: light-dark(#f8f8f8, #2b2b2b);
+  --text-blockquote-border: light-dark(#e5e5e5, #616161);
+  --text-blockquote-foreground: var(--foreground);
+  --text-blockquote-background: light-dark(#f8f8f8, #2b2b2b);
+  --editor-font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  --editor-line-number-foreground: #6e7681;
+  --diff-inserted-line-background: rgba(155, 185, 85, 0.2);
+  --diff-removed-line-background: rgba(255, 0, 0, 0.2);
+  --git-added-foreground: light-dark(#587c0c, #89d185);
+  --git-deleted-foreground: light-dark(#ad0707, #f48771);
+  --scrollbar-slider-background: rgba(121, 121, 121, 0.4);
+  --scrollbar-slider-hover-background: rgba(100, 100, 100, 0.7);
+  --scrollbar-slider-active-background: rgba(191, 191, 191, 0.4);
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-size: 13px;
+  --badge-background: #4d4d4d;
+  --badge-foreground: #ffffff;
+  --selection-background: rgba(128, 128, 128, 0.12);
+  --editor-widget-background: light-dark(#f5f5f5, #20232c);
+  --success-foreground: light-dark(#587c0c, #89d185);
+  --warning-foreground: light-dark(#8a5a00, #d6a243);
 
   /* ===========================================
    * Derived Variables (using theme variables above)
@@ -287,10 +174,10 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 0 3px;
-  border: 1px solid color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-background, #4d4d4d) 50%, transparent);
   border-radius: 3px;
-  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 30%, transparent);
-  color: color-mix(in srgb, var(--vscode-badge-foreground, #ffffff) 70%, transparent);
+  background: color-mix(in srgb, var(--badge-background, #4d4d4d) 30%, transparent);
+  color: color-mix(in srgb, var(--badge-foreground, #ffffff) 70%, transparent);
   font-family: var(--font-family);
   font-size: 12px;
   font-weight: 450;
@@ -307,7 +194,7 @@ body {
 }
 
 .file-chip:hover {
-  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
+  background: color-mix(in srgb, var(--badge-background, #4d4d4d) 50%, transparent);
 }
 
 /* Input Container */
@@ -1063,19 +950,6 @@ body {
 
 .step-text {
   font-style: italic;
-}
-
-/* Theme-specific adjustments */
-body.vscode-light {
-  /* Light theme specific styles if needed */
-}
-
-body.vscode-dark {
-  /* Dark theme specific styles if needed */
-}
-
-body.vscode-high-contrast {
-  /* High contrast specific styles */
 }
 
 /* Agent Switcher */
@@ -2068,7 +1942,7 @@ body.vscode-high-contrast {
 /* Workspace-scoped project intelligence */
 .axiom-memory {
   margin: 12px 0;
-  border: 1px solid var(--vscode-panel-border, var(--border));
+  border: 1px solid var(--panel-border, var(--border));
   border-radius: 10px;
   overflow: hidden;
 }
@@ -2080,34 +1954,34 @@ body.vscode-high-contrast {
   gap: 12px;
   padding: 12px;
   border: 0;
-  color: var(--vscode-foreground);
-  background: var(--vscode-sideBar-background, transparent);
+  color: var(--foreground);
+  background: var(--sidebar-background, transparent);
   text-align: left;
   cursor: pointer;
 }
 .axiom-memory__toggle > span:first-child { display: grid; gap: 4px; }
 .axiom-memory__toggle small, .axiom-memory__body p, .axiom-memory__item small, .axiom-memory__item time {
-  color: var(--vscode-descriptionForeground);
+  color: var(--description-foreground);
   font-size: 11px;
   line-height: 1.5;
 }
 .axiom-memory__body { display: grid; gap: 10px; padding: 12px; }
-.axiom-memory__body label { display: grid; gap: 5px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.axiom-memory__body label { display: grid; gap: 5px; font-size: 11px; color: var(--description-foreground); }
 .axiom-memory__body input, .axiom-memory__body textarea, .axiom-memory__body select {
   width: 100%; box-sizing: border-box; padding: 7px 8px; border-radius: 5px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit;
+  border: 1px solid var(--input-border, var(--panel-border));
+  color: var(--input-foreground); background: var(--input-background); font: inherit;
 }
 .axiom-memory__body textarea { resize: vertical; }
 .axiom-memory__actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .axiom-memory__actions button {
-  padding: 5px 9px; border-radius: 5px; border: 1px solid var(--vscode-button-border, transparent);
-  color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; font: inherit; font-size: 11px;
+  padding: 5px 9px; border-radius: 5px; border: 1px solid var(--button-border, transparent);
+  color: var(--button-foreground); background: var(--button-background); cursor: pointer; font: inherit; font-size: 11px;
 }
 .axiom-memory__actions button:disabled { opacity: .5; cursor: not-allowed; }
-.axiom-memory__item { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--vscode-panel-border); border-radius: 7px; }
+.axiom-memory__item { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--panel-border); border-radius: 7px; }
 .axiom-memory__item > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.axiom-memory__item p { margin: 0; color: var(--vscode-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
+.axiom-memory__item p { margin: 0; color: var(--foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
 .axiom-memory__category { text-transform: capitalize; font-size: 10px; font-weight: 700; }
 .axiom-memory__empty { margin: 0; }
 
@@ -2157,14 +2031,14 @@ body.vscode-high-contrast {
   width: min(100% - 40px, 820px);
   margin: 18px auto 22px;
   padding: 22px 24px;
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.28));
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.28));
   border-radius: 14px;
-  background: var(--vscode-sideBar-background, var(--vscode-editor-background, rgba(128, 128, 128, 0.035)));
-  color: var(--vscode-foreground, inherit);
+  background: var(--sidebar-background, var(--editor-background, rgba(128, 128, 128, 0.035)));
+  color: var(--foreground, inherit);
 }
 .provider-onboarding__eyebrow {
   margin-bottom: 8px;
-  color: var(--vscode-descriptionForeground, #8c8c8c);
+  color: var(--description-foreground, #8c8c8c);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .12em;
@@ -2176,7 +2050,7 @@ body.vscode-high-contrast {
 }
 .provider-onboarding > p {
   margin: 0 0 18px;
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--description-foreground, #999);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -2195,7 +2069,7 @@ body.vscode-high-contrast {
   width: 26px;
   height: 26px;
   place-items: center;
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, .3));
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, .3));
   border-radius: 50%;
   font-size: 12px;
   font-weight: 650;
@@ -2208,7 +2082,7 @@ body.vscode-high-contrast {
 .provider-onboarding__steps p,
 .provider-onboarding__tips p {
   margin: 0;
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--description-foreground, #999);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -2220,7 +2094,7 @@ body.vscode-high-contrast {
   margin-top: 18px;
 }
 .provider-onboarding__actions a {
-  color: var(--vscode-textLink-foreground, #6aa8ff);
+  color: var(--text-link-foreground, #6aa8ff);
   font-size: 12px;
   text-decoration: none;
 }
@@ -2231,7 +2105,7 @@ body.vscode-high-contrast {
   margin-top: 16px;
   padding: 14px;
   border-radius: 8px;
-  background: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, .08));
+  background: var(--selection-background, rgba(128, 128, 128, .08));
 }
 .runtime-status-banner {
   display: flex;
@@ -2240,9 +2114,9 @@ body.vscode-high-contrast {
   gap: 16px;
   margin: 10px 16px;
   padding: 14px 16px;
-  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(210, 150, 40, .55));
+  border: 1px solid var(--warning-border, rgba(210, 150, 40, .55));
   border-radius: 10px;
-  background: var(--vscode-inputValidation-warningBackground, rgba(210, 150, 40, .08));
+  background: var(--warning-background, rgba(210, 150, 40, .08));
 }
 .runtime-status-banner strong { font-size: 13px; }
 .runtime-status-banner p {
@@ -2251,22 +2125,22 @@ body.vscode-high-contrast {
   line-height: 1.5;
 }
 .runtime-status-banner small {
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--description-foreground, #999);
   font-size: 11px;
 }
 .runtime-status-banner button {
   flex: 0 0 auto;
-  border: 1px solid var(--vscode-button-border, transparent);
+  border: 1px solid var(--button-border, transparent);
   border-radius: 6px;
   padding: 7px 10px;
-  color: var(--vscode-button-foreground, inherit);
-  background: var(--vscode-button-background, rgba(128, 128, 128, .12));
+  color: var(--button-foreground, inherit);
+  background: var(--button-background, rgba(128, 128, 128, .12));
   cursor: pointer;
 }
 .workflow-acceptance-criteria {
   margin: 0 0 16px;
   padding-left: 22px;
-  color: var(--vscode-descriptionForeground, #aaa);
+  color: var(--description-foreground, #aaa);
   font-size: 12px;
   line-height: 1.65;
 }
@@ -2279,7 +2153,7 @@ body.vscode-high-contrast {
 
 /* Provider readiness: discovery and opt-in live model checks */
 .provider-readiness {
-  border-color: var(--vscode-focusBorder, var(--vscode-panel-border));
+  border-color: var(--focus-border, var(--panel-border));
 }
 .provider-readiness__summary,
 .provider-readiness__provider-heading {
@@ -2297,12 +2171,12 @@ body.vscode-high-contrast {
   gap: 12px;
 }
 .provider-readiness__provider {
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 12px;
 }
 .provider-readiness__status {
-  color: var(--vscode-testing-iconPassed, var(--vscode-descriptionForeground));
+  color: var(--success-foreground, var(--description-foreground));
   font-size: 12px;
 }
 .provider-readiness__provider ul {
@@ -2316,7 +2190,7 @@ body.vscode-high-contrast {
   align-items: center;
   gap: 8px 12px;
   padding: 10px 0;
-  border-top: 1px solid var(--vscode-panel-border);
+  border-top: 1px solid var(--panel-border);
 }
 .provider-readiness__provider li > div {
   display: grid;
@@ -2324,7 +2198,7 @@ body.vscode-high-contrast {
   gap: 3px;
 }
 .provider-readiness__provider small {
-  color: var(--vscode-descriptionForeground);
+  color: var(--description-foreground);
   overflow-wrap: anywhere;
 }
 .provider-readiness__issue,
@@ -2332,18 +2206,18 @@ body.vscode-high-contrast {
   margin: 10px 0;
   padding: 10px 12px;
   border-radius: 6px;
-  background: var(--vscode-textBlockQuote-background);
+  background: var(--text-blockquote-background);
   overflow-wrap: anywhere;
 }
 .provider-readiness__issue {
-  border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-editorError-foreground));
+  border-left: 3px solid var(--warning-foreground, var(--error-foreground));
 }
 .provider-readiness__success {
   grid-column: 1 / -1;
-  border-left: 3px solid var(--vscode-testing-iconPassed, var(--vscode-focusBorder));
+  border-left: 3px solid var(--success-foreground, var(--focus-border));
 }
 .provider-readiness__footnote {
-  color: var(--vscode-descriptionForeground);
+  color: var(--description-foreground);
   font-size: 12px;
 }
 @media (max-width: 560px) {
@@ -2444,20 +2318,20 @@ body.vscode-high-contrast {
 @media (max-width: 640px) { .standalone-files__layout { grid-template-columns: minmax(0, 1fr); } .standalone-files__list { min-height: 100px; max-height: 150px; } }
 
 /* Optional OmniRoute setup */
-.omniroute-setup{margin:18px auto;padding:22px;max-width:860px;border:1px solid var(--vscode-panel-border,#30323b);border-radius:12px;background:var(--vscode-sideBar-background,#17191f);color:var(--vscode-foreground,#e5e7eb)}
-.omniroute-setup__eyebrow{font-size:10px;letter-spacing:.12em;color:var(--vscode-descriptionForeground,#9ca3af);font-weight:700}
+.omniroute-setup{margin:18px auto;padding:22px;max-width:860px;border:1px solid var(--panel-border,#30323b);border-radius:12px;background:var(--sidebar-background,#17191f);color:var(--foreground,#e5e7eb)}
+.omniroute-setup__eyebrow{font-size:10px;letter-spacing:.12em;color:var(--description-foreground,#9ca3af);font-weight:700}
 .omniroute-setup h2{font-size:18px;margin:8px 0}
-.omniroute-setup>p{font-size:13px;line-height:1.6;color:var(--vscode-descriptionForeground,#a6adbb)}
-.omniroute-setup__status{display:flex;align-items:center;gap:10px;padding:12px;margin:14px 0;border:1px solid var(--vscode-panel-border,#30323b);border-radius:8px}
-.omniroute-setup__status small{display:block;color:var(--vscode-descriptionForeground,#9ca3af);margin-top:3px}
+.omniroute-setup>p{font-size:13px;line-height:1.6;color:var(--description-foreground,#a6adbb)}
+.omniroute-setup__status{display:flex;align-items:center;gap:10px;padding:12px;margin:14px 0;border:1px solid var(--panel-border,#30323b);border-radius:8px}
+.omniroute-setup__status small{display:block;color:var(--description-foreground,#9ca3af);margin-top:3px}
 .omniroute-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#d97706}
 .omniroute-dot--on{background:#22c55e}
 .omniroute-setup__spacer{flex:1}
 .omniroute-setup__field{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:12px;font-weight:600}
-.omniroute-setup__field input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--vscode-input-border,#3b3e48);border-radius:6px;background:var(--vscode-input-background,#111319);color:var(--vscode-input-foreground,#e5e7eb)}
-.omniroute-setup__hint,.omniroute-setup__note{font-size:11px;color:var(--vscode-descriptionForeground,#9ca3af);font-weight:400}
+.omniroute-setup__field input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--input-border,#3b3e48);border-radius:6px;background:var(--input-background,#111319);color:var(--input-foreground,#e5e7eb)}
+.omniroute-setup__hint,.omniroute-setup__note{font-size:11px;color:var(--description-foreground,#9ca3af);font-weight:400}
 .omniroute-setup__toggle{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px}
 .omniroute-setup__actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.omniroute-setup__message{font-size:12px;padding:10px;border-radius:6px;background:var(--vscode-editorWidget-background,#20232c)}
+.omniroute-setup__message{font-size:12px;padding:10px;border-radius:6px;background:var(--editor-widget-background,#20232c)}
 .omniroute-setup__log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:100px;overflow:auto;font-size:11px}
 .omniroute-setup__note{display:block;line-height:1.5;margin-top:12px}
