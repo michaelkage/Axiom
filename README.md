@@ -19,7 +19,7 @@ If the Releases page does not contain a Windows installer yet, a release has not
 - **Project tools:** Axiom can open a folder without Git, but Git is needed for worktree-based task isolation and some change-review workflows.
 - **Storage:** keep enough free disk space for the app, its runtime, project dependencies, and any model/provider tools you use. The installer is large because it bundles the desktop runtime.
 
-Axiom does not require VS Code to be installed. Developer tooling such as Node.js and pnpm is required only when building Axiom from source.
+Axiom is a standalone Electron application and has no editor-extension runtime or VS Code dependency. Node.js and pnpm are needed only to build Axiom from source.
 
 ## Troubleshooting
 
@@ -94,11 +94,10 @@ The standalone desktop UI is emitted to `out/src/webview/standalone.html` and it
 ```bash
 pnpm exec vitest run
 pnpm exec tsc -p tsconfig.webview.json
-pnpm exec tsc -p tsconfig.extension.json --noEmit
 node --check desktop/main.cjs
 ```
 
-The full `pnpm test` script also runs Playwright browser tests. Those tests may need browser/runtime dependencies installed for your environment.
+The full `pnpm test` script runs unit tests and Playwright browser tests. Browser tests may need browser/runtime dependencies installed for your environment.
 
 ### Run the desktop app in development
 
@@ -133,7 +132,6 @@ The installer is emitted to `desktop/release/`. The release workflow performs th
 | `src/webview/App.tsx` | Main project-building workspace and task flow |
 | `src/webview/components/WorktreeReviewPanel.tsx` | Task diff, acceptance criteria, checks, and selective integration UI |
 | `src/webview/components/ProjectMemoryPanel.tsx` | Project memory management UI |
-| `src/OpenCodeViewProvider.ts` | Legacy VS Code host integration and task worktree/quality-gate handlers |
 | `src/shared/axiomRuntime.ts` | Task planning and runtime data contracts |
 | `src/shared/axiomWorkflow.ts` | Shared planning, review, quality-gate, memory-retrieval, and outcome helpers |
 | `src/shared/axiomWorkflow.test.ts` | Workflow helper tests |

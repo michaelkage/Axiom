@@ -13,7 +13,7 @@ import {
   type SubtaskPartInput,
 } from "@opencode-ai/sdk/v2/client";
 
-import { hasAxiomDesktopApi, hasVscodeApi, vscode } from "../utils/vscode";
+import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
@@ -112,8 +112,8 @@ function createOpenCode() {
     };
 
     window.addEventListener("message", handleMessage);
-    if (hasVscodeApi) {
-      vscode.postMessage({ type: "ready" });
+    if (hasAxiomDesktopApi) {
+      hostBridge.postMessage({ type: "ready" });
     }
 
     onCleanup(() => {
@@ -159,7 +159,7 @@ function createOpenCode() {
   }
 
   async function createAgentWorktree(taskId: string, root: string): Promise<string> {
-    if (!hasVscodeApi && !hasAxiomDesktopApi) throw new Error("Isolated agent worktrees require the Axiom desktop app or VS Code host.");
+    if (!hasAxiomDesktopApi) throw new Error("Isolated agent worktrees are available only in the Axiom desktop app.");
     const requestId = "axiom-worktree-" + Date.now() + "-" + Math.random().toString(36).slice(2);
     return new Promise<string>((resolve, reject) => {
       const cleanup = () => {

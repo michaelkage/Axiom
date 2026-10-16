@@ -47,11 +47,8 @@ jobs:
       - name: Verify standalone UI output
         run: test -f out/src/webview/standalone.html
 
-      - name: Type-check webview
+      - name: Type-check standalone UI
         run: pnpm exec tsc -p tsconfig.webview.json
-
-      - name: Type-check extension
-        run: pnpm exec tsc -p tsconfig.extension.json --noEmit
 
       - name: Run unit tests
         run: pnpm exec vitest run

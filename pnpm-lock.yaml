@@ -75,21 +75,9 @@ importers:
       '@playwright/test':
         specifier: ^1.50.0
         version: 1.57.0
-      '@types/mocha':
-        specifier: ^10.x
-        version: 10.0.10
       '@types/node':
         specifier: ^20.x
         version: 20.19.26
-      '@types/vscode':
-        specifier: ^1.74.0
-        version: 1.106.1
-      '@vscode/test-electron':
-        specifier: ^2.4.1
-        version: 2.5.2
-      '@vscode/vsce':
-        specifier: ^3.x
-        version: 3.7.1
       commander:
         specifier: ^12.x
         version: 12.1.0

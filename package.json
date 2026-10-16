@@ -9,22 +9,17 @@
   },
   "scripts": {
     "build": "npm run build:webview",
-    "build:extension": "vite build --config vite.config.extension.ts",
     "build:webview": "vite build --config vite.config.ts",
     "watch": "npm run watch:webview",
-    "watch:extension": "vite build --config vite.config.extension.ts --watch --mode development",
     "watch:webview": "vite build --config vite.config.ts --watch --mode development",
     "clean": "rm -rf dist out",
-    "dev": "tsx scripts/dev.ts",
+    "dev": "vite --host 127.0.0.1",
     "dev:webview": "vite",
     "dev:standalone": "vite --open /src/webview/standalone.html",
     "uikit": "vite --open /src/webview/uikit.html",
     "test": "vitest run && playwright test",
-    "test:integration": "tsc -p tsconfig.integration.json && node out/tests/integration/runTests.js",
-    "test:integration:compile": "tsc -p tsconfig.integration.json",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "debug:extension": "tsx scripts/debug-extension.ts",
     "demo:standalone": "./scripts/demo-standalone.sh",
     "google-login": "gcloud auth application-default login",
     "test:desktop": "node --test desktop/filesystem.test.cjs desktop/project-store.test.cjs desktop/terminal.test.cjs desktop/omniroute.test.cjs",
@@ -34,15 +29,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
-    "@types/mocha": "^10.x",
     "@types/node": "^20.x",
-    "@types/vscode": "^1.74.0",
-    "@vscode/test-electron": "^2.4.1",
-    "@vscode/vsce": "^3.x",
-    "commander": "^12.x",
     "concurrently": "^8.x",
     "glob": "^11.x",
-    "mocha": "^10.x",
     "tsx": "^4.x",
     "typescript": "^5.x",
     "vite": "^5.x",
@@ -71,83 +60,5 @@
     "vite-plugin-solid": "^2.11.10",
     "zod": "^4.3.5"
   },
-  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
-  "contributes": {
-    "commands": [
-      {
-        "command": "axiom.openRuntimeDashboard",
-        "title": "Open Runtime Dashboard",
-        "category": "Axiom"
-      },
-      {
-        "command": "axiom.checkOmniRoute",
-        "title": "Check OmniRoute Gateway",
-        "category": "Axiom"
-      },
-      {
-        "command": "axiom.analyzeDiagnostics",
-        "title": "Analyze Current File Diagnostics",
-        "category": "Axiom"
-      },
-      {
-        "command": "axiom.runGoal",
-        "title": "Plan and Run Axiom Goal",
-        "category": "Axiom"
-      },
-      {
-        "command": "axiom.cancelRun",
-        "title": "Cancel Axiom Run",
-        "category": "Axiom"
-      }
-    ],
-    "configuration": {
-      "title": "Axiom",
-      "properties": {
-        "axiom.gatewayUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:20128/v1",
-          "description": "Base URL for the local OpenAI-compatible OmniRoute API."
-        },
-        "axiom.plannerModel": {
-          "type": "string",
-          "default": "omni-planner-combo",
-          "description": "Model alias used to decompose goals into tasks."
-        },
-        "axiom.workerModel": {
-          "type": "string",
-          "default": "omni-worker-combo",
-          "description": "Model alias used for worker and diagnostic requests."
-        },
-        "axiom.enableSubAgents": {
-          "type": "boolean",
-          "default": true,
-          "description": "Allow bounded parallel task execution."
-        },
-        "axiom.maxConcurrentWorkers": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 8,
-          "description": "Maximum concurrent orchestration workers."
-        },
-        "axiom.requestTimeoutMs": {
-          "type": "number",
-          "default": 30000,
-          "minimum": 1000,
-          "maximum": 120000,
-          "description": "OmniRoute request timeout in milliseconds."
-        },
-        "axiom.errorHealingLevel": {
-          "type": "string",
-          "enum": [
-            "off",
-            "notify",
-            "silent"
-          ],
-          "default": "notify",
-          "description": "Diagnostic repair suggestions. Suggestions are never applied automatically."
-        }
-      }
-    }
-  }
+  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }
