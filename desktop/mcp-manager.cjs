@@ -4,20 +4,25 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { getMcpCatalogEntry, listMcpCatalog } = require("./mcp-catalog.cjs");
 
-const SECRET_INTEGRATIONS = new Set(["brave-search", "exa", "postgresql", "sqlite"]);
+const SECRET_INTEGRATIONS = new Set(["brave-search", "crawl4ai", "postgresql", "sqlite"]);
+const REQUIRED_SECRET_INTEGRATIONS = new Set(["brave-search", "postgresql", "sqlite"]);
 const REMOTE_INTEGRATIONS = new Set(["github", "supabase", "context7", "neon"]);
-const LOCAL_REVIEWED = new Set(["playwright", "postgresql", "sqlite"]);
+const LOCAL_REVIEWED = new Set(["playwright", "postgresql", "sqlite", "fetch", "crawl4ai"]);
 const MAX_SECRET_LENGTH = 16384;
 const PINNED_PACKAGES = Object.freeze({
   playwright: "@playwright/mcp@0.0.83",
   postgresql: "@bytebase/dbhub@1.5.0",
-  sqlite: "@bytebase/dbhub@1.5.0"
+  sqlite: "@bytebase/dbhub@1.5.0",
+  "brave-search": "@brave/brave-search-mcp-server@2.1.4",
+  crawl4ai: "crawl4ai-mcp-sse-stdio@1.1.0",
+  fetch: "mcp-server-fetch==2026.7.10"
 });
 const REMOTE_ENDPOINTS = Object.freeze({
   github: "https://api.githubcopilot.com/mcp/",
   supabase: "https://mcp.supabase.com/mcp",
   context7: "https://mcp.context7.com/mcp",
-  neon: "https://mcp.neon.tech/mcp"
+  neon: "https://mcp.neon.tech/mcp",
+  exa: "https://mcp.exa.ai/mcp"
 });
 
 function secureStorageAvailable(safeStorage) {
@@ -77,7 +82,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
   function saveSecret(id, value) {
     if (!SECRET_INTEGRATIONS.has(id)) throw new Error("This integration does not accept a secret or connection value in this setup flow.");
     if (typeof value !== "string" || !value.trim() || value.trim().length > MAX_SECRET_LENGTH) throw new Error("Enter a valid value (maximum 16384 characters).");
-    if (id === "sqlite" && !path.isAbsolute(value.trim())) throw new Error("Choose an absolute SQLite database path.");
+    if (id === "crawl4ai" && value.trim().length > 4096) throw new Error("Bearer token is too long.");\n    if (id === "sqlite" && !path.isAbsolute(value.trim())) throw new Error("Choose an absolute SQLite database path.");
     if (id === "postgresql" && !/^postgres(?:ql)?:\/\//i.test(value.trim())) throw new Error("Enter a PostgreSQL connection URL beginning with postgres:// or postgresql://.");
     if (!secureStorageAvailable(safeStorage)) throw new Error("OS-backed secure storage is unavailable. Axiom will not save this value as plaintext.");
     const raw = readRaw(), previous = raw[id] && typeof raw[id] === "object" ? raw[id] : {};
@@ -94,7 +99,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       ? "This preset is withheld until a maintained, pinned MCP package passes publisher and runtime review."
       : "This integration's managed setup is not available yet.");
     const raw = readRaw(), previous = raw[id] && typeof raw[id] === "object" ? raw[id] : {};
-    if (enabled && SECRET_INTEGRATIONS.has(id) && !decryptSecret(previous)) throw new Error("Save the required credential or database path before enabling this integration.");
+    if (enabled && REQUIRED_SECRET_INTEGRATIONS.has(id) && !decryptSecret(previous)) throw new Error("Save the required credential or database path before enabling this integration.");
     raw[id] = { ...previous, enabled };
     writeRaw(raw);
     return { id, enabled, requiresRestart: true, status: enabled ? "configured" : "disabled" };
@@ -127,7 +132,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
         }
       }
     }
-    for (const id of ["brave-search", "exa"]) {
+    for (const id of ["brave-search", "crawl4ai"]) {
       const record = raw[id];
       if (!record || record.enabled !== true) continue;
       const secret = decryptSecret(record);
@@ -135,7 +140,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       if (id === "brave-search") mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", "@brave/brave-search-mcp-server"], environment: { BRAVE_API_KEY: secret } };
       else mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", "exa-mcp-server"], environment: { EXA_API_KEY: secret } };
     }
-    return Object.keys(mcp).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } : {};
+    if (raw.fetch?.enabled === true) mcp.fetch = { type: "local", enabled: true, command: ["uvx", "--from", "mcp-server-fetch==2026.7.10", "mcp-server-fetch"] };\n    return Object.keys(mcp).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } : {};
   }
   return Object.freeze({ getStatus, saveSecret, setEnabled, remove, openCodeEnvironment, configPath });
 }
