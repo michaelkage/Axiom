@@ -127,7 +127,8 @@ export async function executeTaskBatches<T>(
   for (const task of tasks) { outcomeById.set(task.id, "queued"); emit({ taskId: task.id, title: task.title, status: "queued" }); }
 
   const finishFailure = (failedIds: string[], reason: string, terminalStatus: "failed" | "cancelled" = "failed"): never => {
-    const failedSet = new Set(failedIds);
+    // Cancelled tasks also invalidate downstream dependencies, but remain distinct from failures.
+    const failedSet = new Set([...failedIds, ...tasks.filter(task => outcomeById.get(task.id) === "cancelled").map(task => task.id)]);
     const blocked = new Set<string>();
     let changed = true;
     while (changed) {
