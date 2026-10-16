@@ -38,6 +38,17 @@ function isInside(parent, candidate) {
   return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
 }
 
+function isApprovedWorkspaceDatabase(workspaceRoot, candidate) {
+  if (!workspaceRoot || !path.isAbsolute(candidate) || !isInside(workspaceRoot, candidate)) return false;
+  try {
+    const realRoot = fs.realpathSync(workspaceRoot);
+    const realCandidate = fs.existsSync(candidate)
+      ? fs.realpathSync(candidate)
+      : path.join(fs.realpathSync(path.dirname(candidate)), path.basename(candidate));
+    return isInside(realRoot, realCandidate);
+  } catch { return false; }
+}
+
 function createMcpManager({ userDataPath, safeStorage } = {}) {
   const configPath = path.join(userDataPath, "mcp-integrations.json");
 
@@ -126,7 +137,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
         const dsn = decryptSecret(record);
         if (!dsn) continue;
         if (id === "sqlite") {
-          if (!workspaceRoot || !isInside(workspaceRoot, dsn)) continue;
+          if (!isApprovedWorkspaceDatabase(workspaceRoot, dsn)) continue;
           mcp.sqlite = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES.sqlite, "--transport", "stdio"], environment: { DSN: "sqlite://" + dsn } };
         } else {
           mcp.postgresql = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES.postgresql, "--transport", "stdio"], environment: { DSN: dsn, READONLY: "true" } };
@@ -147,4 +158,4 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
   return Object.freeze({ getStatus, saveSecret, setEnabled, remove, openCodeEnvironment, configPath });
 }
 
-module.exports = { createMcpManager, secureStorageAvailable, isInside, PINNED_PACKAGES, REMOTE_ENDPOINTS };
+module.exports = { createMcpManager, secureStorageAvailable, isInside, isApprovedWorkspaceDatabase, PINNED_PACKAGES, REMOTE_ENDPOINTS };
