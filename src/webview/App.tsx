@@ -84,12 +84,22 @@ function App() {
   const [projectContextDraft, setProjectContextDraft] = createSignal("");
   const [desktopProjectNotice, setDesktopProjectNotice] = createSignal("");
   const [desktopProjectBusy, setDesktopProjectBusy] = createSignal(false);
+  const [projectFiles, setProjectFiles] = createSignal<Array<{ name: string; path: string; kind: string }>>([]);
+  const [projectFileDirectory, setProjectFileDirectory] = createSignal("");
+  const [selectedProjectFile, setSelectedProjectFile] = createSignal("");
+  const [projectFileContent, setProjectFileContent] = createSignal("");
+  const [projectFileBusy, setProjectFileBusy] = createSignal(false);
+  const [projectFileNotice, setProjectFileNotice] = createSignal("");
+
   const desktopApi = () => (window as Window & { axiomDesktop?: { project?: {
     bootstrap: () => Promise<{ workspaceRoot: string | null; appVersion: string; platform: string }>;
     readState: () => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     saveContext: (context: string) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     addChange: (change: { title: string; summary: string; status: string; files?: string[]; checks?: Array<{ name: string; state: string; details: string }> }) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     chooseProject: () => Promise<string | null>;
+    listFiles: (relativePath: string) => Promise<Array<{ name: string; path: string; kind: string }>>;
+    readFile: (relativePath: string) => Promise<{ path: string; content: string; size: number }>;
+    writeFile: (relativePath: string, content: string) => Promise<{ path: string; size: number }>;
   } } }).axiomDesktop;
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
@@ -676,7 +686,57 @@ function App() {
     }).catch(error => {
       setDesktopProjectNotice("Project memory could not be loaded: " + getSdkErrorMessage(error));
     });
+    void loadProjectDirectory("");
   });
+
+  const loadProjectDirectory = async (relativePath = projectFileDirectory()) => {
+    const project = desktopApi()?.project;
+    if (!project) return;
+    setProjectFileBusy(true);
+    setProjectFileNotice("");
+    try {
+      const entries = await project.listFiles(relativePath);
+      setProjectFiles(entries);
+      setProjectFileDirectory(relativePath);
+    } catch (error) {
+      setProjectFileNotice("Could not list project files: " + getSdkErrorMessage(error));
+    } finally {
+      setProjectFileBusy(false);
+    }
+  };
+
+  const openProjectFile = async (relativePath: string) => {
+    const project = desktopApi()?.project;
+    if (!project) return;
+    setProjectFileBusy(true);
+    setProjectFileNotice("");
+    try {
+      const file = await project.readFile(relativePath);
+      setSelectedProjectFile(file.path);
+      setProjectFileContent(file.content);
+      setProjectFileNotice("Loaded " + file.path + " (" + file.size.toLocaleString() + " bytes).");
+    } catch (error) {
+      setProjectFileNotice("Could not open file: " + getSdkErrorMessage(error));
+    } finally {
+      setProjectFileBusy(false);
+    }
+  };
+
+  const saveProjectFile = async () => {
+    const project = desktopApi()?.project;
+    if (!project || !selectedProjectFile()) return;
+    setProjectFileBusy(true);
+    setProjectFileNotice("");
+    try {
+      const result = await project.writeFile(selectedProjectFile(), projectFileContent());
+      setProjectFileNotice("Saved " + result.path + " (" + result.size.toLocaleString() + " bytes).");
+      await loadProjectDirectory();
+    } catch (error) {
+      setProjectFileNotice("Could not save file: " + getSdkErrorMessage(error));
+    } finally {
+      setProjectFileBusy(false);
+    }
+  };
 
   const saveStandaloneProjectContext = async () => {
     const project = desktopApi()?.project;
@@ -1255,6 +1315,32 @@ function App() {
               <small>Persistent context stays on this device and is kept outside your repository.</small>
             </div>
             <button type="button" class="workflow-plan__secondary" onClick={() => void switchStandaloneProject()}>Choose project</button>
+          </div>
+          <div class="standalone-files">
+            <div class="standalone-project-panel__feed-heading">
+              <strong>Project files</strong>
+              <div class="standalone-files__actions">
+                <small>{projectFileDirectory() ? "/" + projectFileDirectory() : "/"}</small>
+                <button type="button" class="workflow-plan__secondary" disabled={projectFileBusy()} onClick={() => void loadProjectDirectory(projectFileDirectory())}>Refresh</button>
+                <button type="button" class="workflow-plan__secondary" disabled={projectFileBusy() || !projectFileDirectory()} onClick={() => void loadProjectDirectory(projectFileDirectory().split("/").slice(0, -1).join("/"))}>Up</button>
+              </div>
+            </div>
+            <div class="standalone-files__layout">
+              <ul class="standalone-files__list" aria-label="Project files">
+                <Show when={projectFiles().length > 0} fallback={<li class="standalone-project-panel__empty">{projectFileBusy() ? "Loading files…" : "This directory is empty."}</li>}>
+                  <For each={projectFiles()}>{entry => <li>
+                    <button type="button" class={selectedProjectFile() === entry.path ? "standalone-files__entry is-selected" : "standalone-files__entry"} disabled={projectFileBusy() || entry.kind === "other"} onClick={() => entry.kind === "directory" ? void loadProjectDirectory(entry.path) : void openProjectFile(entry.path)}>
+                      <span aria-hidden="true">{entry.kind === "directory" ? "▸" : "·"}</span>{entry.name}
+                    </button>
+                  </li>}</For>
+                </Show>
+              </ul>
+              <div class="standalone-files__editor">
+                <div class="standalone-files__editor-heading"><strong>{selectedProjectFile() || "Select a file to inspect"}</strong><button type="button" class="workflow-plan__primary" disabled={projectFileBusy() || !selectedProjectFile()} onClick={() => void saveProjectFile()}>{projectFileBusy() ? "Working…" : "Save file"}</button></div>
+                <textarea aria-label="Selected project file contents" value={projectFileContent()} disabled={!selectedProjectFile() || projectFileBusy()} onInput={event => setProjectFileContent(event.currentTarget.value)} spellcheck={false} />
+              </div>
+            </div>
+            <Show when={projectFileNotice()}><p class="standalone-project-panel__notice" role="status">{projectFileNotice()}</p></Show>
           </div>
           <label class="standalone-project-panel__label" for="axiom-project-context">Project instructions and durable context</label>
           <textarea id="axiom-project-context" value={projectContextDraft()} maxLength={50000} rows={3} placeholder="Architecture decisions, constraints, preferred commands, and project-specific conventions…" onInput={event => setProjectContextDraft(event.currentTarget.value)} />

@@ -2428,3 +2428,17 @@ body.vscode-high-contrast {
   .standalone-project-panel__heading > div { overflow-wrap: anywhere; }
   .standalone-project-panel__feed-heading { align-items: flex-start; flex-direction: column; }
 }
+
+.standalone-files { margin: 18px 0 6px; padding: 12px; border: 1px solid var(--panel-border, #343642); border-radius: 10px; }
+.standalone-files__actions, .standalone-files__editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.standalone-files__actions small { color: var(--description-foreground, #a4a7b3); overflow-wrap: anywhere; }
+.standalone-files__layout { display: grid; grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.6fr); gap: 10px; margin-top: 10px; }
+.standalone-files__list { list-style: none; margin: 0; padding: 6px; min-height: 180px; max-height: 320px; overflow: auto; border-radius: 8px; background: var(--editor-background, #20222c); }
+.standalone-files__entry { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 8px; border: 0; border-radius: 5px; text-align: left; overflow-wrap: anywhere; color: var(--input-foreground, #ececf3); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.standalone-files__entry:hover, .standalone-files__entry.is-selected { background: var(--list-hoverBackground, #343744); }
+.standalone-files__entry:disabled { cursor: default; opacity: .65; }
+.standalone-files__editor { min-width: 0; }
+.standalone-files__editor-heading { min-height: 32px; margin-bottom: 6px; }
+.standalone-files__editor-heading strong { min-width: 0; font-size: 11px; overflow-wrap: anywhere; }
+.standalone-files__editor textarea { min-height: 180px; height: 260px; font-family: var(--font-family-monospace, monospace); white-space: pre; overflow: auto; }
+@media (max-width: 640px) { .standalone-files__layout { grid-template-columns: minmax(0, 1fr); } .standalone-files__list { min-height: 100px; max-height: 150px; } }
