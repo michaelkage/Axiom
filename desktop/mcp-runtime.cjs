@@ -1,7 +1,5 @@
 "use strict";
 
-// OpenCode's MCP status and tool-ID APIs are versioned differently across releases.
-// Probe known API shapes rather than guessing that a saved config means "connected".
 const REQUEST_TIMEOUT_MS = 5000;
 
 async function requestJson(baseUrl, route, fetchImpl = fetch) {
@@ -62,7 +60,6 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
   }
 
   const servers = normalizeMcpList(mcpResult.value);
-  const known = new Set(servers.map(server => server.id));
   const configured = [...new Set(configuredIds)].map(id => {
     const server = servers.find(item => item.id === id);
     const prefix = id.replace(/[^a-zA-Z0-9_-]/g, "_") + "_";
@@ -86,13 +83,17 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
 function extractToolCalls(message) {
   const parts = Array.isArray(message?.parts) ? message.parts : Array.isArray(message?.data?.parts) ? message.data.parts : [];
   return parts.filter(part => part && (part.type === "tool" || part.type === "tool-call" || part.tool))
-    .map(part => ({ name: String(part.tool || part.name || part.call?.name || ""), state: part.state?.status || part.state || "unknown" }))
+    .map(part => ({
+      name: String(part.tool || part.name || part.call?.name || ""),
+      state: String(part.state?.status || part.state || "unknown").toLowerCase()
+    }))
     .filter(part => part.name);
 }
 
 async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } = {}) {
   if (!baseUrl || !integrationId) throw new Error("Runtime URL and integration ID are required.");
-  const sessionResponse = await fetchImpl(new URL("session", baseUrl.endsWith("/") ? baseUrl : baseUrl + "/"), {
+  const base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+  const sessionResponse = await fetchImpl(new URL("session", base), {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Axiom MCP tool verification" }), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   });
   if (!sessionResponse.ok) throw new Error("OpenCode could not create a diagnostic worker session (HTTP " + sessionResponse.status + ").");
@@ -101,20 +102,29 @@ async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } 
   if (!sessionId) throw new Error("OpenCode created no identifiable diagnostic session.");
   const expectedPrefix = integrationId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_";
   const prompt = "This is an Axiom MCP integration verification. Use exactly one available tool whose name starts with " + expectedPrefix + " to perform a harmless read-only lookup. Do not use shell, edit files, or perform writes. If no such tool is available, state that clearly. Return a concise result.";
-  const messageResponse = await fetchImpl(new URL("session/" + encodeURIComponent(sessionId) + "/message", baseUrl.endsWith("/") ? baseUrl : baseUrl + "/"), {
+  const messageResponse = await fetchImpl(new URL("session/" + encodeURIComponent(sessionId) + "/message", base), {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parts: [{ type: "text", text: prompt }] }), signal: AbortSignal.timeout(120000)
   });
   if (!messageResponse.ok) throw new Error("OpenCode worker request failed (HTTP " + messageResponse.status + ").");
   const message = await messageResponse.json();
   const calls = extractToolCalls(message);
-  const invoked = calls.find(call => call.name.startsWith(expectedPrefix));
+  const matching = calls.find(call => call.name.startsWith(expectedPrefix));
+  const completed = matching && ["completed", "success", "succeeded"].includes(matching.state);
+  const failed = matching && ["error", "failed", "cancelled", "canceled"].includes(matching.state);
   return {
     sessionId,
-    invoked: !!invoked,
-    toolName: invoked?.name || null,
+    invoked: !!completed,
+    toolName: matching?.name || null,
+    toolState: matching?.state || null,
     toolCalls: calls,
-    status: invoked ? "tool_invoked" : "no_mcp_tool_invocation",
-    message: invoked ? "The OpenCode worker returned an MCP tool-call part for " + invoked.name + "." : "The worker response contained no invocation for this integration. Check model configuration, authentication, tool discovery, and worker output."
+    status: completed ? "tool_completed" : failed ? "tool_failed" : matching ? "tool_incomplete" : "no_mcp_tool_invocation",
+    message: completed
+      ? "The OpenCode worker completed an MCP tool call for " + matching.name + "."
+      : failed
+        ? "The worker attempted " + matching.name + " but OpenCode reported a failed tool state. Check integration authentication and runtime logs."
+        : matching
+          ? "The worker emitted an MCP tool call for " + matching.name + ", but did not report a completed result."
+          : "The worker response contained no invocation for this integration. Check model configuration, authentication, tool discovery, and worker output."
   };
 }
 
