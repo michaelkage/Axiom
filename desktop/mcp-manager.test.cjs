@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { createMcpManager, secureStorageAvailable } = require("./mcp-manager.cjs");
+const { createMcpManager, secureStorageAvailable, isApprovedWorkspaceDatabase } = require("./mcp-manager.cjs");
 
 function storage() {
   return {
@@ -61,8 +61,10 @@ test("Playwright uses a pinned package and database credentials are secure", () 
   try {
     manager.setEnabled("playwright", true);
     const root = path.join(dir, "workspace"); fs.mkdirSync(root);
-    const sqliteFile = path.join(root, "test.db");
+    const sqliteFile = path.join(root, "test.db"); fs.writeFileSync(sqliteFile, "");
     manager.saveSecret("sqlite", sqliteFile);
+    assert.equal(isApprovedWorkspaceDatabase(root, sqliteFile), true);
+    assert.equal(isApprovedWorkspaceDatabase(dir, path.join(os.tmpdir(), "outside.db")), false);
     manager.setEnabled("sqlite", true);
     manager.saveSecret("postgresql", "postgresql://readonly:secret@localhost:5432/app");
     manager.setEnabled("postgresql", true);
