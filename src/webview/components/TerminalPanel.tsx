@@ -2,6 +2,7 @@ import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
 
 type TerminalOutput = { requestId: string; stream: "stdout" | "stderr"; text: string };
 const MAX_TERMINAL_OUTPUT_CHARS = 120_000;
+const MAX_TERMINAL_OUTPUT_ENTRIES = 1_000;
 
 type TerminalBridge = {
   run: (request: { requestId: string; command: string; cwd: string }) => Promise<{ exitCode: number; cwd: string }>;
@@ -26,7 +27,9 @@ export function TerminalPanel() {
     setOutput(previous => {
       const next = [...previous, { kind, text: text.slice(-MAX_TERMINAL_OUTPUT_CHARS) }];
       let total = next.reduce((size, item) => size + item.text.length, 0);
-      while (total > MAX_TERMINAL_OUTPUT_CHARS && next.length > 1) {
+      // Bound both retained text and DOM node count. A process that emits thousands
+      // of tiny chunks should not turn the terminal into thousands of rendered spans.
+      while ((total > MAX_TERMINAL_OUTPUT_CHARS || next.length > MAX_TERMINAL_OUTPUT_ENTRIES) && next.length > 1) {
         const removed = next.shift();
         total -= removed?.text.length ?? 0;
       }
@@ -130,7 +133,7 @@ export function TerminalPanel() {
             <input aria-label="Terminal command" value={command()} onInput={event => { setCommand(event.currentTarget.value); if (historyIndex() === -1) setDraftCommand(event.currentTarget.value); }} onKeyDown={handleCommandKeyDown} placeholder="Run a command, e.g. npm test" disabled={!!running()} style={{ flex: "1", "min-width": "0", padding: "10px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "6px", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
             <button type="submit" disabled={!!running() || !command().trim()} style={{ padding: "8px 14px" }}>{running() ? "Running…" : "Run"}</button>
           </form>
-          <small style={{ display: "block", color: "#8b93a7", "margin-top": "7px" }}>Commands execute with your user permissions. Up/Down recalls the last 100 commands. Ctrl+L clears output. Output is capped at 120 KB. Keep secrets out of shared logs.</small>
+          <small style={{ display: "block", color: "#8b93a7", "margin-top": "7px" }}>Commands execute with your user permissions. Up/Down recalls the last 100 commands. Ctrl+L clears output. Output is capped at 120 KB and 1,000 chunks. Keep secrets out of shared logs.</small>
         </div>
       </Show>
     </section>
