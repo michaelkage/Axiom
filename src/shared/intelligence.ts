@@ -226,7 +226,7 @@ export function suggestNextActions(input: { lastFailure?: string; changedFiles?:
 }
 
 export interface ExecutionSummary {
-  taskId: string; title: string; status: "queued" | "running" | "succeeded" | "failed";
+  taskId: string; title: string; status: "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
   error?: string; summary?: string; sessionId?: string; agent?: string;
 }
 export function contextForSpecialist(input: {

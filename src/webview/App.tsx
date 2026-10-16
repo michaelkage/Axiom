@@ -489,12 +489,18 @@ function App() {
         signal: abortController.signal,
         onOutcome: record => {
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]);
-          if (record.status === "succeeded" || record.status === "failed") {
+          if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status)) {
             const project = desktopApi()?.project;
             if (project) {
               const summary = record.status === "succeeded"
                 ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
-                : "Worker session failed or was cancelled. Review the diagnostic details and isolated worktree before retrying.";
+                : record.status === "blocked"
+                  ? "Worker was blocked because a dependency did not succeed."
+                  : record.status === "timed_out"
+                    ? "Worker exceeded its execution time limit. Review diagnostics before retrying."
+                    : record.status === "cancelled"
+                      ? "Worker execution was cancelled. Review its isolated worktree before retrying."
+                      : "Worker session failed. Review the diagnostic details and isolated worktree before retrying.";
               void project.addChange({
                 title: "Worker " + record.status + ": " + record.title,
                 summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
@@ -1445,10 +1451,12 @@ function App() {
           <p class="workflow-plan__prompt">Agents report implementation outcomes; nothing is considered verified until the task quality gate passes. Review each task diff, run its checks, and integrate only the selected files.</p>
           <div class="workflow-plan__actions">
             <span>{taskOutcomes().filter(item => item.status === "succeeded").length} agent tasks succeeded</span>
-            <span>{taskOutcomes().filter(item => item.status === "failed").length} failed</span>
+            <span>{taskOutcomes().filter(item => item.status === "failed" || item.status === "timed_out").length} failed / timed out</span>
+            <span>{taskOutcomes().filter(item => item.status === "blocked").length} blocked</span>
+            <span>{taskOutcomes().filter(item => item.status === "cancelled").length} cancelled</span>
             <span>{taskOutcomes().filter(item => item.status === "queued" || item.status === "running").length} remaining</span>
           </div>
-          <Show when={taskOutcomes().some(item => item.status === "failed")}>
+          <Show when={taskOutcomes().some(item => ["failed", "timed_out", "blocked"].includes(item.status))}>
             <button class="workflow-plan__secondary" disabled={parallelPlanBusy()} onClick={() => {
               const prompt = "Replan unfinished work from actual task outcomes. Preserve successful tasks, isolate failure causes, block only dependent tasks, and schedule unrelated remaining work. Do not repeat completed tasks unless a dependency or verification result requires it.\n\n" + taskOutcomes().map(item => "- " + item.title + " [" + item.status + "]: " + (item.error || item.summary || "No details reported")).join("\n");
               void prepareParallelPlan(prompt);

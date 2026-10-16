@@ -90,7 +90,7 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
   return batches;
 }
 
-export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed";
+export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
   startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
@@ -126,7 +126,7 @@ export async function executeTaskBatches<T>(
   const outcomeById = new Map<string, TaskExecutionStatus>();
   for (const task of tasks) { outcomeById.set(task.id, "queued"); emit({ taskId: task.id, title: task.title, status: "queued" }); }
 
-  const finishFailure = (failedIds: string[], reason: string): never => {
+  const finishFailure = (failedIds: string[], reason: string, terminalStatus: "failed" | "cancelled" = "failed"): never => {
     const failedSet = new Set(failedIds);
     const blocked = new Set<string>();
     let changed = true;
@@ -136,19 +136,26 @@ export async function executeTaskBatches<T>(
         if (outcomeById.get(task.id) !== "queued" || blocked.has(task.id)) continue;
         if (task.dependsOn.some(id => failedSet.has(id) || blocked.has(id))) {
           blocked.add(task.id);
-          outcomeById.set(task.id, "failed");
-          emit({ taskId: task.id, title: task.title, status: "failed", finishedAt: Date.now(), error: "Blocked by an unsuccessful dependency." });
+          outcomeById.set(task.id, "blocked");
+          emit({ taskId: task.id, title: task.title, status: "blocked", finishedAt: Date.now(), error: "Blocked by an unsuccessful dependency." });
           changed = true;
         }
       }
     }
-    const failed = tasks.filter(task => outcomeById.get(task.id) === "failed").map(task => task.id);
+    if (terminalStatus === "cancelled") {
+      for (const task of tasks) {
+        if (outcomeById.get(task.id) !== "queued") continue;
+        outcomeById.set(task.id, "cancelled");
+        emit({ taskId: task.id, title: task.title, status: "cancelled", finishedAt: Date.now(), error: reason });
+      }
+    }
+    const failed = tasks.filter(task => outcomeById.get(task.id) === "failed" || outcomeById.get(task.id) === "timed_out").map(task => task.id);
     const blockedIds = tasks.filter(task => blocked.has(task.id)).map(task => task.id);
-    throw new TaskBatchExecutionError(reason, completed.map(item => ({ task: item.task, result: item.result })), [...new Set(failedIds)], blockedIds);
+    throw new TaskBatchExecutionError(reason, completed.map(item => ({ task: item.task, result: item.result })), [...new Set([...failedIds, ...failed])], blockedIds);
   };
 
   for (const batch of batches) {
-    if (options.signal?.aborted) finishFailure([], "Task execution cancelled before the next batch.");
+    if (options.signal?.aborted) finishFailure([], "Task execution cancelled before the next batch.", "cancelled");
     const settled = await Promise.allSettled(batch.map(async task => {
       const startedAt = Date.now();
       const controller = new AbortController();
@@ -192,11 +199,15 @@ export async function executeTaskBatches<T>(
         });
         return { task, result };
       } catch (error) {
-        outcomeById.set(task.id, "failed");
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const timedOut = /timed out after \d+ms/i.test(errorMessage);
+        const cancelled = !timedOut && (options.signal?.aborted || /cancelled/i.test(errorMessage));
+        const status: TaskExecutionStatus = timedOut ? "timed_out" : cancelled ? "cancelled" : "failed";
+        outcomeById.set(task.id, status);
         const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
         emit({
-          taskId: task.id, title: task.title, status: "failed", startedAt, finishedAt: Date.now(),
-          error: error instanceof Error ? error.message : String(error),
+          taskId: task.id, title: task.title, status, startedAt, finishedAt: Date.now(),
+          error: errorMessage,
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
@@ -211,10 +222,11 @@ export async function executeTaskBatches<T>(
       completed.push(entry.value);
       completedContext.push({ task: entry.value.task, result: entry.value.result });
     }
-    const failures = settled.flatMap((entry, index) => entry.status === "rejected" ? [batch[index].id] : []);
-    if (failures.length) {
+    const failures = settled.flatMap((entry, index) => entry.status === "rejected" && (outcomeById.get(batch[index].id) === "failed" || outcomeById.get(batch[index].id) === "timed_out") ? [batch[index].id] : []);
+    const cancelled = settled.some((entry, index) => entry.status === "rejected" && outcomeById.get(batch[index].id) === "cancelled");
+    if (failures.length || cancelled) {
       const details = settled.flatMap(entry => entry.status === "rejected" ? [entry.reason instanceof Error ? entry.reason.message : String(entry.reason)] : []);
-      finishFailure(failures, "Parallel task batch failed; successful task results were preserved. " + details.join("; "));
+      finishFailure(failures, (cancelled ? "Parallel task batch was cancelled." : "Parallel task batch failed; successful task results were preserved.") + " " + details.join("; "), cancelled ? "cancelled" : "failed");
     }
   }
   return completed;

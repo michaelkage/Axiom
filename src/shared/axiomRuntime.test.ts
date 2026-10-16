@@ -128,6 +128,7 @@ describe("Axiom runtime helpers", () => {
     expect((failure as TaskBatchExecutionError).successfulResults.map(item => item.task.id)).toContain("good");
     expect((failure as TaskBatchExecutionError).failedTaskIds).toContain("bad");
     expect((failure as TaskBatchExecutionError).blockedTaskIds).toContain("downstream");
+    expect(outcomes).toContain("downstream:blocked");
   });
 
   it("times out a task and passes an abort signal to the runner", async () => {
@@ -135,11 +136,13 @@ describe("Axiom runtime helpers", () => {
       { id: "slow", title: "Slow", scope: "wait", targetFiles: ["slow.ts"], dependsOn: [], acceptanceCriteria: ["Timeout is surfaced"] },
     ]);
     let receivedSignal: AbortSignal | undefined;
+    const outcomes: string[] = [];
     await expect(executeTaskBatches(tasks, async (_task, _completed, signal) => {
       receivedSignal = signal;
       return new Promise<string>(() => {});
-    }, undefined, { timeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
+    }, record => outcomes.push(record.status), { timeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
     expect(receivedSignal?.aborted).toBe(true);
+    expect(outcomes).toContain("timed_out");
   });
 
   it("stops waiting when the caller cancels task execution", async () => {
@@ -147,9 +150,11 @@ describe("Axiom runtime helpers", () => {
       { id: "waiting", title: "Waiting", scope: "wait", targetFiles: ["waiting.ts"], dependsOn: [], acceptanceCriteria: ["Cancellation is surfaced"] },
     ]);
     const controller = new AbortController();
-    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), undefined, { signal: controller.signal });
+    const outcomes: string[] = [];
+    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), record => outcomes.push(record.status), { signal: controller.signal });
     controller.abort();
     await expect(execution).rejects.toThrow(/cancelled/i);
+    expect(outcomes).toContain("cancelled");
   });
 
   it("plans tasks through an OpenAI-compatible OmniRoute endpoint", async () => {

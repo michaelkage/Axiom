@@ -9,6 +9,7 @@ const { createProjectStore } = require("./project-store.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
+const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -297,6 +298,15 @@ async function changedFiles(worktree) {
   }));
 }
 
+async function headBlobSha(directory, relativePath) {
+  const result = await run("git", ["ls-tree", "-z", "HEAD", "--", ":(literal)" + relativePath], directory);
+  if (result.exitCode !== 0) throw new Error(result.output || "Could not inspect repository file revision.");
+  const entry = result.output.split("\0").find(Boolean);
+  if (!entry) return null;
+  const metadata = entry.split("\t", 1)[0].split(" ");
+  return metadata[1] === "blob" ? metadata[2] : null;
+}
+
 async function inspectWorktree(event, message) {
   try {
     validateWorkspace(message.workspaceRoot);
@@ -427,10 +437,16 @@ async function applyWorktreeChanges(event, message) {
       const destination = path.resolve(root, relative);
       if (!insidePath(message.worktreePath, source) || !insidePath(root, destination)) throw new Error("A selected path escaped the project repository.");
       const dirty = await run("git", ["status", "--porcelain", "--", relative], root);
-      if (dirty.output.trim()) throw new Error("Integration blocked for " + relative + ": the destination has local changes.");
-      const tracked = await run("git", ["ls-files", "--error-unmatch", "--", relative], root);
-      if (tracked.exitCode !== 0 && fs.existsSync(destination)) {
-        throw new Error("Integration blocked for " + relative + ": an existing untracked or ignored destination file would be overwritten.");
+      const taskBaseBlob = await headBlobSha(message.worktreePath, relative);
+      const workspaceHeadBlob = await headBlobSha(root, relative);
+      const drift = classifyWorkspaceDrift({
+        taskBaseBlob,
+        workspaceHeadBlob,
+        destinationDirty: !!dirty.output.trim(),
+        destinationExists: fs.existsSync(destination),
+      });
+      if (!drift.safe) {
+        throw new Error("Integration blocked for " + relative + ": " + drift.reason + " Refresh the diff and reconcile the local and worker versions before integrating.");
       }
       try {
         const sourceStat = await fs.promises.lstat(source);

@@ -13,6 +13,9 @@ export function runtimeEventSource(url: string, onMessage: SSEEventHandler, onEr
   onStatus?.({ status: "connecting" });
   eventSource.onopen = () => onStatus?.({ status: "connected" });
   eventSource.onmessage = event => onMessage(event.data);
-  eventSource.onerror = () => onError?.(new Error("EventSource connection error"));
+  eventSource.onerror = () => {
+    onStatus?.({ status: "reconnecting", reason: "error" });
+    onError?.(new Error("EventSource connection error"));
+  };
   return () => { eventSource.close(); onStatus?.({ status: "closed", reason: "manual" }); };
 }
