@@ -8,7 +8,7 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --dir --win --x64",
-    "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs"
+    "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs"
   },
   "dependencies": {
     "opencode-ai": "^1.19.0"
@@ -30,6 +30,7 @@
     "files": [
       "main.cjs",
       "mcp-manager.cjs",
+      "mcp-runtime.cjs",
       "mcp-catalog.cjs",
       "preload.cjs",
       "project-store.cjs",
