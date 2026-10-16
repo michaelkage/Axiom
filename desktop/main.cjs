@@ -361,8 +361,26 @@ async function runQualityGate(event, message) {
     const failed = checks.some(check => check.state !== "passed");
     const ranProjectCheck = checks.some(check => check.name === "Targeted unit tests" || check.name === "Project build");
     const status = failed ? "Needs fixes" : "Ready to review";
+    const historyStatus = failed ? "failed" : ranProjectCheck ? "verified" : "review";
+    await currentProjectStore().addChange({
+      title: "Automated verification run",
+      summary: checks.length + " checks recorded; " + checks.filter(check => check.state === "passed").length + " passed, " + checks.filter(check => check.state !== "passed").length + " failed. " + (ranProjectCheck ? "A project-level test or build command ran." : "No project-level test or build command was available for this change."),
+      status: historyStatus,
+      checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." })),
+      files: Array.isArray(message.changedPaths) ? message.changedPaths : []
+    });
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status, checks, ranProjectCheck });
+    sendHostMessage(event, { type: "project-state-updated" });
   } catch (error) {
+    try {
+      await currentProjectStore().addChange({
+        title: "Automated verification blocked",
+        summary: "Verification could not complete: " + String(error.message || error).slice(0, 500),
+        status: "failed",
+        checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." }))
+      });
+      sendHostMessage(event, { type: "project-state-updated" });
+    } catch { /* A history write failure must not hide the verification error. */ }
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status: "Blocked", checks, error: error.message });
   }
 }
@@ -467,6 +485,7 @@ ipcMain.handle("axiom:choose-project", async event => {
 });
 
 ipcMain.on("axiom:webview-message", async (event, message) => {
+  if (!trustedRenderer(event)) return;
   if (!message || typeof message.type !== "string") return;
   if (message.type === "create-agent-worktree") {
     try {
