@@ -166,7 +166,7 @@ The Windows installer can be built by CI, but interactive installation, first la
 - Project memories currently use app/webview-local storage. They are not yet a shared database, versioned project file, or cross-device sync system.
 - Quality-gate checks depend on commands and dependencies available in the target repository. Passing checks are evidence for the checks that ran, not a guarantee that every behavior is correct.
 - Preview and screenshot capture are not yet a complete, automatic end-to-end workflow.
-- Some internal modules and legacy development configurations still retain VS Code/OpenCode naming while the standalone desktop migration continues.
+- The source tree and build pipeline target the standalone desktop app; extension packaging and extension-host code have been removed.
 
 ## Product direction
 

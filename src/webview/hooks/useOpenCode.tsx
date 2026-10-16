@@ -92,7 +92,7 @@ function createOpenCode() {
 
         const opencodeClient = createOpencodeClient({
           baseUrl: url,
-          fetch: proxyFetch,
+          fetch: fetch,
           directory: wsRoot,
         });
         setClient(opencodeClient);
@@ -142,7 +142,7 @@ function createOpenCode() {
   }
 
   async function planParallelTasks(prompt: string, requestedModel?: string, configuredFallbackModel?: string) {
-    const discovery = await discoverOmniRouteModels(DEFAULT_AXIOM_RUNTIME, proxyFetch);
+    const discovery = await discoverOmniRouteModels(DEFAULT_AXIOM_RUNTIME, fetch);
     if (!discovery.reachable) {
       throw new Error(discovery.warning ?? "OmniRoute is unreachable. Start the local gateway and retry.");
     }
@@ -154,7 +154,7 @@ function createOpenCode() {
     const requested = requestedModel?.trim() || discovery.models[0].id;
     const route = resolveOmniRouteModel(requested, discovery.models, configuredFallbackModel);
     if (!route.model) throw new Error(route.explanation ?? "The requested OmniRoute model is unavailable.");
-    const tasks = await planSubTasksWithOmniRoute(prompt, route.model, DEFAULT_AXIOM_RUNTIME, proxyFetch);
+    const tasks = await planSubTasksWithOmniRoute(prompt, route.model, DEFAULT_AXIOM_RUNTIME, fetch);
     return { model: route.model, models: discovery.models, tasks, discoveryWarning: discovery.warning, fallbackUsed: route.fallbackUsed, routingExplanation: route.explanation };
   }
 
@@ -178,7 +178,7 @@ function createOpenCode() {
         reject(new Error("Timed out while creating the isolated agent worktree."));
       }, 35000);
       window.addEventListener("message", onMessage);
-      vscode.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
+      hostBridge.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
     });
   }
 
@@ -332,7 +332,7 @@ function createOpenCode() {
     }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });
   }
 
-  // Subscribe to events for the workspace through the extension proxy
+  // Subscribe to events for the workspace directly from the standalone renderer
   // (native EventSource has CORS issues in webview)
   function subscribeToEvents(
     onEvent: (event: Event) => void,
