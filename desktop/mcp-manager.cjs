@@ -107,9 +107,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
     if (!entry) throw new Error("Unknown MCP integration.");
     if (typeof enabled !== "boolean") throw new Error("Enabled must be a boolean.");
     const supported = REMOTE_INTEGRATIONS.has(id) || LOCAL_REVIEWED.has(id) || SECRET_INTEGRATIONS.has(id);
-    if (enabled && !supported) throw new Error(entry.id === "fetch" || entry.id === "crawl4ai"
-      ? "This preset is withheld until a maintained, pinned MCP package passes publisher and runtime review."
-      : "This integration's managed setup is not available yet.");
+    if (enabled && !supported) throw new Error("This integration's managed setup is not available yet.");
     const raw = readRaw(), previous = raw[id] && typeof raw[id] === "object" ? raw[id] : {};
     if (enabled && REQUIRED_SECRET_INTEGRATIONS.has(id) && !decryptSecret(previous)) throw new Error("Save the required credential or database path before enabling this integration.");
     raw[id] = { ...previous, enabled };
