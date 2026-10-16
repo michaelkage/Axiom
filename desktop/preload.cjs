@@ -14,7 +14,10 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),
     saveContext: context => ipcRenderer.invoke("axiom:project-context-save", context),
     addChange: change => ipcRenderer.invoke("axiom:change-feed-add", change),
-    chooseProject: () => ipcRenderer.invoke("axiom:choose-project")
+    chooseProject: () => ipcRenderer.invoke("axiom:choose-project"),
+    listFiles: relativePath => ipcRenderer.invoke("axiom:fs-list", relativePath),
+    readFile: relativePath => ipcRenderer.invoke("axiom:fs-read", relativePath),
+    writeFile: (relativePath, content) => ipcRenderer.invoke("axiom:fs-write", relativePath, content)
   })
 }));
 

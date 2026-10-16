@@ -29,6 +29,7 @@
       "main.cjs",
       "preload.cjs",
       "project-store.cjs",
+      "filesystem.cjs",
       "package.json",
       "node_modules/**"
     ],

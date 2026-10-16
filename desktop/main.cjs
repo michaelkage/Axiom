@@ -6,6 +6,7 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
+const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -413,6 +414,24 @@ function currentProjectStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
 }
+
+ipcMain.handle("axiom:fs-list", async (event, relativePath = "") => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return listDirectory(selectedWorkspace, relativePath);
+});
+
+ipcMain.handle("axiom:fs-read", async (event, relativePath) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return readProjectFile(selectedWorkspace, relativePath);
+});
+
+ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return writeProjectFile(selectedWorkspace, relativePath, content);
+});
 
 ipcMain.handle("axiom:project-bootstrap", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
