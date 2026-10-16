@@ -16,8 +16,8 @@ type McpApi = {
   probeWorker: (id: string) => Promise<{ invoked: boolean; toolName: string | null; status: string; message: string }>;
 };
 const CATEGORIES = ["All", "Development", "Database", "Browser", "Search", "Web extraction", "Documentation"];
-const SECRET_IDS = new Set(["brave-search", "exa", "postgresql", "sqlite"]);
-const REMOTE_IDS = new Set(["github", "context7", "supabase", "neon"]);
+const SECRET_IDS = new Set(["brave-search", "crawl4ai", "postgresql", "sqlite"]);
+const REMOTE_IDS = new Set(["github", "context7", "supabase", "neon", "exa"]);
 
 function api(): McpApi | undefined {
   return (window as Window & { axiomDesktop?: { mcp?: McpApi } }).axiomDesktop?.mcp;
@@ -136,8 +136,8 @@ export function McpIntegrationsPanel() {
             <Show when={diagnosticFor(entry.id)}><p>Connection: {diagnosticFor(entry.id)?.status}. Tools: {diagnosticFor(entry.id)?.tools?.join(", ") || "none discovered"}.</p><Show when={diagnosticFor(entry.id)?.error}><p role="status">{diagnosticFor(entry.id)?.error}</p></Show></Show>
             <Show when={entry.reviewNote}><p role="status">{entry.reviewNote}</p></Show>
             <Show when={SECRET_IDS.has(entry.id)}>
-              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "exa" ? "Exa API key" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
-                <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : entry.id === "postgresql" ? "postgresql://user:password@host:5432/database" : entry.id === "sqlite" ? "Absolute path to an approved .db file" : "Paste API key"} />
+              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "crawl4ai" ? "Optional Crawl4AI bearer token" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
+                <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : entry.id === "postgresql" ? "postgresql://user:password@host:5432/database" : entry.id === "sqlite" ? "Absolute path to an approved .db file" : entry.id === "crawl4ai" ? "Optional bearer token for local Crawl4AI service" : "Paste API key"} />
               </label>
               <div class="workflow-plan__actions">
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !(secrets()[entry.id] || "").trim()} onClick={() => void saveSecret(entry)}>{busyId() === entry.id ? "Saving…" : "Save key securely"}</button>
@@ -157,7 +157,7 @@ export function McpIntegrationsPanel() {
         }</For>
       </div>
       <Show when={notice()}><p role="status" class="omniroute-setup__message">{notice()}</p></Show>
-      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Connection states come from the live OpenCode API. Worker verification creates a diagnostic session and only passes when the response contains an MCP tool-call part for the selected server. PostgreSQL uses DBHub with a least-privilege read-only recommendation; SQLite paths are restricted to the current project. Crawl4AI and Fetch remain disabled until a maintained, pinned MCP package passes review.</small>
+      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Connection states come from the live OpenCode API. Worker verification creates a diagnostic session and only passes when the response contains an MCP tool-call part for the selected server. PostgreSQL uses DBHub in read-only mode and still requires a least-privilege database role; SQLite paths are restricted to the current project. Fetch uses the pinned official Python reference server via uvx. Crawl4AI uses a pinned stdio bridge and expects a separately running local API service at 127.0.0.1:11235.</small>
     </section>
   );
 }
