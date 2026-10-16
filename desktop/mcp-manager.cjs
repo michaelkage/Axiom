@@ -71,9 +71,9 @@ function createMcpManager({ userDataPath, safeStorage, platform = process.platfo
     }
     const raw = readRaw();
     const previous = raw[id] && typeof raw[id] === "object" ? raw[id] : {};
-    raw[id] = { ...previous, encryptedSecret: safeStorage.encryptString(value.trim()).toString("base64"), enabled: true };
+    raw[id] = { ...previous, encryptedSecret: safeStorage.encryptString(value.trim()).toString("base64"), enabled: false };
     writeRaw(raw);
-    return { id, saved: true, hasSecret: true, enabled: true, requiresRestart: true };
+    return { id, saved: true, hasSecret: true, enabled: false, requiresRestart: false };
   }
 
   function setEnabled(id, enabled) {
