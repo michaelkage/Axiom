@@ -67,7 +67,7 @@ async function runtimeExecutable() {
     );
     if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
   } catch { /* Fall through to the actionable runtime-not-found error. */ }
-  throw new Error("Axiom's bundled OpenCode runtime could not be found. Reinstall Axiom using the latest Windows installer.");
+  throw new Error("Axiom's bundled OpenCode runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
 
 function findFreePort() {

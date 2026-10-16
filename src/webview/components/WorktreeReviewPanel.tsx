@@ -17,7 +17,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
   const [forceAcknowledged, setForceAcknowledged] = createSignal(false);
   const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
   const [criteriaDone, setCriteriaDone] = createSignal<string[]>([]);
-  const criteriaComplete = createMemo(() => (props.acceptanceCriteria ?? []).length > 0 && (props.acceptanceCriteria ?? []).every(item => criteriaDone().includes(item)));
+  const criteriaComplete = createMemo(() => (props.acceptanceCriteria ?? []).length === 0 || (props.acceptanceCriteria ?? []).every(item => criteriaDone().includes(item)));
   const effectiveStatus = createMemo(() => gate()?.status === "Ready to review" && !criteriaComplete() ? "Needs fixes" : gate()?.status);
 
   const inspect = () => {
