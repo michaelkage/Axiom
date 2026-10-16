@@ -109,19 +109,28 @@ jobs:
           $workspace = Join-Path $env:RUNNER_TEMP "axiom-install-smoke"
           New-Item -ItemType Directory -Force -Path $workspace | Out-Null
           $app = Start-Process -FilePath $exe -ArgumentList @("--axiom-workspace=$workspace", "--disable-gpu") -PassThru
-          Start-Sleep -Seconds 15
-          $app.Refresh()
           $runtimeLog = Join-Path $env:APPDATA "Axiom/logs/runtime.log"
-          if (Test-Path $runtimeLog) {
-            $log = Get-Content $runtimeLog -Tail 100 | Out-String
-            if ($log -match "Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
-            if ($log -notmatch "Runtime ready at http://127\.0\.0\.1:" ) { throw "Installed Axiom did not confirm the local runtime became ready. $log" }
-            if ($log -notmatch "Axiom renderer loaded\.") { throw "Installed Axiom did not confirm that the standalone UI loaded. $log" }
-          }
-          if ($app.HasExited) {
-            $detail = if (Test-Path $runtimeLog) { Get-Content $runtimeLog -Tail 80 | Out-String } else { "No runtime log was created." }
-            throw "Installed Axiom exited during startup. $detail"
-          }
+          $deadline = (Get-Date).AddSeconds(60)
+          $log = ""
+          $runtimeReady = $false
+          $rendererReady = $false
+          do {
+            $app.Refresh()
+            if ($app.HasExited) {
+              $detail = if (Test-Path $runtimeLog) { Get-Content $runtimeLog -Tail 80 | Out-String } else { "No runtime log was created." }
+              throw "Installed Axiom exited during startup. $detail"
+            }
+            if (Test-Path $runtimeLog) {
+              $log = Get-Content $runtimeLog -Tail 120 | Out-String
+              if ($log -match "Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
+              $runtimeReady = $log -match "Runtime ready at http://127\.0\.0\.1:"
+              $rendererReady = $log -match "Axiom renderer loaded\."
+              if ($runtimeReady -and $rendererReady) { break }
+            }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+          if (-not $runtimeReady) { throw "Installed Axiom did not confirm the local runtime became ready within 60 seconds. $log" }
+          if (-not $rendererReady) { throw "Installed Axiom did not confirm that the standalone UI loaded within 60 seconds. $log" }
           try { & taskkill.exe /pid $app.Id /t /f | Out-Null } catch {}
           $app.WaitForExit(10000) | Out-Null
 
