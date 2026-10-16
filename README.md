@@ -172,7 +172,7 @@ The Windows installer can be built by CI, but interactive installation, first la
 
 Axiom is intended to make AI-assisted software building feel like collaborating on a project rather than supervising a code generator: clear goals, scoped work, visible progress, inspectable changes, honest verification, and a useful final handoff.
 
-See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_PRODUCT_WORKFLOWS.md](./docs/AXIOM_PRODUCT_WORKFLOWS.md) for product and workflow details. The [growth and monetization blueprint](./docs/AXIOM_GROWTH_AND_MONETIZATION_BLUEPRINT.md) records future options only; Axiom will prioritize building a user base before implementing monetization.
+See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_PRODUCT_WORKFLOWS.md](./docs/AXIOM_PRODUCT_WORKFLOWS.md) for product and workflow details. The [MCP integrations blueprint](./docs/AXIOM_MCP_INTEGRATIONS_BLUEPRINT.md) documents the curated server catalog, security requirements, and staged rollout. The [growth and monetization blueprint](./docs/AXIOM_GROWTH_AND_MONETIZATION_BLUEPRINT.md) records future options only; Axiom will prioritize building a user base before implementing monetization.
 
 ## Contributing
 
