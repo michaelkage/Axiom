@@ -1,6 +1,6 @@
 # Axiom MCP Integrations: implementation blueprint
 
-**Status:** Initial runtime slice implemented for Context7, Supabase, Brave Search, and Exa. Catalog metadata, main-process credential encryption, OpenCode config injection, desktop controls, and unit tests are present. Runtime tool discovery and live provider handshakes are not yet implemented or verified; do not label a provider connected until those checks exist.
+**Status:** Runtime diagnostics and a worker tool-call probe are implemented against OpenCode MCP status/tool-ID APIs. Remote OAuth presets include GitHub, Supabase, Context7, and Neon. Reviewed local presets include Playwright and DBHub for PostgreSQL/SQLite. Brave Search and Exa retain credential-based local setup. Fetch and Crawl4AI remain withheld pending a maintained, pinned package review. Live OAuth and provider-specific end-to-end results still require verification in a running packaged Axiom build.
 
 ## Product goal
 
@@ -77,3 +77,4 @@ Package names, URLs, authentication behavior, and maintenance status must be che
 - Existing project and user OpenCode settings remain intact.
 - Every preset has a source/provenance record, transport, auth method, permissions summary, and tests.
 - Workers can actually invoke the integration's tools in a test session, with diagnostic evidence.
+\n\n## Runtime diagnostics and worker probe\n\nAxiom queries the OpenCode MCP status endpoint and tool-ID endpoint, showing per-server status and matching tool names. The worker verification action creates a diagnostic OpenCode session and checks whether the resulting message includes an MCP tool-call part for the selected server. This confirms invocation only when that response shape is present; it does not substitute for live package tests, OAuth handshakes, or a Windows packaged-runtime test.\n
