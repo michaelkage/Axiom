@@ -11,7 +11,7 @@
     "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs"
   },
   "dependencies": {
-    "opencode-ai": "^1.19.0"
+    "opencode-ai": "1.19.0"
   },
   "devDependencies": {
     "electron": "^38.2.0",
