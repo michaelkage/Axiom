@@ -418,7 +418,7 @@ function createOpenCode() {
     const connectedIds = new Set<string>(Array.isArray(data.connected) ? data.connected : []);
     const modelMap = data.models && typeof data.models === "object" ? data.models : {};
     const warnings: string[] = [];
-    if (!Array.isArray(data.all)) warnings.push("The runtime returned an unexpected provider catalogue shape. Update the bundled OpenCode runtime if this persists.");
+    if (!Array.isArray(data.all)) warnings.push("The runtime returned an unexpected provider catalogue shape. Update the bundled Axiom runtime if this persists.");
     const providers = allProviders.map((provider: any) => {
       const id = String(provider.id ?? provider.providerID ?? "");
       const rawModels = modelMap[id] && typeof modelMap[id] === "object" ? modelMap[id] : provider.models ?? {};
