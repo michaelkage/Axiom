@@ -22,6 +22,14 @@ function isLoopback(url) {
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 
+function secureStorageAvailable(safeStorage) {
+  if (!secureStorageAvailable(safeStorage)) return false;
+  try {
+    const backend = typeof safeStorage.getSelectedStorageBackend === "function" ? safeStorage.getSelectedStorageBackend() : "";
+    return backend !== "basic_text";
+  } catch { return false; }
+}
+
 function createOmniRouteManager({ userDataPath, safeStorage, platform = process.platform, spawnProcess = spawn, fetchImpl = fetch }) {
   const configPath = path.join(userDataPath, "omniroute-settings.json");
   let ownedProcess = null;
@@ -59,7 +67,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
       installRequested: config.installRequested === true
     };
     if (config.apiKey) {
-      if (!safeStorage?.isEncryptionAvailable?.()) throw new Error("This system does not provide secure credential storage. Leave the API key blank or configure it in OpenCode directly.");
+      if (!secureStorageAvailable(safeStorage)) throw new Error("This system does not provide OS-backed secure credential storage. Leave the API key blank or configure it in OpenCode directly.");
       raw.apiKeyEncrypted = safeStorage.encryptString(config.apiKey).toString("base64");
     } else if (readRaw().apiKeyEncrypted) {
       raw.apiKeyEncrypted = readRaw().apiKeyEncrypted;
@@ -224,4 +232,4 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
   } });
 }
 
-module.exports = { createOmniRouteManager, DEFAULT_BASE_URL, normalizeBaseUrl, isLoopback };
+module.exports = { createOmniRouteManager, DEFAULT_BASE_URL, normalizeBaseUrl, isLoopback, secureStorageAvailable };
