@@ -46,7 +46,7 @@ export function OmniRouteSetupPanel() {
     setMessage("");
     try {
       if (action === "save") {
-        const result = await bridge.save({ baseUrl: baseUrl().trim(), model: model().trim() || "auto", enabled: enabled(), autoStart: autoStart(), apiKey });
+        const result = await bridge.save({ baseUrl: baseUrl().trim(), model: model().trim() || "auto", enabled: enabled(), autoStart: autoStart(), apiKey: apiKey() });
         setApiKey("");
         setMessage(result.requiresRestart ? "Saved. Restart Axiom to apply the selected OmniRoute model to OpenCode sessions." : "Settings saved.");
       } else if (action === "check") {
@@ -90,7 +90,7 @@ export function OmniRouteSetupPanel() {
         <datalist id="omniroute-model-options"><For each={status()?.endpoint.models || []}>{item => <option value={item.id}>{item.name}</option>}</For></datalist>
       </label>
       <label class="omniroute-setup__field">Router API key <span class="omniroute-setup__hint">{status()?.config.hasApiKey ? "A key is saved securely. Leave blank to keep it." : "Optional if your endpoint does not require authentication."}</span>
-        <input type="password" autoComplete="off" value={apiKey()} onInput={event => setApiKey(event.currentTarget.value)} placeholder={status()?.config.hasApiKey ? "Saved securely" : "Paste router key"} disabled={busy()} />
+        <input type="password" autocomplete="off" value={apiKey()} onInput={event => setApiKey(event.currentTarget.value)} placeholder={status()?.config.hasApiKey ? "Saved securely" : "Paste router key"} disabled={busy()} />
       </label>
       <label class="omniroute-setup__toggle"><input type="checkbox" checked={enabled()} onChange={event => setEnabled(event.currentTarget.checked)} disabled={busy()} /> Attach OmniRoute as Axiom's default OpenCode provider on next startup</label>
       <label class="omniroute-setup__toggle"><input type="checkbox" checked={autoStart()} onChange={event => setAutoStart(event.currentTarget.checked)} disabled={busy() || !enabled()} /> Launch local OmniRoute automatically when Axiom starts</label>
