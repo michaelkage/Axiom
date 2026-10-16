@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { vscode } from "../utils/vscode";
+import { hostBridge } from "../utils/hostBridge";
 
 export function ProviderOnboardingPanel() {
   const [expanded, setExpanded] = createSignal(false);
@@ -15,7 +15,7 @@ export function ProviderOnboardingPanel() {
         <div><span>4</span><div><strong>Run a small first task</strong><p>Ask Axiom to explain a file or make one contained change, then inspect the diff and verification results before integrating anything.</p></div></div>
       </div>
       <div class="provider-onboarding__actions">
-        <a href="https://opencode.ai/docs/providers/" onClick={(event) => { event.preventDefault(); vscode.postMessage({ type: "open-external-url", url: "https://opencode.ai/docs/providers/" }); }}>Provider setup guide ↗</a>
+        <a href="https://opencode.ai/docs/providers/" onClick={(event) => { event.preventDefault(); hostBridge.postMessage({ type: "open-external-url", url: "https://opencode.ai/docs/providers/" }); }}>Provider setup guide ↗</a>
         <button type="button" class="workflow-plan__secondary" onClick={() => setExpanded(value => !value)}>{expanded() ? "Hide setup tips" : "Show setup tips"}</button>
       </div>
       <Show when={expanded()}>

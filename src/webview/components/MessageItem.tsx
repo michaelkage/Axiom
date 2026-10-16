@@ -4,7 +4,7 @@ import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { isRenderablePart } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
-import { vscode } from "../utils/vscode";
+import { hostBridge } from "../utils/hostBridge";
 import { useSync } from "../state/sync";
 import { messageMarkdownComponents } from "./markdownComponents";
 
@@ -107,7 +107,7 @@ export function MessageItem(props: MessageItemProps) {
                       onClick={(event) => {
                         event.stopPropagation();
                         if (!attachment.url) return;
-                        vscode.postMessage({
+                        hostBridge.postMessage({
                           type: "open-file",
                           url: attachment.url,
                           startLine: attachment.startLine,

@@ -3,7 +3,7 @@ import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
 import { TiptapEditor, type TiptapEditorMethods } from "./TiptapEditor";
-import { vscode } from "../utils/vscode";
+import { hostBridge } from "../utils/hostBridge";
 
 interface InputBarProps {
   value: string;
@@ -47,7 +47,7 @@ export function InputBar(props: InputBarProps) {
       
       window.addEventListener("message", handleMessage);
       
-      vscode.postMessage({
+      hostBridge.postMessage({
         type: "search-files",
         query,
       });

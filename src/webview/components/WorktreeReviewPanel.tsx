@@ -1,5 +1,5 @@
 import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
-import { vscode } from "../utils/vscode";
+import { hostBridge } from "../utils/hostBridge";
 
 type ChangedFile = { status: string; path: string };
 type Check = { name: string; state: string; exitCode?: number; output?: string };
@@ -22,17 +22,17 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
   const inspect = () => {
     if (!props.workspaceRoot) return;
     setReview({ ok: false, loading: true });
-    vscode.postMessage({ type: "inspect-agent-worktree", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot });
+    hostBridge.postMessage({ type: "inspect-agent-worktree", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot });
   };
   const runGate = () => {
     if (!props.workspaceRoot || !changedPaths().length) return;
     setGate({ loading: true });
-    vscode.postMessage({ type: "run-agent-quality-gate", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, changedPaths: changedPaths() });
+    hostBridge.postMessage({ type: "run-agent-quality-gate", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, changedPaths: changedPaths() });
   };
   const applySelected = () => {
     if (!props.workspaceRoot || !selected().length || gate()?.status !== "Ready to review") return;
     setApplyResult({ loading: true, ok: false });
-    vscode.postMessage({ type: "apply-agent-worktree-changes", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, paths: selected() });
+    hostBridge.postMessage({ type: "apply-agent-worktree-changes", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, paths: selected() });
   };
   const toggle = (path: string, checked: boolean) => setSelected(old => checked ? [...new Set([...old, path])] : old.filter(item => item !== path));
 
