@@ -55,3 +55,6 @@ jobs:
 
       - name: Run unit tests
         run: pnpm exec vitest run
+
+      - name: Run desktop host tests
+        run: pnpm run test:desktop
