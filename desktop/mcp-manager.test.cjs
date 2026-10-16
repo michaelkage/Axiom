@@ -55,6 +55,7 @@ test("reviewed remote endpoints use OpenCode remote transport and OAuth defaults
     assert.equal(config.mcp.supabase.url, "https://mcp.supabase.com/mcp");
     assert.equal(config.mcp.github.url, "https://api.githubcopilot.com/mcp/");
     assert.equal(config.mcp.neon.url, "https://mcp.neon.tech/mcp");
+    assert.equal(config.mcp.exa.url, "https://mcp.exa.ai/mcp");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -72,7 +73,7 @@ test("Playwright uses a pinned package and database credentials are secure", () 
     assert.equal(config.mcp.playwright.command[2], "@playwright/mcp@0.0.83");
     assert.equal(config.mcp.sqlite.command[2], "@bytebase/dbhub@1.5.0");
     assert.equal(config.mcp.postgresql.environment.DSN, "postgresql://readonly:secret@localhost:5432/app");
-    assert.equal(config.mcp.postgresql.environment.READ_ONLY, "true");
+    assert.equal(config.mcp.postgresql.environment.READONLY, "true");
     assert.equal(manager.openCodeEnvironment({ workspaceRoot: dir }).OPENCODE_CONFIG_CONTENT.includes('"sqlite"'), false);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
