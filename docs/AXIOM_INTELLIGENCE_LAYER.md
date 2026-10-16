@@ -36,7 +36,7 @@ The starter combos are **Fix it** (diagnose → implement → test → summarize
 
 ## Live validation
 
-The GitHub Actions workflow validates compilation and unit tests, including mocked OmniRoute responses and orchestration dependency/outcome behavior. It cannot reach a developer's loopback OmniRoute gateway or prove that a local OpenCode server accepts child sessions in temporary worktrees. Those live integration checks must run in the target VS Code environment. If worktree creation or child-session creation is rejected by the local server, the run fails with an explicit error rather than silently falling back to shared-workspace execution.
+The GitHub Actions workflow validates compilation and unit tests, including mocked OmniRoute responses and orchestration dependency/outcome behavior. It cannot reach a developer's loopback OmniRoute gateway or prove that a local OpenCode server accepts child sessions in temporary worktrees. Those live integration checks must run in the target standalone desktop app. If worktree creation or child-session creation is rejected by the local server, the run fails with an explicit error rather than silently falling back to shared-workspace execution.
 
 ## Validation boundary
 
