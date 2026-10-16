@@ -1,6 +1,8 @@
 import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
 
 type TerminalOutput = { requestId: string; stream: "stdout" | "stderr"; text: string };
+const MAX_TERMINAL_OUTPUT_CHARS = 120_000;
+
 type TerminalBridge = {
   run: (request: { requestId: string; command: string; cwd: string }) => Promise<{ exitCode: number; cwd: string }>;
   cancel: (requestId: string) => Promise<boolean>;
@@ -10,6 +12,9 @@ type TerminalBridge = {
 export function TerminalPanel() {
   const [expanded, setExpanded] = createSignal(false);
   const [command, setCommand] = createSignal("");
+  const [history, setHistory] = createSignal<string[]>([]);
+  const [historyIndex, setHistoryIndex] = createSignal(-1);
+  const [draftCommand, setDraftCommand] = createSignal("");
   const [cwd, setCwd] = createSignal("");
   const [running, setRunning] = createSignal<string | null>(null);
   const [output, setOutput] = createSignal<Array<{ kind: string; text: string }>>([
@@ -18,7 +23,45 @@ export function TerminalPanel() {
   const bridge = (window as unknown as { axiomDesktop?: { terminal?: TerminalBridge } }).axiomDesktop?.terminal;
 
   const append = (kind: string, text: string) => {
-    setOutput(previous => [...previous, { kind, text }].slice(-500));
+    setOutput(previous => {
+      const next = [...previous, { kind, text: text.slice(-MAX_TERMINAL_OUTPUT_CHARS) }];
+      let total = next.reduce((size, item) => size + item.text.length, 0);
+      while (total > MAX_TERMINAL_OUTPUT_CHARS && next.length > 1) {
+        const removed = next.shift();
+        total -= removed?.text.length ?? 0;
+      }
+      if (next.length === 1 && total > MAX_TERMINAL_OUTPUT_CHARS) {
+        next[0] = { ...next[0], text: next[0].text.slice(-MAX_TERMINAL_OUTPUT_CHARS) };
+      }
+      return next;
+    });
+  };
+
+  const clearOutput = () => setOutput([{ kind: "system", text: "Terminal output cleared." }]);
+
+  const handleCommandKeyDown = (event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+      event.preventDefault();
+      clearOutput();
+      return;
+    }
+    if (event.key === "ArrowUp" && !running() && history().length > 0) {
+      event.preventDefault();
+      if (historyIndex() === -1) setDraftCommand(command());
+      const next = historyIndex() === -1 ? history().length - 1 : Math.max(0, historyIndex() - 1);
+      setHistoryIndex(next);
+      setCommand(history()[next] ?? "");
+    } else if (event.key === "ArrowDown" && !running() && historyIndex() !== -1) {
+      event.preventDefault();
+      if (historyIndex() >= history().length - 1) {
+        setHistoryIndex(-1);
+        setCommand(draftCommand());
+      } else {
+        const next = historyIndex() + 1;
+        setHistoryIndex(next);
+        setCommand(history()[next] ?? "");
+      }
+    }
   };
 
   onMount(() => {
@@ -39,6 +82,9 @@ export function TerminalPanel() {
     }
     const requestId = crypto.randomUUID().replace(/-/g, "");
     setRunning(requestId);
+    setHistory(previous => [...previous.filter(item => item !== text), text].slice(-100));
+    setHistoryIndex(-1);
+    setDraftCommand("");
     append("command", "$ " + text);
     setCommand("");
     try {
@@ -75,16 +121,16 @@ export function TerminalPanel() {
               Working directory
               <input aria-label="Terminal working directory" value={cwd()} onInput={event => setCwd(event.currentTarget.value)} placeholder="project root" disabled={!!running()} style={{ width: "220px", padding: "7px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "5px" }} />
             </label>
-            <button type="button" onClick={() => setOutput([{ kind: "system", text: "Terminal output cleared." }])} style={{ padding: "5px 9px" }}>Clear output</button>
+            <button type="button" onClick={clearOutput} style={{ padding: "5px 9px" }}>Clear output</button>
           </div>
           <pre role="log" aria-live="polite" style={{ margin: "0 0 10px", padding: "12px", height: "210px", overflow: "auto", background: "#090a0e", border: "1px solid #252833", "border-radius": "6px", "white-space": "pre-wrap", "overflow-wrap": "anywhere", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace", "font-size": "12px", "line-height": "1.55" }}>
             <For each={output()}>{item => <span style={{ color: item.kind === "stderr" ? "#fca5a5" : item.kind === "command" ? "#93c5fd" : item.kind === "system" ? "#9ca3af" : "#e5e7eb" }}>{item.text}{item.text.endsWith("\n") ? "" : "\n"}</span>}</For>
           </pre>
           <form onSubmit={execute} style={{ display: "flex", gap: "8px" }}>
-            <input aria-label="Terminal command" value={command()} onInput={event => setCommand(event.currentTarget.value)} placeholder="Run a command, e.g. npm test" disabled={!!running()} style={{ flex: "1", "min-width": "0", padding: "10px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "6px", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
+            <input aria-label="Terminal command" value={command()} onInput={event => { setCommand(event.currentTarget.value); if (historyIndex() === -1) setDraftCommand(event.currentTarget.value); }} onKeyDown={handleCommandKeyDown} placeholder="Run a command, e.g. npm test" disabled={!!running()} style={{ flex: "1", "min-width": "0", padding: "10px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "6px", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
             <button type="submit" disabled={!!running() || !command().trim()} style={{ padding: "8px 14px" }}>{running() ? "Running…" : "Run"}</button>
           </form>
-          <small style={{ display: "block", color: "#8b93a7", "margin-top": "7px" }}>Commands execute with your user permissions. Keep commands and secrets out of shared logs.</small>
+          <small style={{ display: "block", color: "#8b93a7", "margin-top": "7px" }}>Commands execute with your user permissions. Up/Down recalls the last 100 commands. Ctrl+L clears output. Output is capped at 120 KB. Keep secrets out of shared logs.</small>
         </div>
       </Show>
     </section>
