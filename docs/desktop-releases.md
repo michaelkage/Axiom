@@ -6,7 +6,7 @@ The desktop release workflow is `.github/workflows/release.yml`. It builds the s
 
 1. Ensure `package.json` and `desktop/package.json` have the same version.
 2. Merge or push the exact commit intended for release.
-3. Create and push a tag matching that version, prefixed with `v`. For example, for version `0.4.4`:
+3. Create and push a tag matching that version, prefixed with `v`. For example, for version `0.4.5`:
 
    ```sh
    git checkout axiom/product-rebuild

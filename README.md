@@ -33,7 +33,8 @@ See [Desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for startup rec
 - **Evidence-based quality gates:** run relevant checks and show actual command output instead of treating an agent's “done” message as proof.
 - **Bounded repair:** send real failed-check output back for a limited correction attempt.
 - **Selective integration:** review changed files and integrate selected work without blindly replacing unrelated edits.
-- **Project memory:** save, search, edit, and delete project conventions, architecture notes, decisions, and fixes. Current memory storage is local to the app's webview profile and is not synced between devices.
+- **Project memory:** save project conventions, architecture notes, decisions, and fixes. Project context and verification history are stored locally in Axiom's per-user application data, outside the repository, and are not synced between devices.
+- **Native file workspace:** browse, inspect, edit, and save project files from inside the desktop app. The desktop file bridge rejects path traversal and symbolic links, excludes dependency/build directories, and caps file edits at 1 MiB.
 - **Outcome-centered handoff:** track completed and blocked tasks, outstanding requirements, and verification evidence.
 
 Features are actively evolving. Some legacy internal modules still use OpenCode names because the application is built on OpenCode's runtime and client libraries. The product you install is Axiom.
