@@ -143,8 +143,8 @@ The installer is emitted to `desktop/release/`. The release workflow performs th
 ## Release process
 
 1. Ensure CI passes on the intended release commit.
-2. Set the version in both the root `package.json` and `desktop/package.json`.
-3. Push a tag matching `v*` (for example `v0.4.4`) to that commit.
+2. Set the same version in both the root `package.json` and `desktop/package.json`.
+3. Push the release commit to `axiom/product-rebuild`. The release workflow builds and smoke-tests the installer, then creates the matching version tag and GitHub Release if that tag does not already exist. A manually pushed `v*` tag also triggers the workflow.
 4. The **Build Axiom Desktop Release** workflow builds the standalone UI, installs desktop packaging dependencies, packages the app and runtime, and creates `Axiom-Setup-<version>-x64.exe`.
 5. The workflow creates a SHA-256 checksum file alongside the installer and attaches both to the GitHub Release. Verify the downloaded installer against the `.sha256` asset before running it. In PowerShell, from the folder containing the installer, run:
 
