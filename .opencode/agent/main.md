@@ -1,7 +1,6 @@
 ---
 description: Main agent
 mode: primary
-model: anthropic/claude-opus-4-5-20251101
 tools:
   write: true
   edit: true
