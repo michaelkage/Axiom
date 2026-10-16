@@ -472,7 +472,7 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const config = omniRouteManager.getConfig();
   const url = new URL(config.baseUrl);
-  url.pathname = url.pathname.replace(/\\/v1\\/?$/, "") || "/";
+  url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
   await shell.openExternal(url.toString());
   return true;
 });
