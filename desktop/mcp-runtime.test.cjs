@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { inspectMcpRuntime, normalizeMcpList, normalizeToolIds, extractToolCalls, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 
-test("normalizes OpenCode MCP status and tool IDs", () => {
+test("normalizes Axiom runtime MCP status and tool IDs", () => {
   assert.deepEqual(normalizeMcpList({ data: [{ name: "context7", status: { status: "connected" } }] }), [{ id: "context7", status: "connected", error: "" }]);
   assert.deepEqual(normalizeToolIds({ toolIDs: ["context7_resolve-library-id"] }), ["context7_resolve-library-id"]);
   assert.deepEqual(extractToolCalls({ parts: [{ type: "tool", tool: "context7_resolve-library-id", state: { status: "completed" } }] }), [{ name: "context7_resolve-library-id", state: "completed" }]);
