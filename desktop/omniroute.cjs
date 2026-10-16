@@ -201,7 +201,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     if (ownedProcess && ownedProcess.exitCode === null) throw new Error("OmniRoute is already starting.");
     const executable = findCommand("omniroute");
     if (!executable) throw new Error("OmniRoute is not installed. Use Install OmniRoute first, or connect to an existing router URL.");
-    const child = spawnProcess(executable, [], {
+    const child = spawnProcess(executable, ["--no-open"], {
       cwd: userDataPath, windowsHide: true, shell: platform === "win32",
       stdio: ["ignore", "pipe", "pipe"], detached: platform !== "win32"
     });
