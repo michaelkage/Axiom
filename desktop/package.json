@@ -31,8 +31,6 @@
       "main.cjs",
       "mcp-manager.cjs",
       "mcp-catalog.cjs",
-      "mcp-manager.test.cjs",
-      "mcp-catalog.test.cjs",
       "preload.cjs",
       "project-store.cjs",
       "filesystem.cjs",
