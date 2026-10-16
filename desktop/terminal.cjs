@@ -1,6 +1,7 @@
 "use strict";
 
 const path = require("node:path");
+const fs = require("node:fs");
 const { spawn } = require("node:child_process");
 
 const MAX_COMMAND_LENGTH = 10000;
@@ -20,7 +21,20 @@ function createTerminalRunner({ workspaceRoot, platform = process.platform, spaw
     if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {
       throw new Error("Terminal working directory must stay inside the project.");
     }
-    return candidate;
+    let realRoot;
+    let realCandidate;
+    try {
+      realRoot = fs.realpathSync(root);
+      realCandidate = fs.realpathSync(candidate);
+    } catch {
+      throw new Error("Terminal working directory must exist inside the project.");
+    }
+    const realRelative = path.relative(realRoot, realCandidate);
+    if (realRelative === ".." || realRelative.startsWith(".." + path.sep) || path.isAbsolute(realRelative)) {
+      throw new Error("Terminal working directory must stay inside the project, including through symbolic links.");
+    }
+    if (!fs.statSync(realCandidate).isDirectory()) throw new Error("Terminal working directory must be a directory.");
+    return realCandidate;
   }
 
   function run({ requestId, command, cwd = "", onOutput = () => {} }) {

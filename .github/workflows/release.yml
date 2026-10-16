@@ -46,6 +46,9 @@ jobs:
       - name: Build Axiom desktop UI
         run: pnpm run build:webview
 
+      - name: Type-check the standalone webview
+        run: pnpm exec tsc -p tsconfig.webview.json
+
       - name: Run desktop host and filesystem tests
         run: node --test desktop/*.test.cjs
 

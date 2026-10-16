@@ -37,6 +37,19 @@ test("terminal rejects absolute and parent-traversal working directories", async
   }
 });
 
+test("terminal rejects symlink working directories that escape the project", { skip: process.platform === "win32" }, async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-outside-"));
+  try {
+    await fs.symlink(outside, path.join(root, "outside-link"), "dir");
+    const runner = createTerminalRunner({ workspaceRoot: root, platform: "linux" });
+    assert.throws(() => runner.resolveCwd("outside-link"), /symbolic links/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(outside, { recursive: true, force: true });
+  }
+});
+
 test("terminal rejects malformed commands and request IDs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-"));
   try {
