@@ -8,7 +8,7 @@ Axiom is a standalone desktop app for AI-first project building. Describe the fe
 
 **Windows x64:** open the [Axiom Releases page](https://github.com/michaelkage/Axiom/releases) and download `Axiom-Setup-<version>-x64.exe`.
 
-The installer installs the standalone Axiom desktop application, including its desktop shell and local OpenCode runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app. Use **File → Switch Project** (Ctrl+O) to change folders without manually restarting. If the runtime fails to start, Axiom offers a retry and records diagnostics in its application user-data folder; **Help → Open Axiom Runtime Log** opens that log.
+The installer installs the standalone Axiom desktop application, including its desktop shell and bundled Axiom runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app. Use **File → Switch Project** (Ctrl+O) to change folders without manually restarting. If the runtime fails to start, Axiom offers a retry and records diagnostics in its application user-data folder; **Help → Open Axiom Runtime Log** opens that log.
 
 If the Releases page does not contain a Windows installer yet, a release has not been published. CI artifacts are not the same as published release assets, because apparently one download location was too straightforward.
 
@@ -37,7 +37,7 @@ See [Desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for startup rec
 - **Native file workspace:** browse, inspect, edit, and save project files from inside the desktop app. The desktop file bridge rejects path traversal and symbolic links, excludes dependency/build directories, and caps file edits at 1 MiB.
 - **Outcome-centered handoff:** track completed and blocked tasks, outstanding requirements, and verification evidence.
 
-Features are actively evolving. Some legacy internal modules still use OpenCode names because the application is built on OpenCode's runtime and client libraries. The product you install is Axiom.
+Features are actively evolving. Axiom is built on upstream runtime and client libraries, while the installed product, interface, and supported workflow are Axiom.
 
 ## Quick start
 
@@ -53,7 +53,7 @@ Start with a small change while you confirm your model provider and local develo
 
 ## How the desktop app works
 
-Axiom is an Electron desktop application. It opens a project folder and starts a local OpenCode runtime for that workspace. The runtime listens on a loopback interface, not a public network interface. The installer bundles the desktop app and the OpenCode CLI runtime so a separate VS Code installation is not required.
+Axiom is an Electron desktop application. It opens a project folder and starts a bundled Axiom runtime for that workspace. The runtime listens on a loopback interface, not a public network interface. The installer bundles the desktop app and the Axiom runtime so a separate VS Code installation is not required.
 
 Axiom works on files in the project folder you select. Review generated changes carefully and keep backups or version control for important projects. Agent permissions and tool availability depend on the runtime and model configuration.
 
@@ -63,9 +63,9 @@ On the first-run welcome screen, Axiom can connect to an existing OmniRoute-comp
 
 - **Connect existing router:** set the OpenAI-compatible API base URL and, if required, its API key.
 - **Install:** the explicit Install button runs `npm install --global omniroute`. It does not silently install software during Axiom setup.
-- **Attach to Axiom:** enabling this option adds the selected router model to the OpenCode runtime configuration on the next Axiom launch. The API key is encrypted with Electron's OS-backed secure storage; Axiom refuses to persist it if secure storage is unavailable.
+- **Attach to Axiom:** enabling this option adds the selected router model to the Axiom runtime configuration on the next Axiom launch. The API key is encrypted with Electron's OS-backed secure storage; Axiom refuses to persist it if secure storage is unavailable.
 - **Start with Axiom:** optional and only for the local default OmniRoute service. Axiom only stops the router process it started itself, never a separately running router.
-- **No router required:** direct OpenCode providers, local model servers, custom endpoints, and existing provider credentials remain available without OmniRoute.
+- **No router required:** direct model providers, local model servers, custom endpoints, and existing provider credentials remain available without OmniRoute.
 
 The OmniRoute installer is maintained by the [OmniRoute project](https://github.com/ourines/omniroute). Review its install requirements and provider terms before connecting accounts or enabling models.
   
