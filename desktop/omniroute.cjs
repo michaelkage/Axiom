@@ -141,7 +141,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
     if (apiKey.length > 4096) throw new Error("API key is too long.");
     try {
-      const response = await fetchImpl(baseUrl.replace(/\\/+$/, "") + "/models", {
+      const response = await fetchImpl(baseUrl + "/models", {
         headers: apiKey ? { Authorization: "Bearer " + apiKey } : {},
         signal: AbortSignal.timeout(3500)
       });
