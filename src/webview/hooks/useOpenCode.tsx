@@ -256,12 +256,6 @@ function createOpenCode() {
       const abortWorker = () => {
         void c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
       };
-      signal?.addEventListener("abort", abortWorker, { once: true });
-      if (signal?.aborted) {
-        abortWorker();
-        signal?.removeEventListener("abort", abortWorker);
-        throw taskError("Parallel task cancelled before prompting the worker.");
-      }
       const packed = contextForSpecialist({
         request: orchestration?.request ?? task.scope,
         taskTitle: task.title,
@@ -294,6 +288,13 @@ function createOpenCode() {
         ? task.agentHint
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
       if (signal?.aborted) throw new Error("Parallel task cancelled before sending the worker prompt.");
+      if (signal?.aborted) throw taskError("Parallel task cancelled before prompting the worker.");
+      signal?.addEventListener("abort", abortWorker, { once: true });
+      if (signal?.aborted) {
+        abortWorker();
+        signal?.removeEventListener("abort", abortWorker);
+        throw taskError("Parallel task cancelled before prompting the worker.");
+      }
       let result: { error?: unknown };
       try {
         result = await c.session.prompt({

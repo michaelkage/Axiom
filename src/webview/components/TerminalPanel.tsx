@@ -81,7 +81,7 @@ export function TerminalPanel() {
             <For each={output()}>{item => <span style={{ color: item.kind === "stderr" ? "#fca5a5" : item.kind === "command" ? "#93c5fd" : item.kind === "system" ? "#9ca3af" : "#e5e7eb" }}>{item.text}{item.text.endsWith("\n") ? "" : "\n"}</span>}</For>
           </pre>
           <form onSubmit={execute} style={{ display: "flex", gap: "8px" }}>
-            <input aria-label="Terminal command" value={command()} onInput={event => setCommand(event.currentTarget.value)} placeholder="Run a command, e.g. npm test" disabled={!!running()} style={{ flex: "1", minWidth: "0", padding: "10px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "6px", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
+            <input aria-label="Terminal command" value={command()} onInput={event => setCommand(event.currentTarget.value)} placeholder="Run a command, e.g. npm test" disabled={!!running()} style={{ flex: "1", "min-width": "0", padding: "10px", background: "#1b1e27", color: "#e5e7eb", border: "1px solid #383b47", "border-radius": "6px", "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
             <button type="submit" disabled={!!running() || !command().trim()} style={{ padding: "8px 14px" }}>{running() ? "Running…" : "Run"}</button>
           </form>
           <small style={{ display: "block", color: "#8b93a7", "margin-top": "7px" }}>Commands execute with your user permissions. Keep commands and secrets out of shared logs.</small>
