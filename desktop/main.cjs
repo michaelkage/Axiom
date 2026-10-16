@@ -427,7 +427,7 @@ async function runQualityGate(event, message) {
 }
 
 async function upstreamRevision(root) {
-  const upstream = await run("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], root, 15000);
+  const upstream = await run("git", ["rev-parse", "--symbolic-full-name", "@{u}"], root, 15000);
   if (upstream.exitCode !== 0 || !upstream.output.trim()) return null;
   const ref = upstream.output.trim().split(/\r?\n/).at(-1);
   const prefix = "refs/remotes/";
