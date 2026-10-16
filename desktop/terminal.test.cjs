@@ -10,11 +10,11 @@ const { createTerminalRunner } = require("./terminal.cjs");
 test("terminal executes a command in the selected project and streams output", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-"));
   try {
-    const runner = createTerminalRunner({ workspaceRoot: root, platform: "linux" });
+    const runner = createTerminalRunner({ workspaceRoot: root, platform: process.platform });
     const chunks = [];
     const result = await runner.run({
       requestId: "test-run",
-      command: "printf 'terminal works\\n'",
+      command: process.platform === "win32" ? "Write-Output 'terminal works'" : "printf 'terminal works\\n'",
       onOutput: chunk => chunks.push(chunk.text)
     });
     assert.equal(result.exitCode, 0);
