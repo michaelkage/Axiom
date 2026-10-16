@@ -73,7 +73,7 @@ test("Playwright uses a pinned package and database credentials are secure", () 
     assert.equal(config.mcp.sqlite.command[2], "@bytebase/dbhub@1.5.0");
     assert.equal(config.mcp.postgresql.environment.DSN, "postgresql://readonly:secret@localhost:5432/app");
     assert.equal(config.mcp.postgresql.environment.READONLY, "true");
-    assert.equal(manager.openCodeEnvironment({ workspaceRoot: dir }).OPENCODE_CONFIG_CONTENT.includes('"sqlite"'), false);
+    const otherRoot = path.join(dir, "other-workspace"); fs.mkdirSync(otherRoot);\n    assert.equal(manager.openCodeEnvironment({ workspaceRoot: otherRoot }).OPENCODE_CONFIG_CONTENT.includes('"sqlite"'), false);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
