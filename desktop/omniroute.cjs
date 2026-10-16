@@ -117,6 +117,32 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     };
   }
 
+  async function checkConnection(input) {
+    if (!input || typeof input !== "object") throw new Error("Invalid connection check request.");
+    const baseUrl = normalizeBaseUrl(input.baseUrl || DEFAULT_BASE_URL);
+    const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
+    if (apiKey.length > 4096) throw new Error("API key is too long.");
+    try {
+      const response = await fetchImpl(baseUrl.replace(/\\/+$/, "") + "/models", {
+        headers: apiKey ? { Authorization: "Bearer " + apiKey } : {},
+        signal: AbortSignal.timeout(3500)
+      });
+      if (!response.ok) {
+        const message = response.status === 401 || response.status === 403
+          ? "Router is reachable but rejected the API key."
+          : "Endpoint responded with HTTP " + response.status + ".";
+        return { reachable: true, authenticated: false, models: [], message };
+      }
+      const payload = await response.json().catch(() => ({}));
+      const models = Array.isArray(payload.data)
+        ? payload.data.filter(item => item && typeof item.id === "string").slice(0, 300).map(item => ({ id: item.id, name: typeof item.name === "string" ? item.name : item.id }))
+        : [];
+      return { reachable: true, authenticated: true, models, message: "API reachable." };
+    } catch (error) {
+      return { reachable: false, authenticated: false, models: [], message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function save(input) {
     if (!input || typeof input !== "object") throw new Error("Invalid OmniRoute settings.");
     const previous = readConfig();
@@ -226,7 +252,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     return { started: false, skipped: true };
   }
 
-  return Object.freeze({ status, save, install, start, stop, startIfConfigured, openCodeEnvironment, ownsProcess: () => !!ownedProcess && ownedProcess.exitCode === null, getConfig: () => {
+  return Object.freeze({ status, checkConnection, save, install, start, stop, startIfConfigured, openCodeEnvironment, ownsProcess: () => !!ownedProcess && ownedProcess.exitCode === null, getConfig: () => {
     const c = readConfig();
     return { baseUrl: c.baseUrl, model: c.model, enabled: c.enabled, autoStart: c.autoStart, hasApiKey: !!c.apiKey };
   } });

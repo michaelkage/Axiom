@@ -8,6 +8,7 @@ type OmniRouteStatus = {
 };
 type OmniRouteBridge = {
   status: () => Promise<OmniRouteStatus>;
+  check: (settings: { baseUrl: string; apiKey: string }) => Promise<OmniRouteStatus["endpoint"]>;
   save: (settings: { baseUrl: string; model: string; enabled: boolean; autoStart: boolean; apiKey: string }) => Promise<{ saved: boolean; requiresRestart: boolean }>;
   install: () => Promise<unknown>;
   start: () => Promise<unknown>;
@@ -50,10 +51,9 @@ export function OmniRouteSetupPanel() {
         setApiKey("");
         setMessage(result.requiresRestart ? "Saved. Restart Axiom to apply the selected OmniRoute model to OpenCode sessions." : "Settings saved.");
       } else if (action === "check") {
-        const result = await bridge.save({ baseUrl: baseUrl().trim(), model: model().trim() || "auto", enabled: enabled(), autoStart: autoStart(), apiKey: apiKey() });
-        setApiKey("");
-        await refresh();
-        setMessage(result.saved ? "Settings saved and connection status refreshed." : "Connection checked.");
+        const endpoint = await bridge.check({ baseUrl: baseUrl().trim(), apiKey: apiKey() });
+        setStatus(current => current ? { ...current, endpoint } : null);
+        setMessage(endpoint.message);
       } else if (action === "install") {
         await bridge.install();
         setMessage("OmniRoute installed. Save your settings, then start the router.");

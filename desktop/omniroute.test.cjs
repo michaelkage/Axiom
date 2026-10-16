@@ -67,3 +67,28 @@ test("does not allow auto-start for remote or non-default local endpoints", asyn
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("connection check probes an unsaved URL without persisting credentials", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-omniroute-check-"));
+  let requestedUrl = "";
+  let requestedAuthorization = "";
+  try {
+    const manager = createOmniRouteManager({
+      userDataPath: dir,
+      safeStorage: { isEncryptionAvailable: () => false },
+      fetchImpl: async (url, options) => {
+        requestedUrl = String(url);
+        requestedAuthorization = new Headers(options.headers).get("Authorization") || "";
+        return new Response(JSON.stringify({ data: [{ id: "local-model" }] }), { status: 200 });
+      }
+    });
+    const result = await manager.checkConnection({ baseUrl: "http://127.0.0.1:20128/v1", apiKey: "temporary-key" });
+    assert.equal(result.reachable, true);
+    assert.equal(result.models[0].id, "local-model");
+    assert.equal(requestedUrl, "http://127.0.0.1:20128/v1/models");
+    assert.equal(requestedAuthorization, "Bearer temporary-key");
+    assert.equal(fs.existsSync(path.join(dir, "omniroute-settings.json")), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

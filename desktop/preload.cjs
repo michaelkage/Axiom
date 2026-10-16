@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   },
   omniRoute: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:omniroute-status"),
+    check: settings => ipcRenderer.invoke("axiom:omniroute-check", settings),
     save: settings => ipcRenderer.invoke("axiom:omniroute-save", settings),
     install: () => ipcRenderer.invoke("axiom:omniroute-install"),
     start: () => ipcRenderer.invoke("axiom:omniroute-start"),

@@ -451,6 +451,11 @@ ipcMain.handle("axiom:omniroute-status", async event => {
   return omniRouteManager.status();
 });
 
+ipcMain.handle("axiom:omniroute-check", async (event, settings) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.checkConnection(settings);
+});
+
 ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return omniRouteManager.save(settings);
