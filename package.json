@@ -1,6 +1,5 @@
 {
   "name": "axiom-workspace",
-  "displayName": "Axiom",
   "description": "Source workspace for Axiom, a standalone AI-first project-building desktop application.",
   "version": "0.4.8",
   "repository": {

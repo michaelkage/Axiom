@@ -4,11 +4,6 @@ desktop/release/
 tmp/
 dist
 out
-*.vsix
-.vscode-test
-.vscode-test-debug
-.vscode-test-user-data
-.vscode-test-demo
 .env
 .codex/environments/
 
