@@ -34,11 +34,13 @@ test("secret credentials are encrypted at rest and never returned in status", ()
   const { dir, manager } = setup();
   try {
     const saved = manager.saveSecret("brave-search", "test-secret-value");
-    assert.deepEqual(saved, { id: "brave-search", saved: true, hasSecret: true, enabled: true, requiresRestart: true });
+    assert.deepEqual(saved, { id: "brave-search", saved: true, hasSecret: true, enabled: false, requiresRestart: false });
     const disk = fs.readFileSync(manager.configPath, "utf8");
     assert.equal(disk.includes("test-secret-value"), false);
     assert.equal(manager.getStatus().find(item => item.id === "brave-search").hasSecret, true);
     assert.equal(JSON.stringify(manager.getStatus()).includes("test-secret-value"), false);
+    assert.equal(manager.openCodeEnvironment().OPENCODE_CONFIG_CONTENT, undefined);
+    manager.setEnabled("brave-search", true);
     const config = JSON.parse(manager.openCodeEnvironment().OPENCODE_CONFIG_CONTENT);
     assert.equal(config.mcp["brave-search"].environment.BRAVE_API_KEY, "test-secret-value");
     assert.equal(config.mcp["brave-search"].type, "local");
