@@ -118,11 +118,12 @@ describe("Axiom runtime helpers", () => {
       { id: "downstream", title: "Downstream", scope: "depends on bad", targetFiles: ["downstream.ts"], dependsOn: ["bad"], acceptanceCriteria: ["Does not run after failure"] },
     ]);
     let failure: unknown;
+    const outcomes: string[] = [];
     try {
       await executeTaskBatches(tasks, async task => {
         if (task.id === "bad") throw new Error("worker exploded");
         return { value: task.id };
-      });
+      }, record => outcomes.push(record.taskId + ":" + record.status));
     } catch (error) { failure = error; }
     expect(failure).toBeInstanceOf(TaskBatchExecutionError);
     expect((failure as TaskBatchExecutionError).successfulResults.map(item => item.task.id)).toContain("good");

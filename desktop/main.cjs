@@ -424,6 +424,26 @@ async function runQualityGate(event, message) {
   }
 }
 
+async function upstreamRevision(root) {
+  const upstream = await run("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], root, 15000);
+  if (upstream.exitCode !== 0 || !upstream.output.trim()) return null;
+  const ref = upstream.output.trim().split(/\r?\n/).at(-1);
+  const prefix = "refs/remotes/";
+  if (!ref.startsWith(prefix) || !ref.slice(prefix.length).includes("/")) throw new Error("Cannot safely identify the workspace remote tracking branch: " + ref);
+  const remote = ref.slice(prefix.length).split("/")[0];
+  const branch = ref.slice(prefix.length + remote.length + 1);
+  const fetched = await run("git", ["fetch", "--quiet", "--no-tags", remote, branch], root, 90000);
+  if (fetched.exitCode !== 0) throw new Error("Remote drift check could not refresh " + ref + ". Integration is blocked to avoid overwriting remote work. " + fetched.output);
+  const revision = await run("git", ["rev-parse", "--verify", ref], root, 15000);
+  if (revision.exitCode !== 0) throw new Error("Remote drift check could not resolve " + ref + ". " + revision.output);
+  return { ref, sha: revision.output.trim().split(/\r?\n/).at(-1) };
+}
+async function blobAtRevision(root, revision, relativePath) {
+  const result = await run("git", ["rev-parse", "--verify", revision + ":" + relativePath], root, 15000);
+  if (result.exitCode === 0) return result.output.trim().split(/\r?\n/).at(-1);
+  if (/Needed a single revision|unknown revision|invalid object name|does not exist/.test(result.output)) return null;
+  throw new Error("Could not compare remote file revision for " + relativePath + ". " + result.output);
+}
 async function applyWorktreeChanges(event, message) {
   const appliedPaths = [];
   try {
@@ -432,38 +452,73 @@ async function applyWorktreeChanges(event, message) {
     if (await gitRoot(message.worktreePath) !== root) throw new Error("Task worktree belongs to a different Git repository.");
     const requested = Array.isArray(message.paths) ? [...new Set(message.paths)] : [];
     if (!requested.length) throw new Error("Select at least one file to integrate.");
+    const upstream = await upstreamRevision(root);
+    const staged = [];
+    // Preflight every path before any writes, so a later conflict cannot leave partial integration.
     for (const relative of requested) {
+      if (typeof relative !== "string" || !relative || relative.includes(String.fromCharCode(0))) throw new Error("Invalid selected path.");
       const source = path.resolve(message.worktreePath, relative);
       const destination = path.resolve(root, relative);
       if (!insidePath(message.worktreePath, source) || !insidePath(root, destination)) throw new Error("A selected path escaped the project repository.");
       const dirty = await run("git", ["status", "--porcelain", "--", relative], root);
+      if (dirty.exitCode !== 0) throw new Error("Could not inspect destination changes for " + relative + ". " + dirty.output);
       const taskBaseBlob = await headBlobSha(message.worktreePath, relative);
       const workspaceHeadBlob = await headBlobSha(root, relative);
-      const drift = classifyWorkspaceDrift({
-        taskBaseBlob,
-        workspaceHeadBlob,
-        destinationDirty: !!dirty.output.trim(),
-        destinationExists: fs.existsSync(destination),
-      });
-      if (!drift.safe) {
-        throw new Error("Integration blocked for " + relative + ": " + drift.reason + " Refresh the diff and reconcile the local and worker versions before integrating.");
-      }
+      const drift = classifyWorkspaceDrift({ taskBaseBlob, workspaceHeadBlob, destinationDirty: !!dirty.output.trim(), destinationExists: fs.existsSync(destination) });
+      if (!drift.safe) throw new Error("Integration blocked for " + relative + ": " + drift.reason + " Refresh the diff and reconcile the local and worker versions before integrating.");
+      if (upstream && await blobAtRevision(root, upstream.ref, relative) !== workspaceHeadBlob) throw new Error("Integration blocked for " + relative + ": remote branch " + upstream.ref + " contains a different revision. Fetch/pull and reconcile before integrating.");
+      let content = null;
       try {
         const sourceStat = await fs.promises.lstat(source);
         if (sourceStat.isSymbolicLink()) throw new Error("Integration blocked for " + relative + ": symbolic links are not copied.");
         if (!sourceStat.isFile()) throw new Error("Integration blocked for " + relative + ": only regular files can be integrated.");
-        await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-        await fs.promises.copyFile(source, destination);
+        content = await fs.promises.readFile(source);
       } catch (error) {
-        if (error.code === "ENOENT") {
-          try { await fs.promises.unlink(destination); } catch (unlinkError) { if (unlinkError.code !== "ENOENT") throw unlinkError; }
-        } else {
-          throw error;
-        }
+        if (error.code !== "ENOENT") throw error;
+        if (taskBaseBlob == null) throw new Error("Integration blocked for " + relative + ": worker source is missing and this is not a tracked deletion.");
       }
-      appliedPaths.push(relative);
+      staged.push({ relative, destination, content, existed: fs.existsSync(destination), backup: null, temporary: null });
     }
-    sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: true, appliedPaths });
+    for (const item of staged) {
+      if (item.existed) item.backup = await fs.promises.readFile(item.destination);
+      if (item.content !== null) {
+        await fs.promises.mkdir(path.dirname(item.destination), { recursive: true });
+        item.temporary = item.destination + ".axiom-" + process.pid + "-" + Math.random().toString(36).slice(2) + ".tmp";
+        await fs.promises.writeFile(item.temporary, item.content, { flag: "wx", mode: 0o600 });
+      }
+    }
+    try {
+      for (const item of staged) {
+        if (item.content === null) {
+          try { await fs.promises.unlink(item.destination); } catch (error) { if (error.code !== "ENOENT") throw error; }
+        } else {
+          await fs.promises.rename(item.temporary, item.destination);
+          item.temporary = null;
+        }
+        appliedPaths.push(item.relative);
+      }
+    } catch (applyError) {
+      const rollbackErrors = [];
+      for (const item of [...staged].reverse()) {
+        if (!appliedPaths.includes(item.relative)) continue;
+        try {
+          if (item.existed) await fs.promises.writeFile(item.destination, item.backup, { mode: 0o600 });
+          else await fs.promises.unlink(item.destination);
+        } catch (rollbackError) { rollbackErrors.push(item.relative + ": " + rollbackError.message); }
+      }
+      throw new Error("Integration transaction failed: " + applyError.message + (rollbackErrors.length ? ". Rollback failed for " + rollbackErrors.join("; ") : ". Applied files were rolled back."));
+    } finally {
+      for (const item of staged) if (item.temporary) { try { await fs.promises.unlink(item.temporary); } catch {} }
+    }
+    sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: true, appliedPaths, remoteRevision: upstream?.sha ?? null });
+    if (typeof message.worktreePath === "string") {
+      const base = path.resolve(app.getPath("userData"), "worktrees", path.basename(root));
+      const workerPath = path.resolve(message.worktreePath);
+      if (insidePath(base, workerPath) && workerPath !== base) {
+        const cleanup = await run("git", ["-C", root, "worktree", "remove", "--force", workerPath], root, 60000);
+        if (cleanup.exitCode !== 0) await appendRuntimeLog("Integrated task worktree cleanup failed: " + cleanup.output);
+      }
+    }
   } catch (error) {
     sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: false, error: error.message, appliedPaths });
   }
