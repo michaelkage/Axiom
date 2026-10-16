@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 
 type McpEntry = {
   id: string;
