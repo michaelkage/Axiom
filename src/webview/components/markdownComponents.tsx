@@ -1,7 +1,7 @@
 import type { JSX } from "solid-js";
 import type { Components } from "../lib/streamdown";
 import { parseFileReferenceTarget } from "../../shared/fileReferences";
-import { vscode } from "../utils/vscode";
+import { hostBridge } from "../utils/hostBridge";
 
 export const messageMarkdownComponents: Components = {
   a: (props) => {
@@ -15,7 +15,7 @@ export const messageMarkdownComponents: Components = {
         if (target) {
           event.preventDefault();
           event.stopPropagation();
-          vscode.postMessage({
+          hostBridge.postMessage({
             type: "open-file",
             url: target.url,
             startLine: target.startLine,
