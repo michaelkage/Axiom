@@ -13,38 +13,6 @@
     }
   },
   "username": "",
-  "provider": {
-    "google-vertex": {
-      "options": {
-        "project": "saffron-health",
-        "location": "global"
-      }
-    },
-    "openai": {
-      "models": {
-        "gpt-5": {
-          "options": {
-            "reasoningEffort": "high",
-            "textVerbosity": "low",
-            "reasoningSummary": "auto",
-            "include": ["reasoning.encrypted_content"]
-          }
-        }
-      }
-    },
-    "anthropic": {
-      "models": {
-        "claude-opus-4-5-20251101": {
-          "options": {
-            "thinking": {
-              "type": "enabled",
-              "budgetTokens": 16000
-            }
-          }
-        }
-      }
-    }
-  },
   "permission": {
     "bash": {
       "*": "allow",
