@@ -23,4 +23,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
 
 ipcRenderer.on("axiom:host-message", (_event, message) => {
   window.dispatchEvent(new MessageEvent("message", { data: message }));
+  if (message && message.type === "project-state-updated") {
+    window.dispatchEvent(new Event("axiom-project-state-updated"));
+  }
 });

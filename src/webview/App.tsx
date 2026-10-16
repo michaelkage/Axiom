@@ -680,6 +680,16 @@ function App() {
   onMount(() => {
     const project = desktopApi()?.project;
     if (!project) return;
+    const refreshProjectState = () => {
+      void project.readState().then(state => {
+        setDesktopProjectState(state);
+        setProjectContextDraft(current => current === (desktopProjectState()?.context || "") ? (state.context || "") : current);
+      }).catch(error => {
+        setDesktopProjectNotice("Project memory could not be refreshed: " + getSdkErrorMessage(error));
+      });
+    };
+    window.addEventListener("axiom-project-state-updated", refreshProjectState);
+    onCleanup(() => window.removeEventListener("axiom-project-state-updated", refreshProjectState));
     void project.readState().then(state => {
       setDesktopProjectState(state);
       setProjectContextDraft(state.context || "");
