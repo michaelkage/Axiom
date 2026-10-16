@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   },
   mcp: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:mcp-status"),
+    diagnostics: () => ipcRenderer.invoke("axiom:mcp-diagnostics"),
+    probeWorker: id => ipcRenderer.invoke("axiom:mcp-worker-probe", id),
     saveSecret: request => ipcRenderer.invoke("axiom:mcp-save-secret", request),
     setEnabled: request => ipcRenderer.invoke("axiom:mcp-enable", request),
     remove: id => ipcRenderer.invoke("axiom:mcp-remove", id)
