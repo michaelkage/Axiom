@@ -4,17 +4,20 @@ type McpEntry = {
   id: string; name: string; category: string; transport: string; auth: string[];
   riskLabel: string; sourceUrl: string; description: string;
   state: "unconfigured" | "configured" | "disabled"; enabled: boolean; hasSecret: boolean;
-  endpoint?: string | null; requiresRestart?: boolean;
+  endpoint?: string | null; requiresRestart?: boolean; package?: string | null; managed?: boolean; reviewNote?: string;
+
 };
 type McpApi = {
   status: () => Promise<McpEntry[]>;
   saveSecret: (request: { id: string; secret: string }) => Promise<{ saved: boolean; requiresRestart: boolean }>;
   setEnabled: (request: { id: string; enabled: boolean }) => Promise<{ requiresRestart: boolean }>;
   remove: (id: string) => Promise<{ removed: boolean; requiresRestart: boolean }>;
+  diagnostics: () => Promise<{ runtimeReachable: boolean; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string; integrations: McpEntry[] }>;
+  probeWorker: (id: string) => Promise<{ invoked: boolean; toolName: string | null; status: string; message: string }>;
 };
 const CATEGORIES = ["All", "Development", "Database", "Browser", "Search", "Web extraction", "Documentation"];
-const SECRET_IDS = new Set(["brave-search", "exa"]);
-const REMOTE_IDS = new Set(["context7", "supabase"]);
+const SECRET_IDS = new Set(["brave-search", "exa", "postgresql", "sqlite"]);
+const REMOTE_IDS = new Set(["github", "context7", "supabase", "neon"]);
 
 function api(): McpApi | undefined {
   return (window as Window & { axiomDesktop?: { mcp?: McpApi } }).axiomDesktop?.mcp;
@@ -28,6 +31,8 @@ export function McpIntegrationsPanel() {
   const [entries, setEntries] = createSignal<McpEntry[]>([]);
   const [secrets, setSecrets] = createSignal<Record<string, string>>({});
   const [loading, setLoading] = createSignal(true);
+  const [liveDiagnostics, setLiveDiagnostics] = createSignal<{ runtimeReachable: boolean; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string } | null>(null);
+  const [probeBusyId, setProbeBusyId] = createSignal("");
   const connectedApi = api();
   const visibleEntries = createMemo(() => entries().filter(item =>
     (category() === "All" || item.category === category()) &&
@@ -65,9 +70,24 @@ export function McpIntegrationsPanel() {
       await connectedApi.saveSecret({ id: entry.id, secret });
       setSecrets(previous => ({ ...previous, [entry.id]: "" }));
       await refresh();
-      setNotice(entry.name + " credential encrypted in OS-backed secure storage. Explicitly enable the server when ready; this may download and execute its published MCP package. Axiom does not verify the key until the runtime connects.");
+      setNotice(entry.name + " value encrypted in OS-backed secure storage. Enable the integration and restart Axiom, then inspect live diagnostics to verify the connection and discovered tools.");
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setBusyId(""); }
+  }
+
+  async function probeWorker(entry: McpEntry) {
+    if (!connectedApi) return;
+    setProbeBusyId(entry.id); setNotice("");
+    try {
+      const result = await connectedApi.probeWorker(entry.id);
+      setNotice(result.message + (result.toolName ? " Tool: " + result.toolName : ""));
+      await refresh();
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+    finally { setProbeBusyId(""); }
+  }
+
+  function diagnosticFor(id: string) {
+    return liveDiagnostics()?.servers?.find(item => item.id === id);
   }
 
   async function remove(entry: McpEntry) {
@@ -93,18 +113,31 @@ export function McpIntegrationsPanel() {
         <For each={CATEGORIES}>{item => <button type="button" class="workflow-plan__secondary" aria-pressed={category() === item} onClick={() => setCategory(item)}>{item}</button>}</For>
       </div>
       <Show when={loading()}><p role="status">Loading integration status…</p></Show>
+      <section class="workflow-plan__parallel" aria-label="Live MCP diagnostics">
+        <div class="workflow-plan__eyebrow">RUNTIME DIAGNOSTICS <span>{liveDiagnostics()?.runtimeReachable ? "RUNTIME REACHABLE" : "RUNTIME UNAVAILABLE"}</span></div>
+        <p>{liveDiagnostics()?.runtimeReachable ? "OpenCode answered its MCP status API." : "Axiom could not verify live MCP status. A saved credential is not a connected integration."}</p>
+        <p>Tool discovery: {liveDiagnostics()?.toolDiscoveryAvailable ? "available" : "not verified by this runtime API"}</p>
+        <Show when={liveDiagnostics()?.error}><p role="status">{liveDiagnostics()?.error}</p></Show>
+        <Show when={liveDiagnostics()?.runtimeReachable}>
+          <p>Discovered runtime tool IDs: {liveDiagnostics()?.toolIds?.length ? liveDiagnostics()?.toolIds?.join(", ") : "none reported"}</p>
+        </Show>
+        <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !!probeBusyId()} onClick={() => void refresh()}>Refresh diagnostics</button>
+      </section>
       <div class="workflow-plan__actions">
         <For each={visibleEntries()}>{entry =>
           <article class="workflow-plan__parallel" aria-label={entry.name}>
-            <div class="workflow-plan__eyebrow">{entry.category} <span>{entry.enabled ? "ENABLED · RESTART REQUIRED" : entry.hasSecret ? "CREDENTIAL SAVED" : "NOT CONFIGURED"}</span></div>
+            <div class="workflow-plan__eyebrow">{entry.category} <span>{diagnosticFor(entry.id)?.connected ? "CONNECTED" : entry.enabled ? "ENABLED · CONNECTION NOT VERIFIED" : entry.hasSecret ? "CREDENTIAL SAVED" : "NOT CONFIGURED"}</span></div>
             <strong>{entry.name}</strong>
             <p>{entry.description}</p>
             <span>Transport: {entry.transport}</span>
             <span>Sign-in/setup: {entry.auth.join(" · ")}</span>
             <p><strong>Permission note:</strong> {entry.riskLabel}</p>
+            <Show when={entry.package}><p>Reviewed package: <code>{entry.package}</code></p></Show>
+            <Show when={diagnosticFor(entry.id)}><p>Connection: {diagnosticFor(entry.id)?.status}. Tools: {diagnosticFor(entry.id)?.tools?.join(", ") || "none discovered"}.</p><Show when={diagnosticFor(entry.id)?.error}><p role="status">{diagnosticFor(entry.id)?.error}</p></Show></Show>
+            <Show when={entry.reviewNote}><p role="status">{entry.reviewNote}</p></Show>
             <Show when={SECRET_IDS.has(entry.id)}>
-              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : "Exa API key"}
-                <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : "Paste API key"} />
+              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "exa" ? "Exa API key" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
+                <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : entry.id === "postgresql" ? "postgresql://user:password@host:5432/database" : entry.id === "sqlite" ? "Absolute path to an approved .db file" : "Paste API key"} />
               </label>
               <div class="workflow-plan__actions">
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !(secrets()[entry.id] || "").trim()} onClick={() => void saveSecret(entry)}>{busyId() === entry.id ? "Saving…" : "Save key securely"}</button>
@@ -113,7 +146,7 @@ export function McpIntegrationsPanel() {
               </div>
             </Show>
             <Show when={REMOTE_IDS.has(entry.id)}>
-              <p>Remote MCP endpoint: <code>{entry.endpoint}</code>. The bundled OpenCode runtime handles OAuth if supported by the provider.</p>
+              <p>Remote MCP endpoint: <code>{entry.endpoint}</code>. OpenCode manages OAuth for remote MCP servers when the provider supports it.</p>
               <button type="button" class="workflow-plan__secondary" disabled={!!busyId()} onClick={() => void enable(entry)}>{busyId() === entry.id ? "Saving…" : entry.enabled ? "Disable integration" : "Enable and sign in"}</button>
             </Show>
             <Show when={!SECRET_IDS.has(entry.id) && !REMOTE_IDS.has(entry.id)}>
@@ -124,7 +157,7 @@ export function McpIntegrationsPanel() {
         }</For>
       </div>
       <Show when={notice()}><p role="status" class="omniroute-setup__message">{notice()}</p></Show>
-      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Only Context7, Supabase, Brave Search, and Exa currently have connection configuration implemented; the remaining catalog entries are visible but intentionally unavailable until their installers and permission controls are reviewed.</small>
+      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Connection states come from the live OpenCode API. Worker verification creates a diagnostic session and only passes when the response contains an MCP tool-call part for the selected server. PostgreSQL uses DBHub with a least-privilege read-only recommendation; SQLite paths are restricted to the current project. Crawl4AI and Fetch remain disabled until a maintained, pinned MCP package passes review.</small>
     </section>
   );
 }
