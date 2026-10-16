@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
     ipcRenderer.send("axiom:webview-message", message);
   },
+  mcp: Object.freeze({
+    status: () => ipcRenderer.invoke("axiom:mcp-status"),
+    saveSecret: request => ipcRenderer.invoke("axiom:mcp-save-secret", request),
+    setEnabled: request => ipcRenderer.invoke("axiom:mcp-enable", request),
+    remove: id => ipcRenderer.invoke("axiom:mcp-remove", id)
+  }),
   omniRoute: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:omniroute-status"),
     check: settings => ipcRenderer.invoke("axiom:omniroute-check", settings),
