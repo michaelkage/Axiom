@@ -677,9 +677,9 @@ app.on("before-quit", event => {
   isQuitting = true;
   if (shutdownStarted) return;
   shutdownStarted = true;
-  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0) || (omniRouteManager && omniRouteManager.getConfig().autoStart)) {
+  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0) || (omniRouteManager && omniRouteManager.ownsProcess())) {
     event.preventDefault();
-    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime(), omniRouteManager && omniRouteManager.getConfig().autoStart ? omniRouteManager.stop() : Promise.resolve()]).finally(() => app.quit());
+    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime(), omniRouteManager ? omniRouteManager.stop() : Promise.resolve()]).finally(() => app.quit());
   }
 });
 app.on("window-all-closed", () => {

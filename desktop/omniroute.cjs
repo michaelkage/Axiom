@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:20128/v1";
-const INSTALL_GUIDE = "https://github.com/ourines/omniroute";
+const INSTALL_GUIDE = "https://github.com/diegosouzapw/OmniRoute";
 
 function normalizeBaseUrl(value) {
   if (typeof value !== "string" || value.length > 2048) throw new Error("Enter a valid OmniRoute/API base URL.");
@@ -218,7 +218,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     return { started: false, skipped: true };
   }
 
-  return Object.freeze({ status, save, install, start, stop, startIfConfigured, openCodeEnvironment, getConfig: () => {
+  return Object.freeze({ status, save, install, start, stop, startIfConfigured, openCodeEnvironment, ownsProcess: () => !!ownedProcess && ownedProcess.exitCode === null, getConfig: () => {
     const c = readConfig();
     return { baseUrl: c.baseUrl, model: c.model, enabled: c.enabled, autoStart: c.autoStart, hasApiKey: !!c.apiKey };
   } });
