@@ -14,6 +14,7 @@ import { WorktreeReviewPanel } from "./components/WorktreeReviewPanel";
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
+import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
 import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
@@ -1475,6 +1476,7 @@ function App() {
         <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
         <ProviderReadinessPanel loadReadiness={getProviderReadiness} testConnection={testProviderConnection} />
         <ProviderOnboardingPanel />
+        <OmniRouteSetupPanel />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">

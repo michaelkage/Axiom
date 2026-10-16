@@ -2442,3 +2442,22 @@ body.vscode-high-contrast {
 .standalone-files__editor-heading strong { min-width: 0; font-size: 11px; overflow-wrap: anywhere; }
 .standalone-files__editor textarea { min-height: 180px; height: 260px; font-family: var(--font-family-monospace, monospace); white-space: pre; overflow: auto; }
 @media (max-width: 640px) { .standalone-files__layout { grid-template-columns: minmax(0, 1fr); } .standalone-files__list { min-height: 100px; max-height: 150px; } }
+
+/* Optional OmniRoute setup */
+.omniroute-setup{margin:18px auto;padding:22px;max-width:860px;border:1px solid var(--vscode-panel-border,#30323b);border-radius:12px;background:var(--vscode-sideBar-background,#17191f);color:var(--vscode-foreground,#e5e7eb)}
+.omniroute-setup__eyebrow{font-size:10px;letter-spacing:.12em;color:var(--vscode-descriptionForeground,#9ca3af);font-weight:700}
+.omniroute-setup h2{font-size:18px;margin:8px 0}
+.omniroute-setup>p{font-size:13px;line-height:1.6;color:var(--vscode-descriptionForeground,#a6adbb)}
+.omniroute-setup__status{display:flex;align-items:center;gap:10px;padding:12px;margin:14px 0;border:1px solid var(--vscode-panel-border,#30323b);border-radius:8px}
+.omniroute-setup__status small{display:block;color:var(--vscode-descriptionForeground,#9ca3af);margin-top:3px}
+.omniroute-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#d97706}
+.omniroute-dot--on{background:#22c55e}
+.omniroute-setup__spacer{flex:1}
+.omniroute-setup__field{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:12px;font-weight:600}
+.omniroute-setup__field input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--vscode-input-border,#3b3e48);border-radius:6px;background:var(--vscode-input-background,#111319);color:var(--vscode-input-foreground,#e5e7eb)}
+.omniroute-setup__hint,.omniroute-setup__note{font-size:11px;color:var(--vscode-descriptionForeground,#9ca3af);font-weight:400}
+.omniroute-setup__toggle{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px}
+.omniroute-setup__actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.omniroute-setup__message{font-size:12px;padding:10px;border-radius:6px;background:var(--vscode-editorWidget-background,#20232c)}
+.omniroute-setup__log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:100px;overflow:auto;font-size:11px}
+.omniroute-setup__note{display:block;line-height:1.5;margin-top:12px}

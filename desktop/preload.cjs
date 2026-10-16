@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
     ipcRenderer.send("axiom:webview-message", message);
   },
+  omniRoute: Object.freeze({
+    status: () => ipcRenderer.invoke("axiom:omniroute-status"),
+    save: settings => ipcRenderer.invoke("axiom:omniroute-save", settings),
+    install: () => ipcRenderer.invoke("axiom:omniroute-install"),
+    start: () => ipcRenderer.invoke("axiom:omniroute-start"),
+    stop: () => ipcRenderer.invoke("axiom:omniroute-stop"),
+    openDashboard: () => ipcRenderer.invoke("axiom:omniroute-dashboard")
+  }),
   terminal: Object.freeze({
     run: request => ipcRenderer.invoke("axiom:terminal-run", request),
     cancel: requestId => ipcRenderer.invoke("axiom:terminal-cancel", requestId),

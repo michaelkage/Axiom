@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, safeStorage } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -8,10 +8,12 @@ const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
+const { createOmniRouteManager } = require("./omniroute.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
 let terminalRunner;
+let omniRouteManager;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -104,7 +106,8 @@ async function startRuntime(workspace) {
     cwd: workspace,
     windowsHide: true,
     shell: process.platform === "win32",
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...(omniRouteManager ? omniRouteManager.openCodeEnvironment() : {}) }
   });
 
   let recentOutput = "";
@@ -167,6 +170,10 @@ async function createWindow() {
 
   selectedWorkspace = path.resolve(workspace);
   terminalRunner = createTerminalRunner({ workspaceRoot: selectedWorkspace });
+  if (omniRouteManager) {
+    try { await omniRouteManager.startIfConfigured(); }
+    catch (error) { await appendRuntimeLog("OmniRoute auto-start failed: " + (error instanceof Error ? error.message : String(error))); }
+  }
   let serverUrl;
   while (!serverUrl) {
     try {
@@ -436,6 +443,40 @@ function currentProjectStore() {
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
 }
 
+ipcMain.handle("axiom:omniroute-status", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.status();
+});
+
+ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.save(settings);
+});
+
+ipcMain.handle("axiom:omniroute-install", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.install();
+});
+
+ipcMain.handle("axiom:omniroute-start", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.start();
+});
+
+ipcMain.handle("axiom:omniroute-stop", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return omniRouteManager.stop();
+});
+
+ipcMain.handle("axiom:omniroute-dashboard", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const config = omniRouteManager.getConfig();
+  const url = new URL(config.baseUrl);
+  url.pathname = url.pathname.replace(/\\/v1\\/?$/, "") || "/";
+  await shell.openExternal(url.toString());
+  return true;
+});
+
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
@@ -605,6 +646,7 @@ async function stopRuntime() {
 }
 
 app.whenReady().then(() => {
+  omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage });
   const { Menu } = require("electron");
   const menu = Menu.buildFromTemplate([
     { label: "File", submenu: [
@@ -635,9 +677,9 @@ app.on("before-quit", event => {
   isQuitting = true;
   if (shutdownStarted) return;
   shutdownStarted = true;
-  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0)) {
+  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0) || (omniRouteManager && omniRouteManager.getConfig().autoStart)) {
     event.preventDefault();
-    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime()]).finally(() => app.quit());
+    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime(), omniRouteManager && omniRouteManager.getConfig().autoStart ? omniRouteManager.stop() : Promise.resolve()]).finally(() => app.quit());
   }
 });
 app.on("window-all-closed", () => {
