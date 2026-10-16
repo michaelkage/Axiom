@@ -287,7 +287,6 @@ function createOpenCode() {
       const agent = task.agentHint && availableAgentNames.has(task.agentHint)
         ? task.agentHint
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
-      if (signal?.aborted) throw new Error("Parallel task cancelled before sending the worker prompt.");
       if (signal?.aborted) throw taskError("Parallel task cancelled before prompting the worker.");
       signal?.addEventListener("abort", abortWorker, { once: true });
       if (signal?.aborted) {
@@ -312,6 +311,8 @@ function createOpenCode() {
         throw taskError("Task \"" + task.title + "\" failed: " + JSON.stringify(result.error));
       }
       let summary = "Agent prompt was accepted; review workspace changes and verification before merging.";
+      if (signal?.aborted) throw taskError("Parallel task was cancelled before collecting the worker transcript.");
+      signal?.addEventListener("abort", abortWorker, { once: true });
       try {
         const messagesResponse = await c.session.messages({ sessionID: childSessionId });
         const messages = (messagesResponse.data ?? []) as unknown as Array<{
@@ -324,6 +325,8 @@ function createOpenCode() {
         if (text) summary = text.slice(0, 1200);
       } catch {
         // A missing transcript must not turn a successful prompt response into a false failure.
+      } finally {
+        signal?.removeEventListener("abort", abortWorker);
       }
       return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
     }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });

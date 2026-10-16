@@ -60,3 +60,35 @@ test("terminal rejects malformed commands and request IDs", async () => {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("terminal cancellation reaps a running process and clears its active request", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-"));
+  try {
+    const runner = createTerminalRunner({ workspaceRoot: root });
+    const pending = runner.run({ requestId: "cancel-run", command: 'node -e "setTimeout(() => {}, 10000)"' });
+    const deadline = Date.now() + 3000;
+    while (runner.activeCount() === 0 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(runner.activeCount(), 1);
+    assert.equal(await runner.cancel("cancel-run"), true);
+    const result = await pending;
+    assert.notEqual(result.exitCode, 0);
+    assert.equal(runner.activeCount(), 0);
+    assert.equal(await runner.cancel("cancel-run"), false);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("terminal shutdown cancels every active request", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-terminal-"));
+  try {
+    const runner = createTerminalRunner({ workspaceRoot: root });
+    const command = 'node -e "setTimeout(() => {}, 10000)"';
+    const first = runner.run({ requestId: "shutdown-one", command });
+    const second = runner.run({ requestId: "shutdown-two", command });
+    const deadline = Date.now() + 3000;
+    while (runner.activeCount() < 2 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(runner.activeCount(), 2);
+    await runner.stopAll();
+    await Promise.all([first, second]);
+    assert.equal(runner.activeCount(), 0);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
