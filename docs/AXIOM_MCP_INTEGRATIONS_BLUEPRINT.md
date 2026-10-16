@@ -29,7 +29,7 @@ Package names, URLs, authentication behavior, and maintenance status must be che
 1. **Curated catalog:** declarative, versioned entries only. Catalog metadata must not contain executable arbitrary shell strings that are blindly run.
 2. **Integration UI:** search/filter catalog, view requested permissions, connect, test, enable/disable, and remove.
 3. **Credential broker:** Electron main-process-only access to OS-backed secure storage. The renderer receives presence/status metadata, never secret values after save.
-4. **Runtime adapter:** translates reviewed catalog entries to the supported OpenCode MCP configuration/API schema. It must merge with existing existing runtime/project configuration rather than overwrite user settings.
+4. **Runtime adapter:** translates reviewed catalog entries to the supported Axiom runtime configuration/API schema. It must merge with existing runtime/project configuration rather than overwrite user settings.
 5. **Authentication:** prefer the bundled runtime's built-in MCP OAuth support for remote servers when supported by the bundled runtime. Avoid implementing provider OAuth flows independently when the MCP authorization flow already works. Use PAT/API-key fallback only when necessary.
 6. **Connection diagnostics:** distinguish not configured, authentication required, connected, tool discovery failed, runtime restart required, and provider outage. Never display a green Connected state merely because a credential was saved.
 7. **Tool access policy:** server-level enablement plus project/workflow scoping. Prefer read-only modes when available. Surface write, shell, browser, database, and private-network capabilities before enabling them.
