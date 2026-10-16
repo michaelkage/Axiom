@@ -26,7 +26,7 @@ test("reports connection and tool discovery from runtime endpoints", async () =>
   assert.equal(result.servers[1].status, "not_reported");
 });
 
-test("worker probe only succeeds when response includes an MCP tool invocation", async () => {
+test("worker probe requires a completed MCP tool invocation", async () => {
   let calls = 0;
   const fetchImpl = async (url, options) => {
     calls++;
@@ -36,5 +36,20 @@ test("worker probe only succeeds when response includes an MCP tool invocation",
   };
   const result = await runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl });
   assert.equal(result.invoked, true);
+  assert.equal(result.status, "tool_completed");
   assert.equal(result.toolName, "context7_resolve-library-id");
+});
+
+test("worker probe does not count pending or failed calls as successful", async () => {
+  for (const state of ["running", "error"]) {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls++;
+      if (calls === 1) return { ok: true, json: async () => ({ id: "ses_test" }) };
+      return { ok: true, json: async () => ({ parts: [{ type: "tool", tool: "context7_resolve-library-id", state: { status: state } }] }) };
+    };
+    const result = await runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl });
+    assert.equal(result.invoked, false);
+    assert.equal(result.status, state === "error" ? "tool_failed" : "tool_incomplete");
+  }
 });
