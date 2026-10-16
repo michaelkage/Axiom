@@ -23,7 +23,7 @@ function isLoopback(url) {
 }
 
 function secureStorageAvailable(safeStorage) {
-  if (!secureStorageAvailable(safeStorage)) return false;
+  if (!safeStorage || typeof safeStorage.isEncryptionAvailable !== "function" || !safeStorage.isEncryptionAvailable()) return false;
   try {
     const backend = typeof safeStorage.getSelectedStorageBackend === "function" ? safeStorage.getSelectedStorageBackend() : "";
     return backend !== "basic_text";
