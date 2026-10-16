@@ -8,7 +8,7 @@ type SSEStatusHandler = (status: {
 }) => void;
 
 /** Subscribe directly from the standalone renderer to the local OpenCode runtime. */
-export function proxyEventSource(url: string, onMessage: SSEEventHandler, onError?: SSEErrorHandler, onStatus?: SSEStatusHandler): () => void {
+export function runtimeEventSource(url: string, onMessage: SSEEventHandler, onError?: SSEErrorHandler, onStatus?: SSEStatusHandler): () => void {
   const eventSource = new EventSource(url);
   onStatus?.({ status: "connecting" });
   eventSource.onopen = () => onStatus?.({ status: "connected" });

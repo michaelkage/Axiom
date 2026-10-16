@@ -14,8 +14,8 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
-import { proxyFetch } from "../utils/proxyFetch";
-import { proxyEventSource } from "../utils/proxyEventSource";
+
+import { runtimeEventSource } from "../utils/runtimeEventSource";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 import { contextForSpecialist, filterProjectContext, inferSpecialist } from "../../shared/intelligence";
 import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
@@ -58,7 +58,7 @@ function createOpenCode() {
     if (globalConfig?.serverUrl) {
       const opencodeClient = createOpencodeClient({
         baseUrl: globalConfig.serverUrl,
-        fetch: proxyFetch,
+        fetch,
         directory: globalConfig.workspaceRoot,
       });
       setClient(opencodeClient);
@@ -67,7 +67,7 @@ function createOpenCode() {
       if (globalConfig.workspaceRoot) {
         setWorkspaceRoot(globalConfig.workspaceRoot);
       }
-      return; // Skip VSCode handshake
+      return; // Standalone runtime config is already initialized
     }
 
     const handleMessage = (e: MessageEvent) => {
@@ -347,7 +347,7 @@ function createOpenCode() {
       url.searchParams.set("directory", dir);
     }
 
-    return proxyEventSource(
+    return runtimeEventSource(
       url.toString(),
       (data) => {
         try {
