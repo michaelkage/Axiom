@@ -78,21 +78,6 @@ importers:
       '@types/node':
         specifier: ^20.x
         version: 20.19.26
-      commander:
-        specifier: ^12.x
-        version: 12.1.0
-      concurrently:
-        specifier: ^8.x
-        version: 8.2.2
-      glob:
-        specifier: ^11.x
-        version: 11.1.0
-      mocha:
-        specifier: ^10.x
-        version: 10.8.2
-      tsx:
-        specifier: ^4.x
-        version: 4.21.0
       typescript:
         specifier: ^5.x
         version: 5.9.3
