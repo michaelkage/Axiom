@@ -11,11 +11,13 @@ const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
+const { createMcpManager } = require("./mcp-manager.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
+let mcpManager;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -68,6 +70,18 @@ async function runtimeExecutable() {
     if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
   } catch { /* Fall through to the actionable runtime-not-found error. */ }
   throw new Error("Axiom's bundled OpenCode runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
+}
+
+function runtimeConfigurationEnvironment() {
+  const merged = {};
+  for (const manager of [omniRouteManager, mcpManager]) {
+    const environment = manager ? manager.openCodeEnvironment() : {};
+    if (environment.OPENCODE_CONFIG_CONTENT) {
+      try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
+      catch { throw new Error("Axiom generated invalid OpenCode configuration; runtime startup was blocked."); }
+    }
+  }
+  return Object.keys(merged).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) } : {};
 }
 
 function findFreePort() {
@@ -125,7 +139,7 @@ async function startRuntime(workspace) {
     windowsHide: true,
     shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ...(omniRouteManager ? omniRouteManager.openCodeEnvironment() : {}) }
+    env: { ...process.env, ...runtimeConfigurationEnvironment() }
   });
 
   let recentOutput = "";
@@ -551,6 +565,34 @@ function currentWorkerStateStore() {
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
 
+ipcMain.handle("axiom:mcp-status", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return mcpManager.getStatus();
+});
+
+ipcMain.handle("axiom:mcp-save-secret", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request.id !== "string" || typeof request.secret !== "string") throw new Error("Invalid MCP credential request.");
+  const result = mcpManager.saveSecret(request.id, request.secret);
+  void appendRuntimeLog("Saved secure MCP credential for " + request.id + "; restart required to load the integration.");
+  return result;
+});
+
+ipcMain.handle("axiom:mcp-enable", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request.id !== "string" || typeof request.enabled !== "boolean") throw new Error("Invalid MCP enable request.");
+  const result = mcpManager.setEnabled(request.id, request.enabled);
+  void appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
+  return result;
+});
+
+ipcMain.handle("axiom:mcp-remove", (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const result = mcpManager.remove(id);
+  void appendRuntimeLog("Removed MCP integration configuration for " + id + "; restart required.");
+  return result;
+});
+
 ipcMain.handle("axiom:omniroute-status", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return omniRouteManager.status();
@@ -770,6 +812,7 @@ async function stopRuntime() {
 
 app.whenReady().then(() => {
   omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage });
+  mcpManager = createMcpManager({ userDataPath: app.getPath("userData"), safeStorage });
   const { Menu } = require("electron");
   const menu = Menu.buildFromTemplate([
     { label: "File", submenu: [
