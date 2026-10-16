@@ -50,7 +50,7 @@ export function OmniRouteSetupPanel() {
         setApiKey("");
         setMessage(result.requiresRestart ? "Saved. Restart Axiom to apply the selected OmniRoute model to OpenCode sessions." : "Settings saved.");
       } else if (action === "check") {
-        const result = await bridge.save({ baseUrl: baseUrl().trim(), model: model().trim() || "auto", enabled: enabled(), autoStart: autoStart(), apiKey });
+        const result = await bridge.save({ baseUrl: baseUrl().trim(), model: model().trim() || "auto", enabled: enabled(), autoStart: autoStart(), apiKey: apiKey() });
         setApiKey("");
         await refresh();
         setMessage(result.saved ? "Settings saved and connection status refreshed." : "Connection checked.");
