@@ -226,7 +226,7 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     return { started: false, skipped: true };
   }
 
-  return Object.freeze({ status, save, install, start, stop, startIfConfigured, openCodeEnvironment, getConfig: () => {
+  return Object.freeze({ status, save, install, start, stop, startIfConfigured, openCodeEnvironment, ownsProcess: () => !!ownedProcess && ownedProcess.exitCode === null, getConfig: () => {
     const c = readConfig();
     return { baseUrl: c.baseUrl, model: c.model, enabled: c.enabled, autoStart: c.autoStart, hasApiKey: !!c.apiKey };
   } });
