@@ -20,9 +20,7 @@ export default defineConfig({
     minify: false,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'src/webview/index.html'),
-        standalone: resolve(__dirname, 'src/webview/standalone.html'),
-        uikit: resolve(__dirname, 'src/webview/uikit.html')
+        standalone: resolve(__dirname, 'src/webview/standalone.html')
       },
       output: {
         entryFileNames: '[name].js',

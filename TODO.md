@@ -1,7 +1,9 @@
-- [ ] Restoring selected session on tab switch. What's best way to store session?
-- [ ] Image support (copy/paste, drag in)
-- [ ] @-mentions
-  - Supports skills, files, sub-agents, slash commands
-- [ ] Modes: for slash commands and shell mode
-  - Type slash, convert to slash command auto complete mode
-  - Type exclamation, convert to shell mode
+# Axiom product backlog
+
+This file tracks product work for the standalone Axiom desktop application. Completed legacy extension plans are intentionally not carried forward.
+
+- [ ] Restore the selected session when switching between project tabs.
+- [ ] Support image attachments by paste and drag-and-drop.
+- [ ] Expand prompt mentions for skills, files, sub-agents, and slash commands.
+- [ ] Add explicit slash-command and shell-command input modes.
+- [ ] Improve end-to-end coverage for OpenCode runtime startup, worker task execution, and selective integration.

@@ -122,7 +122,7 @@ jobs:
             }
             if (Test-Path $runtimeLog) {
               $log = Get-Content $runtimeLog -Tail 120 | Out-String
-              if ($log -match "Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
+              if ($log -match "Runtime executable lookup failed|Runtime process error|Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
               $runtimeReady = $log -match "Runtime ready at http://127\.0\.0\.1:"
               $rendererReady = $log -match "Axiom renderer loaded\."
               if ($runtimeReady -and $rendererReady) { break }

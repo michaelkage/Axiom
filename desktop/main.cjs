@@ -100,7 +100,14 @@ async function chooseWorkspace() {
 
 async function startRuntime(workspace) {
   const port = await findFreePort();
-  const executable = runtimeExecutable();
+  let executable;
+  try {
+    executable = runtimeExecutable();
+    await appendRuntimeLog(`Launching OpenCode runtime from ${executable}`);
+  } catch (error) {
+    await appendRuntimeLog(`Runtime executable lookup failed: ${error.stack || error.message}`);
+    throw error;
+  }
   const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
   runtimeProcess = spawn(executable, args, {
     cwd: workspace,
