@@ -16,7 +16,7 @@ function normalizeMcpList(payload) {
   return list.map(item => ({
     id: String(item.name || item.id || ""),
     status: String(item.status?.status || item.status || "unknown").toLowerCase(),
-    error: typeof item.error === "string" ? item.error.slice(0, 1000) : ""
+    error: typeof item.error === "string" && item.error ? "OpenCode reported an MCP server error; check authentication and runtime logs." : ""
   })).filter(item => item.id);
 }
 
