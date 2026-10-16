@@ -1,60 +1,36 @@
-# AGENTS.md
+# Axiom contributor guide
 
-## Commands
+Axiom is a standalone Electron desktop app for AI-first software building. The product does not have a VS Code extension or editor-host runtime. Keep the Electron host, standalone SolidJS renderer, and local OpenCode runtime boundaries explicit.
 
-- **Build**: `pnpm build` (builds extension + webview)
-- **Watch**: `pnpm watch` (dev mode with hot reload)
-- **Test**: `pnpm test` (runs vitest)
-- **Single test**: `pnpm test -- path/to/file.test.ts`
-- **E2E Tests**: `pnpm test:e2e` (runs playwright e2e tests with AI generation)
-- **Package**: `pnpm package` (creates .vsix)
-- **UI Kit**: `pnpm uikit` (opens component playground)
+## Common commands
+
+- Install workspace dependencies: `pnpm install --frozen-lockfile`
+- Build the standalone renderer: `pnpm run build:webview`
+- Run unit tests: `pnpm exec vitest run`
+- Type-check renderer: `pnpm exec tsc -p tsconfig.webview.json`
+- Run desktop host tests: `pnpm run test:desktop`
+- Run browser tests: `pnpm run test:e2e`
+- Build and launch desktop app: `pnpm run desktop:dev`
+- Build Windows installer: `pnpm run desktop:dist`
 
 ## Architecture
 
-VSCode extension with SolidJS webview. Two build targets:
+- `desktop/main.cjs`: Electron lifecycle, local runtime process, project selection, IPC, and shutdown.
+- `desktop/preload.cjs`: narrow, validated renderer bridge.
+- `desktop/terminal.cjs`, `desktop/filesystem.cjs`, `desktop/project-store.cjs`, `desktop/omniroute.cjs`: desktop capabilities.
+- `src/webview/standalone.html` and `src/webview/main.tsx`: the single renderer entry point.
+- `src/shared/`: shared runtime contracts and workflow helpers.
+- `tests/e2e/`: browser-level behavior tests.
+- `.github/workflows/axiom-ci.yml`: UI build, type checks, unit tests, and desktop host tests.
+- `.github/workflows/release.yml`: Windows packaging, installed-app smoke test, checksum, and release publication.
 
-- **Extension** (`src/extension.ts`, `OpenCodeService.ts`, `OpenCodeViewProvider.ts`) - VSCode extension host
-- **Webview** (`src/webview/`) - SolidJS chat UI communicating via `@opencode-ai/sdk`
+## Implementation rules
 
-## Code Style
-
-- TypeScript with strict mode, no `any` types
-- SolidJS for webview components (signals, createMemo, Show/For)
-- Functional components with hooks in `src/webview/hooks/`
-- CSS files colocated with components (App.css, uikit.css)
-- Use VSCode API types from `@types/vscode`
-- Prefer explicit imports, avoid barrel files
-- Error handling: use VSCode's `window.showErrorMessage` and `LogOutputChannel`
-
-## SolidJS Store Pitfall: createMemo + store proxy
-
-**NEVER wrap a store property lookup in `createMemo` if downstream consumers need to react to in-place mutations (e.g. `produce`, `push`, `splice`).**
-
-`createMemo` compares values with `===`. A store proxy reference stays the same after in-place mutations, so the memo silently swallows the update. Use a plain function instead:
-
-```ts
-// ❌ BAD — createMemo returns same proxy ref, suppresses downstream updates
-const messages = createMemo(() => store.message[sessionId()] ?? []);
-
-// ✅ GOOD — plain function, consumers track the store proxy directly
-const messages = () => store.message[sessionId()] ?? [];
-```
-
-`createMemo` is fine for derived computations that produce new values (e.g. `.map()`, `new Map(...)`, arithmetic).
-
-## Publishing
-
-Use the `pnpm run publish` script to publish the extension to the VSCode and OVSX marketplaces.
-
-## Logging into gcloud
-
-CRITICAL: If you try to run a command get an error related to the user not being logged into Gcloud e.g. `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)","error_uri":"https://support.google.com/a/answer/9368756","error_subtype":"invalid_rapt"}`, then you MUST instruct the user to log into gcloud before you can continue.
-
-## Opencode SDK
-
-This extension uses the Opencode SDK. Opencode (https://opencode.ai, https://github.com/anomalyco/opencode) is a coding agent employing a client-server architecture. The frontend for this extension acts as a client. The extension backend spawns the Opencode server as a separate Bun process.
-
-You will frequently find issues where some functionality from the SDK is not wired up correctly. For example, maybe context usage is not showing up properly b/c we're not parsing the right information from the SDK messages.
-
-In these cases, use the Opencode TUI (https://github.com/anomalyco/opencode/tree/dev/packages/console) as the reference. This is a reference client implementation that understands and uses the SDK optimally. Use the librarian task to explore and research the TUI client implementation, getting back references to specific files you can use for your implementation.
+- Do not reintroduce VS Code APIs, extension manifests, extension packaging, or extension-host fallbacks.
+- Keep renderer access to Node.js disabled; use the narrow preload bridge and validate IPC inputs.
+- Bind the OpenCode server to loopback only.
+- Treat user project files as untrusted input. Validate paths, bound payload sizes, and avoid following symlinks across workspace boundaries.
+- Worker completion must be based on runtime evidence and verification output, not an agent's claim alone.
+- Preserve user changes. Require review and verification before integrating task worktrees.
+- Add tests for behavior changes, especially cancellation, runtime startup/shutdown, project switching, and packaging.
+- Keep README and desktop troubleshooting instructions aligned with the actual standalone app.

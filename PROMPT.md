@@ -1,13 +1,12 @@
-Pick the first thing off @TODO.md and do it.
+Work from the current Axiom product backlog in `TODO.md`. Axiom is a standalone Electron desktop application, not an editor extension.
 
-For the todo, start by thoroughly researching and writing your notes into `thoughts/todos/<todo-name>.md`.
+For each task:
+1. Inspect the current implementation and relevant tests before changing code.
+2. Write a short implementation plan for non-trivial work and record research only when it informs a real decision.
+3. Implement the task in the standalone Electron/renderer architecture. Do not restore extension-host code or editor-specific APIs.
+4. Add or update tests for behavior changes.
+5. Run the relevant checks: UI build, renderer type-check, unit tests, desktop host tests, and browser tests when applicable.
+6. Update `TODO.md` and user documentation to reflect the actual result.
+7. Commit changes directly to the active requested branch when authorized.
 
-After researching and making a spec about how to do the task, do it. After its done, update the spec about what was completed and how far you got.
-
-If you run into implementation issues or confusing debugging reasons, use the Oracle to debug. It's really smart.
-
-After you're done, update the todo in @TODO.md. If it was completed, use an "x". If you got blocked or only made some progress, use "-" Add a status update under the todo itself, and add a pointer to the todo docs file. If you got blocked by something, put the reason why in the status update and expand on it in the todo file.
-
-If there is leftover work to do, add it to the docs file in a "Progress" section. Then add or update any TODOs in the TODO.md file to finish it back up. Make sure the todo description is a full one or two sentences, detailing any context someone will need to know to pick up the task.
-
-Finally, commit your changes in Git.
+If blocked, record the concrete reason and the remaining work instead of claiming completion. Never report tests or release publication as successful unless the workflow results confirm it.

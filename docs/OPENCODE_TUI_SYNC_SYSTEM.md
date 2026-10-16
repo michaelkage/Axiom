@@ -14,7 +14,7 @@ This document provides a comprehensive analysis of the OpenCode TUI's real-time 
 8. [Binary Search & Data Structures](#8-binary-search--data-structures)
 9. [Memory Optimizations](#9-memory-optimizations)
 10. [Error Handling & Reconnection](#10-error-handling--reconnection)
-11. [Implications for VS Code Extension](#11-implications-for-vs-code-extension)
+11. [Implications for the Standalone Renderer](#11-implications-for-vs-code-extension)
 
 ---
 
@@ -563,11 +563,11 @@ case "server.instance.disposed":
 
 ---
 
-## 11. Implications for VS Code Extension
+## 11. Implications for the Standalone Renderer
 
 ### Current Issue
 
-Our VS Code extension was using `crypto.randomUUID()` for client-generated message IDs:
+The Axiom renderer was using `crypto.randomUUID()` for client-generated message IDs:
 
 ```typescript
 const messageID = `msg_${crypto.randomUUID()}`
