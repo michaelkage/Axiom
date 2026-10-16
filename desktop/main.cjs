@@ -41,8 +41,17 @@ function runtimeExecutable() {
     ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
     : path.join(__dirname, "node_modules");
   const candidates = process.platform === "win32"
-    ? [path.join(base, ".bin", "opencode.cmd"), path.join(base, ".bin", "opencode.exe")]
-    : [path.join(base, ".bin", "opencode")];
+    ? [
+        path.join(base, ".bin", "opencode.cmd"),
+        path.join(base, ".bin", "opencode.exe"),
+        path.join(base, "opencode-ai", "bin", "opencode.exe"),
+        path.join(base, "opencode-windows-x64", "bin", "opencode.exe"),
+        path.join(base, "opencode-windows-x64-baseline", "bin", "opencode.exe"),
+      ]
+    : [
+        path.join(base, ".bin", "opencode"),
+        path.join(base, "opencode-ai", "bin", "opencode"),
+      ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;

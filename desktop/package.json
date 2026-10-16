@@ -23,7 +23,9 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/.bin/opencode*",
-      "node_modules/opencode-ai/**"
+      "node_modules/opencode-ai/**",
+      "node_modules/opencode-windows-x64/**",
+      "node_modules/opencode-windows-x64-baseline/**"
     ],
     "files": [
       "main.cjs",
