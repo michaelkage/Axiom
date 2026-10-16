@@ -12,12 +12,15 @@ test("normalizes OpenCode MCP status and tool IDs", () => {
 test("reports connection and tool discovery from runtime endpoints", async () => {
   const fetchImpl = async url => {
     const path = new URL(url).pathname;
+    if (path === "/global/health") return { ok: true, json: async () => ({ healthy: true, version: "1.19.0" }) };
     if (path === "/mcp") return { ok: true, json: async () => ({ data: [{ name: "context7", status: "connected" }] }) };
     if (path === "/experimental/tool/ids") return { ok: true, json: async () => ({ toolIDs: ["context7_resolve-library-id", "other_search"] }) };
     return { ok: false, status: 404 };
   };
   const result = await inspectMcpRuntime({ baseUrl: "http://127.0.0.1:4096", configuredIds: ["context7", "supabase"], fetchImpl });
   assert.equal(result.runtimeReachable, true);
+  assert.equal(result.runtimeVersion, "1.19.0");
+  assert.equal(result.runtimeHealthy, true);
   assert.equal(result.servers[0].connected, true);
   assert.deepEqual(result.servers[0].tools, ["context7_resolve-library-id"]);
   assert.equal(result.servers[1].status, "not_reported");
