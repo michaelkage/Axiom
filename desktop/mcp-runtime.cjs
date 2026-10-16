@@ -39,6 +39,12 @@ async function firstSuccessful(baseUrl, routes, fetchImpl) {
 
 async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetch } = {}) {
   if (!baseUrl) return { runtimeReachable: false, servers: [], toolIds: [], error: "OpenCode runtime URL is not available." };
+  let runtimeVersion = null, runtimeHealthy = null;
+  try {
+    const health = await firstSuccessful(baseUrl, ["global/health", "api/global/health"], fetchImpl);
+    runtimeVersion = typeof health.value?.version === "string" ? health.value.version : null;
+    runtimeHealthy = health.value?.healthy === true;
+  } catch { /* Older OpenCode builds may not expose the health endpoint. */ }
   let mcpResult;
   try {
     mcpResult = await firstSuccessful(baseUrl, ["mcp", "api/mcp"], fetchImpl);
@@ -67,6 +73,8 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
   });
   return {
     runtimeReachable: true,
+    runtimeVersion,
+    runtimeHealthy,
     servers: configured,
     toolIds,
     toolDiscoveryAvailable: !toolDiscoveryError,
