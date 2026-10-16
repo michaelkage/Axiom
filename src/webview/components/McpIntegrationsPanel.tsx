@@ -12,7 +12,7 @@ type McpApi = {
   saveSecret: (request: { id: string; secret: string }) => Promise<{ saved: boolean; requiresRestart: boolean }>;
   setEnabled: (request: { id: string; enabled: boolean }) => Promise<{ requiresRestart: boolean }>;
   remove: (id: string) => Promise<{ removed: boolean; requiresRestart: boolean }>;
-  diagnostics: () => Promise<{ runtimeReachable: boolean; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string; integrations: McpEntry[] }>;
+  diagnostics: () => Promise<{ runtimeReachable: boolean; runtimeVersion?: string | null; runtimeHealthy?: boolean | null; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string; integrations: McpEntry[] }>;
   probeWorker: (id: string) => Promise<{ invoked: boolean; toolName: string | null; status: string; message: string }>;
 };
 const CATEGORIES = ["All", "Development", "Database", "Browser", "Search", "Web extraction", "Documentation"];
@@ -116,6 +116,7 @@ export function McpIntegrationsPanel() {
       <section class="workflow-plan__parallel" aria-label="Live MCP diagnostics">
         <div class="workflow-plan__eyebrow">RUNTIME DIAGNOSTICS <span>{liveDiagnostics()?.runtimeReachable ? "RUNTIME REACHABLE" : "RUNTIME UNAVAILABLE"}</span></div>
         <p>{liveDiagnostics()?.runtimeReachable ? "OpenCode answered its MCP status API." : "Axiom could not verify live MCP status. A saved credential is not a connected integration."}</p>
+        <p>Bundled runtime: {liveDiagnostics()?.runtimeVersion || "version endpoint unavailable"}{liveDiagnostics()?.runtimeHealthy === true ? " · healthy" : ""}</p>
         <p>Tool discovery: {liveDiagnostics()?.toolDiscoveryAvailable ? "available" : "not verified by this runtime API"}</p>
         <Show when={liveDiagnostics()?.error}><p role="status">{liveDiagnostics()?.error}</p></Show>
         <Show when={liveDiagnostics()?.runtimeReachable}>
