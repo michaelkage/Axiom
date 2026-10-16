@@ -136,12 +136,12 @@ export function McpIntegrationsPanel() {
             <Show when={diagnosticFor(entry.id)}><p>Connection: {diagnosticFor(entry.id)?.status}. Tools: {diagnosticFor(entry.id)?.tools?.join(", ") || "none discovered"}.</p><Show when={diagnosticFor(entry.id)?.error}><p role="status">{diagnosticFor(entry.id)?.error}</p></Show></Show>
             <Show when={entry.reviewNote}><p role="status">{entry.reviewNote}</p></Show>
             <Show when={SECRET_IDS.has(entry.id)}>
-              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "crawl4ai" ? "Optional Crawl4AI bearer token" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
+              <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "crawl4ai" ? "Optional Crawl4AI bearer token (local API at 127.0.0.1:11235)" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
                 <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : entry.id === "postgresql" ? "postgresql://user:password@host:5432/database" : entry.id === "sqlite" ? "Absolute path to an approved .db file" : entry.id === "crawl4ai" ? "Optional bearer token for local Crawl4AI service" : "Paste API key"} />
               </label>
               <div class="workflow-plan__actions">
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !(secrets()[entry.id] || "").trim()} onClick={() => void saveSecret(entry)}>{busyId() === entry.id ? "Saving…" : "Save key securely"}</button>
-                <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !entry.hasSecret} onClick={() => void enable(entry)}>{entry.enabled ? "Disable server" : "Enable server (may download package)"}</button>
+                <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || (!entry.hasSecret && entry.id !== "crawl4ai")} onClick={() => void enable(entry)}>{entry.enabled ? "Disable server" : "Enable server (may download package)"}</button>
                 <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !entry.hasSecret} onClick={() => void remove(entry)}>Remove saved key</button>
               </div>
             </Show>
