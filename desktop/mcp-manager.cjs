@@ -82,7 +82,8 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
   function saveSecret(id, value) {
     if (!SECRET_INTEGRATIONS.has(id)) throw new Error("This integration does not accept a secret or connection value in this setup flow.");
     if (typeof value !== "string" || !value.trim() || value.trim().length > MAX_SECRET_LENGTH) throw new Error("Enter a valid value (maximum 16384 characters).");
-    if (id === "crawl4ai" && value.trim().length > 4096) throw new Error("Bearer token is too long.");\n    if (id === "sqlite" && !path.isAbsolute(value.trim())) throw new Error("Choose an absolute SQLite database path.");
+    if (id === "crawl4ai" && value.trim().length > 4096) throw new Error("Bearer token is too long.");
+    if (id === "sqlite" && !path.isAbsolute(value.trim())) throw new Error("Choose an absolute SQLite database path.");
     if (id === "postgresql" && !/^postgres(?:ql)?:\/\//i.test(value.trim())) throw new Error("Enter a PostgreSQL connection URL beginning with postgres:// or postgresql://.");
     if (!secureStorageAvailable(safeStorage)) throw new Error("OS-backed secure storage is unavailable. Axiom will not save this value as plaintext.");
     const raw = readRaw(), previous = raw[id] && typeof raw[id] === "object" ? raw[id] : {};
@@ -116,7 +117,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       if (!record || record.enabled !== true) continue;
       mcp[id] = { type: "remote", url: REMOTE_ENDPOINTS[id], enabled: true, timeout: 30000 };
     }
-    for (const id of LOCAL_REVIEWED) {
+    for (const id of ["playwright", "postgresql", "sqlite"]) {
       const record = raw[id];
       if (!record || record.enabled !== true) continue;
       if (id === "playwright") {
@@ -140,7 +141,8 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       if (id === "brave-search") mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id]], environment: { BRAVE_API_KEY: secret } };
       else mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id], "--stdio"], environment: { CRAWL4AI_ENDPOINT: "http://127.0.0.1:11235", ...(secret ? { CRAWL4AI_BEARER_TOKEN: secret } : {}) } };
     }
-    if (raw.fetch?.enabled === true) mcp.fetch = { type: "local", enabled: true, command: ["uvx", "--from", "mcp-server-fetch==2026.7.10", "mcp-server-fetch"] };\n    return Object.keys(mcp).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } : {};
+    if (raw.fetch?.enabled === true) mcp.fetch = { type: "local", enabled: true, command: ["uvx", "--from", "mcp-server-fetch==2026.7.10", "mcp-server-fetch"] };
+    return Object.keys(mcp).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } : {};
   }
   return Object.freeze({ getStatus, saveSecret, setEnabled, remove, openCodeEnvironment, configPath });
 }
