@@ -39,17 +39,14 @@ test("secret values are encrypted at rest and never returned in status", () => {
     manager.setEnabled("brave-search", true);
     const config = JSON.parse(manager.openCodeEnvironment().OPENCODE_CONFIG_CONTENT);
     assert.equal(config.mcp["brave-search"].environment.BRAVE_API_KEY, "test-secret-value");
-    assert.equal(config.mcp["brave-search"].type, "local");
+    assert.equal(config.mcp["brave-search"].command[2], "@brave/brave-search-mcp-server@2.1.4");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("reviewed remote endpoints use OpenCode remote transport and OAuth defaults", () => {
   const { dir, manager } = setup();
   try {
-    manager.setEnabled("context7", true);
-    manager.setEnabled("supabase", true);
-    manager.setEnabled("github", true);
-    manager.setEnabled("neon", true);
+    for (const id of ["context7", "supabase", "github", "neon", "exa"]) manager.setEnabled(id, true);
     const config = JSON.parse(manager.openCodeEnvironment().OPENCODE_CONFIG_CONTENT);
     assert.deepEqual(config.mcp.context7, { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true, timeout: 30000 });
     assert.equal(config.mcp.supabase.url, "https://mcp.supabase.com/mcp");
@@ -78,11 +75,15 @@ test("Playwright uses a pinned package and database credentials are secure", () 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("withholds Fetch and Crawl4AI until reviewed package metadata exists", () => {
+test("Fetch and Crawl4AI use pinned launchers with local endpoint defaults", () => {
   const { dir, manager } = setup();
   try {
-    assert.throws(() => manager.setEnabled("fetch", true), /maintained, pinned MCP package passes/);
-    assert.throws(() => manager.setEnabled("crawl4ai", true), /maintained, pinned MCP package passes/);
+    manager.setEnabled("fetch", true);
+    manager.setEnabled("crawl4ai", true);
+    const config = JSON.parse(manager.openCodeEnvironment().OPENCODE_CONFIG_CONTENT);
+    assert.deepEqual(config.mcp.fetch.command, ["uvx", "--from", "mcp-server-fetch==2026.7.10", "mcp-server-fetch"]);
+    assert.equal(config.mcp.crawl4ai.command[2], "crawl4ai-mcp-sse-stdio@1.2.1");
+    assert.equal(config.mcp.crawl4ai.environment.CRAWL4AI_ENDPOINT, "http://127.0.0.1:11235");
     assert.throws(() => manager.setEnabled("made-up", true), /Unknown MCP integration/);
     assert.deepEqual(manager.remove("context7"), { id: "context7", removed: true, requiresRestart: true });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
