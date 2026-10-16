@@ -67,7 +67,7 @@ On the first-run welcome screen, Axiom can connect to an existing OmniRoute-comp
 - **Start with Axiom:** optional and only for the local default OmniRoute service. Axiom only stops the router process it started itself, never a separately running router.
 - **No router required:** direct OpenCode providers, local model servers, custom endpoints, and existing provider credentials remain available without OmniRoute.
 
-The OmniRoute installer is maintained by the [OmniRoute project](https://github.com/diegosouzapw/OmniRoute). Review its install requirements and provider terms before connecting accounts or enabling models.
+The OmniRoute installer is maintained by the [OmniRoute project](https://github.com/ourines/omniroute). Review its install requirements and provider terms before connecting accounts or enabling models.
   
 ## Development setup
 
