@@ -53,7 +53,7 @@ interface SelectionAttachment {
   startLine?: number;
   endLine?: number;
 }
-import { vscode } from "./utils/vscode";
+import { hostBridge } from "./utils/hostBridge";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
 import { extractMentions } from "./utils/editorContent";
@@ -331,7 +331,7 @@ function App() {
       logger.error("Cannot open mention: workspace root unavailable", { filePath });
       return;
     }
-    vscode.postMessage({
+    hostBridge.postMessage({
       type: "open-file",
       url: buildWorkspaceFileUrl(workspaceRoot, filePath),
     });
@@ -1224,7 +1224,7 @@ function App() {
     setSelectedAgent(agent);
     // Persist as global default for new sessions
     if (agent && !sync.currentSessionId()) {
-      vscode.postMessage({ type: "agent-changed", agent });
+      hostBridge.postMessage({ type: "agent-changed", agent });
     }
   };
 
