@@ -1,5 +1,9 @@
 name: Build Axiom Desktop Release
 
+concurrency:
+  group: axiom-desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches:
@@ -83,8 +87,11 @@ jobs:
         if: github.ref == 'refs/heads/axiom/product-rebuild'
         shell: pwsh
         run: |
-          git ls-remote --exit-code --tags origin "refs/tags/v$env:AXIOM_VERSION" | Out-Null
-          if ($LASTEXITCODE -eq 0) {
+          $remoteTags = git ls-remote --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Could not inspect remote Git tags." }
+          $tagRef = "refs/tags/v$env:AXIOM_VERSION"
+          $matchingTag = $remoteTags | Select-String -SimpleMatch $tagRef
+          if ($matchingTag) {
             "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           } else {
             "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
