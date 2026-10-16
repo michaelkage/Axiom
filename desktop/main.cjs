@@ -428,7 +428,12 @@ async function runQualityGate(event, message) {
 
 async function upstreamRevision(root) {
   const upstream = await run("git", ["rev-parse", "--symbolic-full-name", "@{u}"], root, 15000);
-  if (upstream.exitCode !== 0 || !upstream.output.trim()) return null;
+  if (upstream.exitCode !== 0 || !upstream.output.trim()) {
+    const remotes = await run("git", ["remote"], root, 15000);
+    if (remotes.exitCode !== 0) throw new Error("Could not determine whether this workspace has a remote repository. " + remotes.output);
+    if (remotes.output.trim()) throw new Error("Remote drift check cannot run because this branch has no upstream tracking branch. Configure an upstream before integrating worker changes.");
+    return null;
+  }
   const ref = upstream.output.trim().split(/\r?\n/).at(-1);
   const prefix = "refs/remotes/";
   if (!ref.startsWith(prefix) || !ref.slice(prefix.length).includes("/")) throw new Error("Cannot safely identify the workspace remote tracking branch: " + ref);
@@ -481,13 +486,18 @@ async function applyWorktreeChanges(event, message) {
       }
       staged.push({ relative, destination, content, existed: fs.existsSync(destination), backup: null, temporary: null });
     }
-    for (const item of staged) {
-      if (item.existed) item.backup = await fs.promises.readFile(item.destination);
-      if (item.content !== null) {
-        await fs.promises.mkdir(path.dirname(item.destination), { recursive: true });
-        item.temporary = item.destination + ".axiom-" + process.pid + "-" + Math.random().toString(36).slice(2) + ".tmp";
-        await fs.promises.writeFile(item.temporary, item.content, { flag: "wx", mode: 0o600 });
+    try {
+      for (const item of staged) {
+        if (item.existed) item.backup = await fs.promises.readFile(item.destination);
+        if (item.content !== null) {
+          await fs.promises.mkdir(path.dirname(item.destination), { recursive: true });
+          item.temporary = item.destination + ".axiom-" + process.pid + "-" + Math.random().toString(36).slice(2) + ".tmp";
+          await fs.promises.writeFile(item.temporary, item.content, { flag: "wx", mode: 0o600 });
+        }
       }
+    } catch (prepareError) {
+      for (const item of staged) if (item.temporary) { try { await fs.promises.unlink(item.temporary); } catch {} }
+      throw new Error("Integration preflight could not stage every file; no destination files were changed. " + prepareError.message);
     }
     try {
       for (const item of staged) {
@@ -508,6 +518,7 @@ async function applyWorktreeChanges(event, message) {
           else await fs.promises.unlink(item.destination);
         } catch (rollbackError) { rollbackErrors.push(item.relative + ": " + rollbackError.message); }
       }
+      if (rollbackErrors.length === 0) appliedPaths.length = 0;
       throw new Error("Integration transaction failed: " + applyError.message + (rollbackErrors.length ? ". Rollback failed for " + rollbackErrors.join("; ") : ". Applied files were rolled back."));
     } finally {
       for (const item of staged) if (item.temporary) { try { await fs.promises.unlink(item.temporary); } catch {} }
