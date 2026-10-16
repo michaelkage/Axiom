@@ -84,14 +84,13 @@ export function MessageList(props: MessageListProps) {
     });
   });
 
-  // Handle new messages
+  // Handle new messages without overriding the user's scroll position.
+  // Once they scroll up to inspect earlier output, incoming messages must not
+  // force the view back to the bottom.
   createEffect(
     on(
       () => props.messages.length,
-      () => {
-        setPinned(true);
-        scheduleAutoScroll();
-      }
+      () => scheduleAutoScroll()
     )
   );
 
