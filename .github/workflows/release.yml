@@ -78,6 +78,18 @@ jobs:
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding ascii "$($installer.FullName).sha256"
 
+      - name: Check whether the version tag already exists
+        id: release_tag
+        if: github.ref == 'refs/heads/axiom/product-rebuild'
+        shell: pwsh
+        run: |
+          git ls-remote --exit-code --tags origin "refs/tags/v$env:AXIOM_VERSION" | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
       - name: Upload standalone installer
         uses: actions/upload-artifact@v4
         with:
@@ -88,9 +100,11 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (github.ref == 'refs/heads/axiom/product-rebuild' && steps.release_tag.outputs.exists != 'true')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.AXIOM_VERSION }}
+          target_commitish: ${{ github.sha }}
           name: Axiom ${{ env.AXIOM_VERSION }}
           generate_release_notes: true
           files: |
