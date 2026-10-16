@@ -79,8 +79,26 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
 
   function findCommand(command) {
     const lookup = spawnSync(platform === "win32" ? "where.exe" : "which", [command], { encoding: "utf8", windowsHide: true });
-    if (lookup.status !== 0 || !lookup.stdout.trim()) return null;
-    return lookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean) || null;
+    if (lookup.status === 0 && lookup.stdout.trim()) {
+      const found = lookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+      if (found) return found;
+    }
+
+    // GUI apps launched from Finder/Start Menu may inherit a shorter PATH than a terminal.
+    // Ask npm for its global prefix before concluding that a just-installed CLI is missing.
+    const npm = platform === "win32" ? "npm.cmd" : "npm";
+    const prefixResult = spawnSync(npm, ["config", "get", "prefix"], {
+      encoding: "utf8", windowsHide: true, shell: platform === "win32"
+    });
+    if (prefixResult.status === 0 && prefixResult.stdout.trim()) {
+      const prefix = prefixResult.stdout.trim();
+      const candidates = platform === "win32"
+        ? [path.join(prefix, command + ".cmd"), path.join(prefix, command + ".exe")]
+        : [path.join(prefix, "bin", command), path.join(prefix, command)];
+      const candidate = candidates.find(file => fs.existsSync(file));
+      if (candidate) return candidate;
+    }
+    return null;
   }
 
   async function status() {
