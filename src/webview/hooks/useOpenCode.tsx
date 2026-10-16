@@ -182,7 +182,7 @@ function createOpenCode() {
     });
   }
 
-  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; signal?: AbortSignal; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void }) {
+  async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; signal?: AbortSignal; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void; onLog?: (taskId: string, line: string) => void }) {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
@@ -252,7 +252,16 @@ function createOpenCode() {
         throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
       }
       const childSessionId = created.data.id;
-      const taskError = (message: string) => Object.assign(new Error(message), { sessionId: childSessionId, worktreePath: taskDirectory });
+      const workerLogs: string[] = [];
+      const logWorker = (line: string) => {
+        const entry = new Date().toISOString() + " " + line.slice(0, 1800);
+        workerLogs.push(entry);
+        if (workerLogs.length > 200) workerLogs.shift();
+        orchestration?.onLog?.(task.id, entry);
+      };
+      logWorker("Worker session created: " + childSessionId);
+      logWorker("Isolated worktree: " + taskDirectory);
+      const taskError = (message: string) => Object.assign(new Error(message), { sessionId: childSessionId, worktreePath: taskDirectory, logs: workerLogs.slice() });
       const abortWorker = () => {
         void c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
       };
@@ -289,7 +298,15 @@ function createOpenCode() {
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
       if (signal?.aborted) throw taskError("Parallel task cancelled before prompting the worker.");
       signal?.addEventListener("abort", abortWorker, { once: true });
+      const stopWorkerEvents = subscribeToEvents(event => {
+        const serialized = JSON.stringify(event);
+        if (!serialized.includes(childSessionId)) return;
+        const type = String(event.type || "runtime.event");
+        if (!/message\\.|session\\.(error|status|idle|updated)|tool\\./.test(type)) return;
+        logWorker("[" + type + "] " + serialized.slice(0, 1400));
+      }, undefined, taskDirectory);
       if (signal?.aborted) {
+        stopWorkerEvents();
         abortWorker();
         signal?.removeEventListener("abort", abortWorker);
         throw taskError("Parallel task cancelled before prompting the worker.");
@@ -305,7 +322,9 @@ function createOpenCode() {
         throw taskError(error instanceof Error ? error.message : String(error));
       } finally {
         signal?.removeEventListener("abort", abortWorker);
+        stopWorkerEvents();
       }
+      logWorker("Worker prompt completed.");
       if (signal?.aborted) throw taskError("Parallel task was cancelled while the worker was running.");
       if (result.error) {
         throw taskError("Task \"" + task.title + "\" failed: " + JSON.stringify(result.error));
@@ -322,13 +341,16 @@ function createOpenCode() {
         const assistantMessages = messages.filter(message => message.info?.role === "assistant");
         const latest = assistantMessages[assistantMessages.length - 1];
         const text = (latest?.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n").trim();
-        if (text) summary = text.slice(0, 1200);
+        if (text) {
+          summary = text.slice(0, 1200);
+          logWorker("Assistant transcript: " + text.slice(0, 12000));
+        }
       } catch {
         // A missing transcript must not turn a successful prompt response into a false failure.
       } finally {
         signal?.removeEventListener("abort", abortWorker);
       }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
+      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, logs: workerLogs.slice(), contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
     }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });
   }
 
@@ -336,10 +358,11 @@ function createOpenCode() {
   // (native EventSource has CORS issues in webview)
   function subscribeToEvents(
     onEvent: (event: Event) => void,
-    onStatus?: (status: SSEStatus) => void
+    onStatus?: (status: SSEStatus) => void,
+    directoryOverride?: string
   ): () => void {
     const baseUrl = serverUrl();
-    const dir = workspaceRoot();
+    const dir = directoryOverride ?? workspaceRoot();
     if (!baseUrl) throw new Error("Not connected");
 
     const url = new URL("/event", baseUrl);

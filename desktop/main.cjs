@@ -10,6 +10,7 @@ const { listDirectory, readProjectFile, writeProjectFile } = require("./filesyst
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
+const { createWorkerStateStore } = require("./worker-state.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -187,6 +188,7 @@ async function createWindow() {
   }
 
   selectedWorkspace = path.resolve(workspace);
+  await currentWorkerStateStore().recoverInterrupted();
   terminalRunner = createTerminalRunner({ workspaceRoot: selectedWorkspace });
   if (omniRouteManager) {
     try { await omniRouteManager.startIfConfigured(); }
@@ -532,6 +534,10 @@ function currentProjectStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
 }
+function currentWorkerStateStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
+}
 
 ipcMain.handle("axiom:omniroute-status", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -624,6 +630,16 @@ ipcMain.handle("axiom:project-bootstrap", event => {
 ipcMain.handle("axiom:project-state-read", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return currentProjectStore().read();
+});
+ipcMain.handle("axiom:worker-state-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentWorkerStateStore().list();
+});
+ipcMain.handle("axiom:worker-state-record", async (event, task) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const saved = await currentWorkerStateStore().record(task);
+  sendHostMessage(event, { type: "worker-state-updated", task: saved });
+  return saved;
 });
 
 ipcMain.handle("axiom:project-context-save", async (event, context) => {

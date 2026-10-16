@@ -93,7 +93,7 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
-  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
+  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; logs?: string[]; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
 }
 export interface CompletedTaskContext { task: AxiomSubTask; result: unknown; }
 export interface TaskBatchExecutionOptions {
@@ -194,6 +194,7 @@ export async function executeTaskBatches<T>(
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
           ...(typeof detail.summary === "string" ? { summary: detail.summary } : {}),
+          ...(Array.isArray(detail.logs) ? { logs: detail.logs.filter((line): line is string => typeof line === "string").slice(-200) } : {}),
           ...(typeof detail.contextEstimatedTokensBefore === "number" ? { contextEstimatedTokensBefore: detail.contextEstimatedTokensBefore } : {}),
           ...(typeof detail.contextEstimatedTokensAfter === "number" ? { contextEstimatedTokensAfter: detail.contextEstimatedTokensAfter } : {}),
           ...(typeof detail.contextSavingsPercent === "number" ? { contextSavingsPercent: detail.contextSavingsPercent } : {}),
@@ -212,6 +213,7 @@ export async function executeTaskBatches<T>(
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
+          ...(Array.isArray(detail.logs) ? { logs: detail.logs.filter((line): line is string => typeof line === "string").slice(-200) } : {}),
         });
         throw error;
       } finally {

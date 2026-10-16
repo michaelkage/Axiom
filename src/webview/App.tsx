@@ -96,6 +96,8 @@ function App() {
   const desktopApi = () => (window as Window & { axiomDesktop?: { project?: {
     bootstrap: () => Promise<{ workspaceRoot: string | null; appVersion: string; platform: string }>;
     readState: () => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
+    listWorkerTasks: () => Promise<TaskExecutionRecord[]>;
+    recordWorkerTask: (task: TaskExecutionRecord) => Promise<TaskExecutionRecord>;
     saveContext: (context: string) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     addChange: (change: { title: string; summary: string; status: string; files?: string[]; checks?: Array<{ name: string; state: string; details: string }> }) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     chooseProject: () => Promise<string | null>;
@@ -489,38 +491,42 @@ function App() {
         signal: abortController.signal,
         onOutcome: record => {
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]);
-          if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status)) {
-            const project = desktopApi()?.project;
-            if (project) {
-              const summary = record.status === "succeeded"
-                ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
-                : record.status === "blocked"
-                  ? "Worker was blocked because a dependency did not succeed."
-                  : record.status === "timed_out"
-                    ? "Worker exceeded its execution time limit. Review diagnostics before retrying."
-                    : record.status === "cancelled"
-                      ? "Worker execution was cancelled. Review its isolated worktree before retrying."
-                      : "Worker session failed. Review the diagnostic details and isolated worktree before retrying.";
-              void project.addChange({
-                title: "Worker " + record.status + ": " + record.title,
-                summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
-                status: record.status === "succeeded" ? "review" : "failed",
-                checks: [{
-                  name: "OpenCode worker lifecycle",
-                  state: record.status === "succeeded" ? "passed" : "failed",
-                  details: [
-                    record.sessionId ? "Session: " + record.sessionId : "",
-                    record.worktreePath ? "Worktree: " + record.worktreePath : "",
-                    record.agent ? "Agent: " + record.agent : "",
-                    record.startedAt ? "Started: " + new Date(record.startedAt).toISOString() : "",
-                    record.finishedAt ? "Finished: " + new Date(record.finishedAt).toISOString() : "",
-                  ].filter(Boolean).join(" · ") || "No additional worker metadata was returned."
-                }]
-              }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => {
-                logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error });
-              });
-            }
+          const project = desktopApi()?.project;
+          if (project) void project.recordWorkerTask(record).catch(error => logger.error("Could not persist worker outcome", { taskId: record.taskId, error }));
+          if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
+            const summary = record.status === "succeeded"
+              ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
+              : record.status === "blocked"
+                ? "Worker was blocked because a dependency did not succeed."
+                : record.status === "timed_out"
+                  ? "Worker exceeded its execution time limit. Review diagnostics before retrying."
+                  : record.status === "cancelled"
+                    ? "Worker execution was cancelled. Review its isolated worktree before retrying."
+                    : "Worker session failed. Review the diagnostic details and isolated worktree before retrying.";
+            void project.addChange({
+              title: "Worker " + record.status + ": " + record.title,
+              summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
+              status: record.status === "succeeded" ? "review" : "failed",
+              checks: [{
+                name: "OpenCode worker lifecycle",
+                state: record.status === "succeeded" ? "passed" : "failed",
+                details: [
+                  record.sessionId ? "Session: " + record.sessionId : "",
+                  record.worktreePath ? "Worktree: " + record.worktreePath : "",
+                  record.agent ? "Agent: " + record.agent : "",
+                  record.startedAt ? "Started: " + new Date(record.startedAt).toISOString() : "",
+                  record.finishedAt ? "Finished: " + new Date(record.finishedAt).toISOString() : "",
+                ].filter(Boolean).join(" · ") || "No additional worker metadata was returned."
+              }]
+            }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error }));
           }
+        },
+        onLog: (taskId, line) => {
+          const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
+          setTaskOutcomes(updated);
+          const existing = updated.find(item => item.taskId === taskId);
+          const project = desktopApi()?.project;
+          if (existing && project) void project.recordWorkerTask(existing).catch(error => logger.error("Could not persist worker log", { taskId, error }));
         },
       });
       const completed = results.map(({ task, result }) => {
@@ -716,6 +722,10 @@ function App() {
   onMount(() => {
     const project = desktopApi()?.project;
     if (!project) return;
+    const refreshWorkerTasks = () => {
+      void project.listWorkerTasks().then(records => setTaskOutcomes(records)).catch(error => logger.error("Could not restore worker outcomes", { error }));
+    };
+    void project.listWorkerTasks().then(records => setTaskOutcomes(records)).catch(error => logger.error("Could not load worker outcomes", { error }));
     const refreshProjectState = () => {
       void project.readState().then(state => {
         setDesktopProjectState(state);
@@ -725,7 +735,11 @@ function App() {
       });
     };
     window.addEventListener("axiom-project-state-updated", refreshProjectState);
-    onCleanup(() => window.removeEventListener("axiom-project-state-updated", refreshProjectState));
+    window.addEventListener("axiom-worker-state-updated", refreshWorkerTasks);
+    onCleanup(() => {
+      window.removeEventListener("axiom-project-state-updated", refreshProjectState);
+      window.removeEventListener("axiom-worker-state-updated", refreshWorkerTasks);
+    });
     void project.readState().then(state => {
       setDesktopProjectState(state);
       setProjectContextDraft(state.context || "");
@@ -1470,6 +1484,7 @@ function App() {
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
+              <Show when={task.logs?.length}><details><summary>Worker logs and transcript ({task.logs!.length} entries)</summary><pre>{task.logs!.join("\n\n")}</pre></details></Show>
             </li>}</For>
           </ol>
           <div class="workflow-plan__actions">

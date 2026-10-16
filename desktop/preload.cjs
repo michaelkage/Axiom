@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),
+    listWorkerTasks: () => ipcRenderer.invoke("axiom:worker-state-list"),
+    recordWorkerTask: task => ipcRenderer.invoke("axiom:worker-state-record", task),
     saveContext: context => ipcRenderer.invoke("axiom:project-context-save", context),
     addChange: change => ipcRenderer.invoke("axiom:change-feed-add", change),
     chooseProject: () => ipcRenderer.invoke("axiom:choose-project"),
@@ -43,5 +45,8 @@ ipcRenderer.on("axiom:host-message", (_event, message) => {
   window.dispatchEvent(new MessageEvent("message", { data: message }));
   if (message && message.type === "project-state-updated") {
     window.dispatchEvent(new Event("axiom-project-state-updated"));
+  }
+  if (message && message.type === "worker-state-updated") {
+    window.dispatchEvent(new Event("axiom-worker-state-updated"));
   }
 });
