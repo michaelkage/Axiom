@@ -57,6 +57,18 @@ Axiom is an Electron desktop application. It opens a project folder and starts a
 
 Axiom works on files in the project folder you select. Review generated changes carefully and keep backups or version control for important projects. Agent permissions and tool availability depend on the runtime and model configuration.
 
+### Optional OmniRoute integration
+
+On the first-run welcome screen, Axiom can connect to an existing OmniRoute-compatible API or optionally install and manage a local OmniRoute instance. OmniRoute's default local API is `http://127.0.0.1:20128/v1`; the dashboard is normally available at `http://127.0.0.1:20128`.
+
+- **Connect existing router:** set the OpenAI-compatible API base URL and, if required, its API key.
+- **Install:** the explicit Install button runs `npm install --global omniroute`. It does not silently install software during Axiom setup.
+- **Attach to Axiom:** enabling this option adds the selected router model to the OpenCode runtime configuration on the next Axiom launch. The API key is encrypted with Electron's OS-backed secure storage; Axiom refuses to persist it if secure storage is unavailable.
+- **Start with Axiom:** optional and only for the local default OmniRoute service. Axiom only stops the router process it started itself, never a separately running router.
+- **No router required:** direct OpenCode providers, local model servers, custom endpoints, and existing provider credentials remain available without OmniRoute.
+
+The OmniRoute installer is maintained by the [OmniRoute project](https://github.com/diegosouzapw/OmniRoute). Review its install requirements and provider terms before connecting accounts or enabling models.
+  
 ## Development setup
 
 ### Requirements
