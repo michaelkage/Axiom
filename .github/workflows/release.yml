@@ -50,7 +50,12 @@ jobs:
         run: pnpm exec tsc -p tsconfig.webview.json
 
       - name: Run desktop host and filesystem tests
-        run: node --test desktop/*.test.cjs
+        shell: pwsh
+        run: |
+          $tests = Get-ChildItem desktop -Filter "*.test.cjs" | ForEach-Object { $_.FullName }
+          if (-not $tests) { throw "No desktop tests were found." }
+          node --test @tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate desktop host modules
         shell: pwsh
