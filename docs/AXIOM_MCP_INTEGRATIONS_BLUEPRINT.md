@@ -1,6 +1,6 @@
 # Axiom MCP Integrations: implementation blueprint
 
-**Status:** Initial catalog and UX design. Treat this document as the source of truth for the staged implementation; do not claim a provider is connected until the OpenCode runtime confirms it.
+**Status:** Initial runtime slice implemented for Context7, Supabase, Brave Search, and Exa. Catalog metadata, main-process credential encryption, OpenCode config injection, desktop controls, and unit tests are present. Runtime tool discovery and live provider handshakes are not yet implemented or verified; do not label a provider connected until those checks exist.
 
 ## Product goal
 
