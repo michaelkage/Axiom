@@ -472,7 +472,7 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const config = omniRouteManager.getConfig();
   const url = new URL(config.baseUrl);
-  url.pathname = url.pathname.replace(/\/v1\/?$/, "") || "/";
+  url.pathname = url.pathname.replace(/\\/v1\\/?$/, "") || "/";
   await shell.openExternal(url.toString());
   return true;
 });
@@ -677,9 +677,9 @@ app.on("before-quit", event => {
   isQuitting = true;
   if (shutdownStarted) return;
   shutdownStarted = true;
-  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0) || (omniRouteManager && omniRouteManager.ownsProcess())) {
+  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0) || (omniRouteManager && omniRouteManager.getConfig().autoStart)) {
     event.preventDefault();
-    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime(), omniRouteManager ? omniRouteManager.stop() : Promise.resolve()]).finally(() => app.quit());
+    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime(), omniRouteManager && omniRouteManager.getConfig().autoStart ? omniRouteManager.stop() : Promise.resolve()]).finally(() => app.quit());
   }
 });
 app.on("window-all-closed", () => {

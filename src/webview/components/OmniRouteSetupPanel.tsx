@@ -61,8 +61,8 @@ export function OmniRouteSetupPanel() {
         await bridge.start();
         setMessage("OmniRoute is responding.");
       } else if (action === "stop") {
-        await bridge.stop();
-        setMessage("Axiom stopped only the OmniRoute process it launched.");
+        const result = await bridge.stop() as { stopped?: boolean };
+        setMessage(result.stopped ? "Axiom stopped the OmniRoute process it launched." : "Axiom did not stop a router it does not own.");
       } else if (action === "dashboard") {
         await bridge.openDashboard();
       }

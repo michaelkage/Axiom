@@ -65,6 +65,7 @@ jobs:
           node --check desktop/filesystem.cjs
           node --check desktop/project-store.cjs
           node --check desktop/terminal.cjs
+          node --check desktop/omniroute.cjs
 
       - name: Install desktop packaging dependencies
         working-directory: desktop
