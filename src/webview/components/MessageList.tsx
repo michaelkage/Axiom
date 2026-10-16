@@ -26,8 +26,6 @@ export function MessageList(props: MessageListProps) {
   let containerRef!: HTMLDivElement;
   let contentRef!: HTMLDivElement;
   
-  console.log("[MessageList] Rendering with messages count:", props.messages.length);
-  
   const [pinned, setPinned] = createSignal(true);
   let userInteracting = false;
   let pendingRAF = false;
