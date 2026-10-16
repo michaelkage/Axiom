@@ -1,0 +1,89 @@
+name: Build Axiom macOS and Linux Releases
+
+on:
+  push:
+    branches:
+      - "axiom/product-rebuild"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axiom-platform-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }} package
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-13
+            electron_arch: x64
+          - arch: arm64
+            runner: macos-14
+            electron_arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:webview
+      - run: pnpm exec tsc -p tsconfig.webview.json
+      - name: Install desktop packaging dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Build macOS packages
+        working-directory: desktop
+        run: npx electron-builder --mac dmg zip --${{ matrix.electron_arch }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axiom-macos-${{ matrix.arch }}
+          path: desktop/release/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.target }} package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [deb, rpm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:webview
+      - run: pnpm exec tsc -p tsconfig.webview.json
+      - name: Install Linux packaging prerequisites
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Install desktop packaging dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Build Linux package
+        working-directory: desktop
+        run: npx electron-builder --linux ${{ matrix.target }} --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axiom-linux-${{ matrix.target }}-x64
+          path: desktop/release/*
+          if-no-files-found: error

@@ -17,7 +17,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'out',
-    minify: false,
+    minify: true,
     rollupOptions: {
       input: {
         standalone: resolve(__dirname, 'src/webview/standalone.html')
@@ -30,7 +30,7 @@ export default defineConfig({
         }
       }
     },
-    sourcemap: true
+    sourcemap: process.env.GENERATE_SOURCEMAP === "true"
   },
   resolve: {
     alias: {

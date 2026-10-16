@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show, onMount, onCleanup, createEffect, For } from "solid-js";
+import { createSignal, createMemo, Show, onMount, onCleanup, createEffect, For, lazy } from "solid-js";
 import { InputBar } from "./components/InputBar";
 import type { TiptapEditorMethods } from "./components/TiptapEditor";
 import { MessageList } from "./components/MessageList";
@@ -9,8 +9,8 @@ import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
-import { ProjectMemoryPanel } from "./components/ProjectMemoryPanel";
-import { WorktreeReviewPanel } from "./components/WorktreeReviewPanel";
+const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
+const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";

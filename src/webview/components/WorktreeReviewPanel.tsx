@@ -14,6 +14,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
   const [applyResult, setApplyResult] = createSignal<Apply | null>(null);
   const [repairAttempts, setRepairAttempts] = createSignal(0);
   const [repairing, setRepairing] = createSignal(false);
+  const [forceAcknowledged, setForceAcknowledged] = createSignal(false);
   const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
   const [criteriaDone, setCriteriaDone] = createSignal<string[]>([]);
   const criteriaComplete = createMemo(() => (props.acceptanceCriteria ?? []).length > 0 && (props.acceptanceCriteria ?? []).every(item => criteriaDone().includes(item)));
@@ -26,13 +27,17 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
   };
   const runGate = () => {
     if (!props.workspaceRoot || !changedPaths().length) return;
+    setForceAcknowledged(false);
     setGate({ loading: true });
     hostBridge.postMessage({ type: "run-agent-quality-gate", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, changedPaths: changedPaths() });
   };
-  const applySelected = () => {
-    if (!props.workspaceRoot || !selected().length || gate()?.status !== "Ready to review") return;
+  const applySelected = (forceIntegration = false) => {
+    if (!props.workspaceRoot || !selected().length) return;
+    if (!forceIntegration && effectiveStatus() !== "Ready to review") return;
+    if (forceIntegration && (!forceAcknowledged() || !gate() || gate()?.loading)) return;
+    if (forceIntegration && !window.confirm("Force integration despite failed or incomplete quality checks? Axiom will still refuse dirty destination files, remote drift, unsafe paths, and file conflicts. Continue?")) return;
     setApplyResult({ loading: true, ok: false });
-    hostBridge.postMessage({ type: "apply-agent-worktree-changes", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, paths: selected() });
+    hostBridge.postMessage({ type: "apply-agent-worktree-changes", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, paths: selected(), forceIntegration });
   };
   const toggle = (path: string, checked: boolean) => setSelected(old => checked ? [...new Set([...old, path])] : old.filter(item => item !== path));
 
@@ -82,7 +87,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
           </label>}</For>
           <Show when={!criteriaComplete()}><p class="worktree-review__note">Outstanding criteria: {(props.acceptanceCriteria ?? []).filter(item => !criteriaDone().includes(item)).length}</p></Show>
         </Show>
-          <p>Select files to integrate after the quality gate passes:</p>
+          <p>Select files to integrate after reviewing the diff and quality-gate evidence:</p>
           <For each={item.changedFiles}>{file => <label class="worktree-review__file">
             <input type="checkbox" checked={selected().includes(file.path)} onChange={event => toggle(file.path, event.currentTarget.checked)} />
             <code>{file.status}</code> {file.path}
@@ -107,10 +112,19 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
           try { await props.onRepair?.(failure); } finally { setRepairing(false); }
         }}>{repairing() ? "Requesting one bounded repair…" : "Ask task agent to fix failures (1 retry)"}</button>
       </Show>
-      <button class="workflow-plan__secondary" disabled={effectiveStatus() !== "Ready to review" || !selected().length || applyResult()?.loading} onClick={applySelected}>
+      <button class="workflow-plan__secondary" disabled={effectiveStatus() !== "Ready to review" || !selected().length || applyResult()?.loading} onClick={() => applySelected(false)}>
         {applyResult()?.loading ? "Integrating…" : "Integrate selected files"}
       </button>
-      <p class="worktree-review__note">Integration is blocked unless all configured checks pass. Existing dirty workspace paths are never overwritten. Repair is limited to one attempt per task review.</p>
+      <Show when={!!gate() && !gate()?.loading && effectiveStatus() !== "Ready to review"}>
+        <label class="worktree-review__file">
+          <input type="checkbox" checked={forceAcknowledged()} onChange={event => setForceAcknowledged(event.currentTarget.checked)} />
+          I reviewed the diff and accept the risk of bypassing failed or incomplete quality checks.
+        </label>
+        <button class="workflow-plan__secondary" disabled={!forceAcknowledged() || !selected().length || applyResult()?.loading} onClick={() => applySelected(true)}>
+          {applyResult()?.loading ? "Integrating…" : "Force integrate selected files…"}
+        </button>
+      </Show>
+      <p class="worktree-review__note">Force integration bypasses the quality-gate status only. Dirty destination files, remote drift, unsafe paths, symlinks, and transactional rollback protections remain enforced. Repair is limited to one attempt per task review.</p>
     </div>}</Show>
     <Show when={applyResult()} keyed>{result => <p>{result.ok ? "Integrated: " + (result.appliedPaths ?? []).join(", ") : result.error ? "Integration blocked: " + result.error : ""}</p>}</Show>
   </div>;

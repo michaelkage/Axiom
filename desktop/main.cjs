@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, safeStorage } = require("electron");
-const { spawn, spawnSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
@@ -38,7 +38,7 @@ async function appendRuntimeLog(text) {
   } catch { /* Diagnostics must never prevent startup or shutdown. */ }
 }
 
-function runtimeExecutable() {
+async function runtimeExecutable() {
   const base = app.isPackaged
     ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
     : path.join(__dirname, "node_modules");
@@ -59,14 +59,14 @@ function runtimeExecutable() {
     if (fs.existsSync(candidate)) return candidate;
   }
 
-  const globalLookup = spawnSync(
-    process.platform === "win32" ? "where" : "which",
-    ["opencode"],
-    { encoding: "utf8", windowsHide: true }
-  );
-  if (globalLookup.status === 0 && globalLookup.stdout.trim()) {
-    return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
-  }
+  try {
+    const globalLookup = await execFileAsync(
+      process.platform === "win32" ? "where" : "which",
+      ["opencode"],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 }
+    );
+    if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+  } catch { /* Fall through to the actionable runtime-not-found error. */ }
   throw new Error("Axiom's bundled OpenCode runtime could not be found. Reinstall Axiom using the latest Windows installer.");
 }
 
@@ -113,7 +113,7 @@ async function startRuntime(workspace) {
   const port = await findFreePort();
   let executable;
   try {
-    executable = runtimeExecutable();
+    executable = await runtimeExecutable();
     await appendRuntimeLog(`Launching OpenCode runtime from ${executable}`);
   } catch (error) {
     await appendRuntimeLog(`Runtime executable lookup failed: ${error.stack || error.message}`);
@@ -353,6 +353,7 @@ async function runQualityGate(event, message) {
     validateWorkspace(message.workspaceRoot);
     const root = await gitRoot(message.workspaceRoot);
     if (await gitRoot(message.worktreePath) !== root) throw new Error("Task worktree belongs to a different Git repository.");
+    if (message.forceIntegration === true) await appendRuntimeLog(`User requested force integration for task ${String(message.taskId || "unknown")} (quality-gate bypass only).`);
     const paths = Array.isArray(message.changedPaths) ? message.changedPaths : [];
     await addCheck("Git whitespace and conflict-marker check", "git", ["diff", "--check", "HEAD", "--"], message.worktreePath, 30000);
 
