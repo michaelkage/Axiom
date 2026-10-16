@@ -6,7 +6,7 @@ const { getMcpCatalogEntry, listMcpCatalog } = require("./mcp-catalog.cjs");
 
 const SECRET_INTEGRATIONS = new Set(["brave-search", "crawl4ai", "postgresql", "sqlite"]);
 const REQUIRED_SECRET_INTEGRATIONS = new Set(["brave-search", "postgresql", "sqlite"]);
-const REMOTE_INTEGRATIONS = new Set(["github", "supabase", "context7", "neon"]);
+const REMOTE_INTEGRATIONS = new Set(["github", "supabase", "context7", "neon", "exa"]);
 const LOCAL_REVIEWED = new Set(["playwright", "postgresql", "sqlite", "fetch", "crawl4ai"]);
 const MAX_SECRET_LENGTH = 16384;
 const PINNED_PACKAGES = Object.freeze({
@@ -74,8 +74,8 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
         enabled, hasSecret, requiresRestart: enabled,
         package: PINNED_PACKAGES[entry.id] || entry.package || null,
         managed: REMOTE_INTEGRATIONS.has(entry.id) || LOCAL_REVIEWED.has(entry.id) || (SECRET_INTEGRATIONS.has(entry.id) && hasSecret),
-        reviewNote: entry.id === "crawl4ai" ? "No pinned, maintained MCP distribution has been approved yet." :
-          entry.id === "fetch" ? "The legacy reference Fetch package is deprecated; a maintained replacement must be reviewed before execution." : ""
+        reviewNote: entry.id === "crawl4ai" ? "Requires a Crawl4AI API service at http://127.0.0.1:11235 by default; start the upstream service separately. Optional bearer token is encrypted." :
+          entry.id === "fetch" ? "Uses the pinned official Python reference server via uvx; install uv/uvx first." : ""
       };
     });
   }
@@ -128,7 +128,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
           if (!workspaceRoot || !isInside(workspaceRoot, dsn)) continue;
           mcp.sqlite = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES.sqlite, "--transport", "stdio"], environment: { DSN: "sqlite://" + dsn } };
         } else {
-          mcp.postgresql = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES.postgresql, "--transport", "stdio"], environment: { DSN: dsn, READ_ONLY: "true" } };
+          mcp.postgresql = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES.postgresql, "--transport", "stdio"], environment: { DSN: dsn, READONLY: "true" } };
         }
       }
     }
@@ -137,8 +137,8 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       if (!record || record.enabled !== true) continue;
       const secret = decryptSecret(record);
       if (!secret) continue;
-      if (id === "brave-search") mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", "@brave/brave-search-mcp-server"], environment: { BRAVE_API_KEY: secret } };
-      else mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", "exa-mcp-server"], environment: { EXA_API_KEY: secret } };
+      if (id === "brave-search") mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id]], environment: { BRAVE_API_KEY: secret } };
+      else mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id], "--stdio"], environment: { CRAWL4AI_ENDPOINT: "http://127.0.0.1:11235", ...(secret ? { CRAWL4AI_BEARER_TOKEN: secret } : {}) } };
     }
     if (raw.fetch?.enabled === true) mcp.fetch = { type: "local", enabled: true, command: ["uvx", "--from", "mcp-server-fetch==2026.7.10", "mcp-server-fetch"] };\n    return Object.keys(mcp).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } : {};
   }
