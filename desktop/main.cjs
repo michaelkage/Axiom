@@ -7,9 +7,11 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
+const { createTerminalRunner } = require("./terminal.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
+let terminalRunner;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -164,6 +166,7 @@ async function createWindow() {
   }
 
   selectedWorkspace = path.resolve(workspace);
+  terminalRunner = createTerminalRunner({ workspaceRoot: selectedWorkspace });
   let serverUrl;
   while (!serverUrl) {
     try {
@@ -433,6 +436,32 @@ function currentProjectStore() {
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
 }
 
+ipcMain.handle("axiom:terminal-run", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!terminalRunner) throw new Error("The project terminal is not ready.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
+    throw new Error("A terminal request needs a request ID and command.");
+  }
+  return terminalRunner.run({
+    requestId: request.requestId,
+    command: request.command,
+    cwd: request.cwd,
+    onOutput: chunk => {
+      if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+        requestId: request.requestId,
+        stream: chunk.stream,
+        text: chunk.text
+      });
+    }
+  });
+});
+
+ipcMain.handle("axiom:terminal-cancel", async (event, requestId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!terminalRunner || typeof requestId !== "string") return false;
+  return terminalRunner.cancel(requestId);
+});
+
 ipcMain.handle("axiom:fs-list", async (event, relativePath = "") => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
@@ -604,6 +633,7 @@ app.on("activate", () => {
 });
 app.on("before-quit", event => {
   isQuitting = true;
+  if (terminalRunner) void terminalRunner.stopAll();
   if (shutdownStarted) return;
   shutdownStarted = true;
   if (runtimeProcess && runtimeProcess.exitCode === null) {

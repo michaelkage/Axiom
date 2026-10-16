@@ -9,6 +9,15 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
     ipcRenderer.send("axiom:webview-message", message);
   },
+  terminal: Object.freeze({
+    run: request => ipcRenderer.invoke("axiom:terminal-run", request),
+    cancel: requestId => ipcRenderer.invoke("axiom:terminal-cancel", requestId),
+    onOutput(callback) {
+      const listener = (_event, chunk) => callback(chunk);
+      ipcRenderer.on("axiom:terminal-output", listener);
+      return () => ipcRenderer.removeListener("axiom:terminal-output", listener);
+    }
+  }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),

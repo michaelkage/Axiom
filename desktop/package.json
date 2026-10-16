@@ -8,7 +8,7 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --dir --win --x64",
-    "test": "node --test project-store.test.cjs"
+    "test": "node --test *.test.cjs"
   },
   "dependencies": {
     "opencode-ai": "^1.19.0"
@@ -31,7 +31,8 @@
       "project-store.cjs",
       "filesystem.cjs",
       "package.json",
-      "node_modules/**"
+      "node_modules/**",
+      "terminal.cjs"
     ],
     "extraResources": [
       {

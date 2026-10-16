@@ -3,6 +3,7 @@ import { InputBar } from "./components/InputBar";
 import type { TiptapEditorMethods } from "./components/TiptapEditor";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
+import { TerminalPanel } from "./components/TerminalPanel";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
@@ -1315,6 +1316,10 @@ function App() {
         onNewSession={handleNewSession}
         onRefreshSessions={refreshSessions}
       />
+
+      <Show when={desktopApi()?.project}>
+        <TerminalPanel />
+      </Show>
 
       <Show when={desktopApi()?.project}>
         <section class="standalone-project-panel" aria-label="Standalone project workspace">
