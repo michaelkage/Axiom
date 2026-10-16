@@ -153,6 +153,7 @@ async function startRuntime(workspace) {
     const detail = recentOutput.trim();
     throw new Error(error.message + (detail ? "\n\nRecent runtime output:\n" + detail : "") + "\n\nA diagnostic log was saved in Axiom’s user-data folder.");
   }
+  await appendRuntimeLog("Runtime ready at " + url);
   return url;
 }
 
