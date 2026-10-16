@@ -218,6 +218,8 @@ async function createWindow() {
     }
   });
 
+  mainWindow.webContents.once("did-finish-load", () => { void appendRuntimeLog("Axiom renderer loaded."); });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => { void appendRuntimeLog("Renderer process exited: " + JSON.stringify(details)); });
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => { mainWindow = null; });
   const htmlPath = app.isPackaged

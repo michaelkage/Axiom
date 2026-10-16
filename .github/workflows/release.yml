@@ -65,6 +65,7 @@ jobs:
           node --check desktop/filesystem.cjs
           node --check desktop/project-store.cjs
           node --check desktop/terminal.cjs
+          node --check desktop/omniroute.cjs
 
       - name: Install desktop packaging dependencies
         working-directory: desktop
@@ -114,6 +115,8 @@ jobs:
           if (Test-Path $runtimeLog) {
             $log = Get-Content $runtimeLog -Tail 100 | Out-String
             if ($log -match "Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
+            if ($log -notmatch "Runtime ready at http://127\.0\.0\.1:" ) { throw "Installed Axiom did not confirm the local runtime became ready. $log" }
+            if ($log -notmatch "Axiom renderer loaded\.") { throw "Installed Axiom did not confirm that the standalone UI loaded. $log" }
           }
           if ($app.HasExited) {
             $detail = if (Test-Path $runtimeLog) { Get-Content $runtimeLog -Tail 80 | Out-String } else { "No runtime log was created." }
