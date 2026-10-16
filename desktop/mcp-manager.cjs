@@ -14,7 +14,7 @@ const PINNED_PACKAGES = Object.freeze({
   postgresql: "@bytebase/dbhub@1.5.0",
   sqlite: "@bytebase/dbhub@1.5.0",
   "brave-search": "@brave/brave-search-mcp-server@2.1.4",
-  crawl4ai: "crawl4ai-mcp-sse-stdio@1.1.0",
+  crawl4ai: "crawl4ai-mcp-sse-stdio@1.2.1",
   fetch: "mcp-server-fetch==2026.7.10"
 });
 const REMOTE_ENDPOINTS = Object.freeze({
@@ -137,7 +137,7 @@ function createMcpManager({ userDataPath, safeStorage } = {}) {
       const record = raw[id];
       if (!record || record.enabled !== true) continue;
       const secret = decryptSecret(record);
-      if (!secret) continue;
+      if (!secret && id === "brave-search") continue;
       if (id === "brave-search") mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id]], environment: { BRAVE_API_KEY: secret } };
       else mcp[id] = { type: "local", enabled: true, command: ["npx", "-y", PINNED_PACKAGES[id], "--stdio"], environment: { CRAWL4AI_ENDPOINT: "http://127.0.0.1:11235", ...(secret ? { CRAWL4AI_BEARER_TOKEN: secret } : {}) } };
     }
