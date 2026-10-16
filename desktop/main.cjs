@@ -583,9 +583,29 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
   if (typeof id !== "string") throw new Error("Invalid MCP integration ID.");
   const entry = mcpManager.getStatus().find(item => item.id === id);
   if (!entry || !entry.enabled) throw new Error("Enable this integration and restart Axiom before testing a worker tool call.");
-  const result = await runWorkerToolProbe({ baseUrl: activeRuntimeUrl, integrationId: id });
-  void appendRuntimeLog("MCP worker probe for " + id + " finished with status=" + result.status + (result.toolName ? " tool=" + result.toolName : "") + ".");
-  return result;
+  const taskId = "mcp-probe-" + require("node:crypto").randomUUID();
+  const taskStore = currentWorkerStateStore();
+  await taskStore.record({ taskId, title: "MCP tool verification: " + entry.name, status: "running", workerType: "mcp-diagnostic", integrationId: id, startedAt: Date.now() });
+  try {
+    const result = await runWorkerToolProbe({ baseUrl: activeRuntimeUrl, integrationId: id });
+    await taskStore.record({
+      taskId, title: "MCP tool verification: " + entry.name,
+      status: result.invoked ? "succeeded" : "failed", workerType: "mcp-diagnostic",
+      integrationId: id, sessionId: result.sessionId, toolName: result.toolName,
+      error: result.invoked ? undefined : result.message, finishedAt: Date.now()
+    });
+    sendHostMessage(event, { type: "worker-state-updated" });
+    void appendRuntimeLog("MCP worker probe for " + id + " finished with status=" + result.status + (result.toolName ? " tool=" + result.toolName : "") + ".");
+    return result;
+  } catch (error) {
+    await taskStore.record({
+      taskId, title: "MCP tool verification: " + entry.name, status: "failed",
+      workerType: "mcp-diagnostic", integrationId: id,
+      error: "MCP worker probe failed. Inspect connection diagnostics and runtime logs.", finishedAt: Date.now()
+    });
+    sendHostMessage(event, { type: "worker-state-updated" });
+    throw error;
+  }
 });
 
 ipcMain.handle("axiom:mcp-status", event => {
