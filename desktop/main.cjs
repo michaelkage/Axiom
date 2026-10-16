@@ -12,12 +12,14 @@ const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
+const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+let activeRuntimeUrl = null;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
@@ -75,7 +77,7 @@ async function runtimeExecutable() {
 function runtimeConfigurationEnvironment() {
   const merged = {};
   for (const manager of [omniRouteManager, mcpManager]) {
-    const environment = manager ? manager.openCodeEnvironment() : {};
+    const environment = manager ? manager.openCodeEnvironment({ workspaceRoot: selectedWorkspace }) : {};
     if (environment.OPENCODE_CONFIG_CONTENT) {
       try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
       catch { throw new Error("Axiom generated invalid OpenCode configuration; runtime startup was blocked."); }
@@ -236,6 +238,7 @@ async function createWindow() {
     }
   }
 
+  activeRuntimeUrl = serverUrl;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -564,6 +567,26 @@ function currentWorkerStateStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
+
+ipcMain.handle("axiom:mcp-diagnostics", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const status = mcpManager.getStatus();
+  const diagnostics = await inspectMcpRuntime({
+    baseUrl: activeRuntimeUrl,
+    configuredIds: status.filter(item => item.enabled).map(item => item.id)
+  });
+  return { ...diagnostics, integrations: status };
+});
+
+ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (typeof id !== "string") throw new Error("Invalid MCP integration ID.");
+  const entry = mcpManager.getStatus().find(item => item.id === id);
+  if (!entry || !entry.enabled) throw new Error("Enable this integration and restart Axiom before testing a worker tool call.");
+  const result = await runWorkerToolProbe({ baseUrl: activeRuntimeUrl, integrationId: id });
+  void appendRuntimeLog("MCP worker probe for " + id + " finished with status=" + result.status + (result.toolName ? " tool=" + result.toolName : "") + ".");
+  return result;
+});
 
 ipcMain.handle("axiom:mcp-status", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
