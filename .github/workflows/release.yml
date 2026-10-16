@@ -46,8 +46,17 @@ jobs:
       - name: Build Axiom desktop UI
         run: pnpm run build:webview
 
-      - name: Validate desktop launcher
-        run: node --check desktop/main.cjs
+      - name: Run desktop host and filesystem tests
+        run: node --test desktop/*.test.cjs
+
+      - name: Validate desktop host modules
+        shell: pwsh
+        run: |
+          node --check desktop/main.cjs
+          node --check desktop/preload.cjs
+          node --check desktop/filesystem.cjs
+          node --check desktop/project-store.cjs
+          node --check desktop/terminal.cjs
 
       - name: Install desktop packaging dependencies
         working-directory: desktop
@@ -73,6 +82,37 @@ jobs:
       - name: Build Windows installer
         working-directory: desktop
         run: npm run dist
+
+      - name: Smoke-test installed desktop application
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $installer = Get-ChildItem "desktop/release/Axiom-Setup-*-x64.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Installer was not produced." }
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList @("/S") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Silent installer exited with code $($install.ExitCode)." }
+          $exe = Join-Path $env:LOCALAPPDATA "Programs/Axiom/Axiom.exe"
+          if (-not (Test-Path $exe)) {
+            $candidate = Get-ChildItem (Join-Path $env:LOCALAPPDATA "Programs") -Filter "Axiom.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $exe = $candidate.FullName }
+          }
+          if (-not (Test-Path $exe)) { throw "Axiom.exe was not found after installation." }
+          $workspace = Join-Path $env:RUNNER_TEMP "axiom-install-smoke"
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+          $app = Start-Process -FilePath $exe -ArgumentList @("--axiom-workspace=$workspace", "--disable-gpu") -PassThru
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          $runtimeLog = Join-Path $env:APPDATA "Axiom/logs/runtime.log"
+          if (Test-Path $runtimeLog) {
+            $log = Get-Content $runtimeLog -Tail 100 | Out-String
+            if ($log -match "Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
+          }
+          if ($app.HasExited) {
+            $detail = if (Test-Path $runtimeLog) { Get-Content $runtimeLog -Tail 80 | Out-String } else { "No runtime log was created." }
+            throw "Installed Axiom exited during startup. $detail"
+          }
+          try { & taskkill.exe /pid $app.Id /t /f | Out-Null } catch {}
+          $app.WaitForExit(10000) | Out-Null
 
       - name: Generate SHA-256 checksum
         shell: pwsh

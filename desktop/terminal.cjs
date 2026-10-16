@@ -41,6 +41,7 @@ function createTerminalRunner({ workspaceRoot, platform = process.platform, spaw
       cwd: directory,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
+      ...(platform === "win32" ? {} : { detached: true }),
       env: process.env
     });
     processes.set(requestId, child);
@@ -75,7 +76,9 @@ function createTerminalRunner({ workspaceRoot, platform = process.platform, spaw
       const killer = spawnProcess("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
       await new Promise(resolve => { killer.once("error", resolve); killer.once("close", resolve); });
     } else {
-      try { child.kill("SIGTERM"); } catch {}
+      try { process.kill(-child.pid, "SIGTERM"); } catch {
+        try { child.kill("SIGTERM"); } catch {}
+      }
     }
     return true;
   }

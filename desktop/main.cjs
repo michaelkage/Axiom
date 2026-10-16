@@ -633,12 +633,11 @@ app.on("activate", () => {
 });
 app.on("before-quit", event => {
   isQuitting = true;
-  if (terminalRunner) void terminalRunner.stopAll();
   if (shutdownStarted) return;
   shutdownStarted = true;
-  if (runtimeProcess && runtimeProcess.exitCode === null) {
+  if ((runtimeProcess && runtimeProcess.exitCode === null) || (terminalRunner && terminalRunner.activeCount() > 0)) {
     event.preventDefault();
-    void stopRuntime().finally(() => app.quit());
+    void Promise.allSettled([terminalRunner ? terminalRunner.stopAll() : Promise.resolve(), stopRuntime()]).finally(() => app.quit());
   }
 });
 app.on("window-all-closed", () => {

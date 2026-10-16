@@ -486,7 +486,35 @@ function App() {
         request: plan.prompt,
         planSteps: plan.steps,
         signal: abortController.signal,
-        onOutcome: record => setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]),
+        onOutcome: record => {
+          setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]);
+          if (record.status === "succeeded" || record.status === "failed") {
+            const project = desktopApi()?.project;
+            if (project) {
+              const summary = record.status === "succeeded"
+                ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
+                : "Worker session failed or was cancelled. Review the diagnostic details and isolated worktree before retrying.";
+              void project.addChange({
+                title: "Worker " + record.status + ": " + record.title,
+                summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
+                status: record.status === "succeeded" ? "review" : "failed",
+                checks: [{
+                  name: "OpenCode worker lifecycle",
+                  state: record.status === "succeeded" ? "passed" : "failed",
+                  details: [
+                    record.sessionId ? "Session: " + record.sessionId : "",
+                    record.worktreePath ? "Worktree: " + record.worktreePath : "",
+                    record.agent ? "Agent: " + record.agent : "",
+                    record.startedAt ? "Started: " + new Date(record.startedAt).toISOString() : "",
+                    record.finishedAt ? "Finished: " + new Date(record.finishedAt).toISOString() : "",
+                  ].filter(Boolean).join(" · ") || "No additional worker metadata was returned."
+                }]
+              }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => {
+                logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error });
+              });
+            }
+          }
+        },
       });
       const completed = results.map(({ task, result }) => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);

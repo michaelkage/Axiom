@@ -193,7 +193,14 @@ export async function executeTaskBatches<T>(
         return { task, result };
       } catch (error) {
         outcomeById.set(task.id, "failed");
-        emit({ taskId: task.id, title: task.title, status: "failed", startedAt, finishedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
+        const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
+        emit({
+          taskId: task.id, title: task.title, status: "failed", startedAt, finishedAt: Date.now(),
+          error: error instanceof Error ? error.message : String(error),
+          ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
+          ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
+          ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
+        });
         throw error;
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
