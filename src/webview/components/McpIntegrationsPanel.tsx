@@ -31,7 +31,7 @@ export function McpIntegrationsPanel() {
   const [entries, setEntries] = createSignal<McpEntry[]>([]);
   const [secrets, setSecrets] = createSignal<Record<string, string>>({});
   const [loading, setLoading] = createSignal(true);
-  const [liveDiagnostics, setLiveDiagnostics] = createSignal<{ runtimeReachable: boolean; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string } | null>(null);
+  const [liveDiagnostics, setLiveDiagnostics] = createSignal<{ runtimeReachable: boolean; runtimeVersion?: string | null; runtimeHealthy?: boolean | null; toolDiscoveryAvailable?: boolean; toolIds: string[]; servers: Array<{ id: string; status: string; connected: boolean; tools: string[]; error?: string }>; error?: string } | null>(null);
   const [probeBusyId, setProbeBusyId] = createSignal("");
   const connectedApi = api();
   const visibleEntries = createMemo(() => entries().filter(item =>
