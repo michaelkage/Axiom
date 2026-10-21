@@ -24,17 +24,19 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       const tasks = await list(), index = tasks.findIndex(item => item.taskId === task.taskId);
       const previous = index >= 0 ? tasks[index] : {};
       const terminalStatuses = new Set(["succeeded", "failed", "blocked", "cancelled", "timed_out"]);
-      const lateNonTerminalUpdate = terminalStatuses.has(previous.status) && !terminalStatuses.has(task.status);
-      // Worker event delivery can race with persistence. Never let a delayed
-      // queued/running event reopen a task that has already reached a terminal state.
+      const previousIsTerminal = terminalStatuses.has(previous.status);
+      const conflictingLateOutcome = previousIsTerminal && task.status !== previous.status;
+      // Worker event delivery and IPC persistence can race. Once terminal, a task
+      // cannot be reopened or assigned a conflicting terminal outcome by a stale event.
       const next = {
         ...previous,
         ...task,
-        ...(lateNonTerminalUpdate ? {
+        ...(conflictingLateOutcome ? {
           status: previous.status,
           error: previous.error,
           result: previous.result,
-          finishedAt: previous.finishedAt
+          finishedAt: previous.finishedAt,
+          logs: previous.logs ?? task.logs
         } : {}),
         updatedAt: new Date().toISOString()
       };
