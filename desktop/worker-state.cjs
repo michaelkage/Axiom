@@ -22,7 +22,22 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
     if (!isValidTask(task)) throw new TypeError("Worker task record requires a stable taskId, title, and valid lifecycle status.");
     return serialize(async () => {
       const tasks = await list(), index = tasks.findIndex(item => item.taskId === task.taskId);
-      const next = { ...(index >= 0 ? tasks[index] : {}), ...task, updatedAt: new Date().toISOString() };
+      const previous = index >= 0 ? tasks[index] : {};
+      const terminalStatuses = new Set(["succeeded", "failed", "blocked", "cancelled", "timed_out"]);
+      const lateNonTerminalUpdate = terminalStatuses.has(previous.status) && !terminalStatuses.has(task.status);
+      // Worker event delivery can race with persistence. Never let a delayed
+      // queued/running event reopen a task that has already reached a terminal state.
+      const next = {
+        ...previous,
+        ...task,
+        ...(lateNonTerminalUpdate ? {
+          status: previous.status,
+          error: previous.error,
+          result: previous.result,
+          finishedAt: previous.finishedAt
+        } : {}),
+        updatedAt: new Date().toISOString()
+      };
       if (index >= 0) tasks[index] = next; else tasks.push(next);
       await write(tasks); return next;
     });
