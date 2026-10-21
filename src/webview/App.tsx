@@ -491,9 +491,13 @@ function App() {
         planSteps: plan.steps,
         signal: abortController.signal,
         onOutcome: record => {
-          setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), record]);
+          // Outcome events can arrive after streamed worker logs. Preserve those logs
+          // when the terminal lifecycle record does not carry its own transcript.
+          const prior = taskOutcomes().find(item => item.taskId === record.taskId);
+          const mergedRecord = { ...prior, ...record, logs: record.logs ?? prior?.logs };
+          setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
           const project = desktopApi()?.project;
-          if (project) void project.recordWorkerTask(record).catch(error => logger.error("Could not persist worker outcome", { taskId: record.taskId, error }));
+          if (project) void project.recordWorkerTask(mergedRecord).catch(error => logger.error("Could not persist worker outcome", { taskId: record.taskId, error }));
           if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
             const summary = record.status === "succeeded"
               ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
