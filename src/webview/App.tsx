@@ -509,7 +509,7 @@ function App() {
               summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
               status: record.status === "succeeded" ? "review" : "failed",
               checks: [{
-                name: "OpenCode worker lifecycle",
+                name: "Axiom worker lifecycle",
                 state: record.status === "succeeded" ? "passed" : "failed",
                 details: [
                   record.sessionId ? "Session: " + record.sessionId : "",
