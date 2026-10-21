@@ -18,7 +18,7 @@
     "test": "vitest run && playwright test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:desktop": "node --test desktop/filesystem.test.cjs desktop/project-store.test.cjs desktop/terminal.test.cjs desktop/omniroute.test.cjs desktop/mcp-catalog.test.cjs desktop/mcp-manager.test.cjs",
+    "test:desktop": "node --test desktop/filesystem.test.cjs desktop/project-store.test.cjs desktop/terminal.test.cjs desktop/omniroute.test.cjs desktop/mcp-catalog.test.cjs desktop/mcp-manager.test.cjs desktop/mcp-runtime.test.cjs",
     "desktop:dev": "npm run build:webview && npm --prefix desktop start",
     "desktop:dist": "npm run build:webview && npm --prefix desktop run dist",
     "desktop:dist:dir": "npm run build:webview && npm --prefix desktop run dist:dir"
