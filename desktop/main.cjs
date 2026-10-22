@@ -48,11 +48,13 @@ async function runtimeExecutable() {
     : path.join(__dirname, "node_modules");
   const candidates = process.platform === "win32"
     ? [
-        path.join(base, ".bin", "opencode.cmd"),
-        path.join(base, ".bin", "opencode.exe"),
+        // Prefer native executables: launching a .cmd shim through a shell breaks
+        // when the installation path contains spaces (for example, Program Files).
         path.join(base, "opencode-ai", "bin", "opencode.exe"),
         path.join(base, "opencode-windows-x64", "bin", "opencode.exe"),
         path.join(base, "opencode-windows-x64-baseline", "bin", "opencode.exe"),
+        path.join(base, ".bin", "opencode.exe"),
+        path.join(base, ".bin", "opencode.cmd"),
       ]
     : [
         path.join(base, ".bin", "opencode"),
@@ -139,7 +141,9 @@ async function startRuntime(workspace) {
   runtimeProcess = spawn(executable, args, {
     cwd: workspace,
     windowsHide: true,
-    shell: process.platform === "win32",
+    // Native .exe paths must bypass cmd.exe. In particular, shell:true splits
+    // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
+    shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ...runtimeConfigurationEnvironment() }
   });
