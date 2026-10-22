@@ -26,7 +26,7 @@ import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart 
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
-import { TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
+import { createIndependentTasks, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, type TurboTask } from "../shared/turboSupervisor";
 
 export interface QueuedMessage {
@@ -655,6 +655,25 @@ function App() {
           logger.info("Turbo supervisor requesting a bounded diagnostic replan", { round: replanRound + 1, failedTaskIds: failedTasks.map(task => task.id) });
           const replanned = await planParallelTasks(replanPrompt, requestedOmniRouteModel() || undefined, fallbackOmniRouteModel() || undefined);
           if (abortController.signal.aborted) throw new Error("Turbo execution cancelled while replanning.");
+          // Treat planner output as untrusted input: reject malformed graphs and unsafe paths
+          // before creating worker sessions or allocating replacement worktrees.
+          if (!replanned.tasks.length) throw new Error("Planner returned no replacement work.");
+          for (const task of replanned.tasks) {
+            if (!task.id.trim() || !task.title.trim() || !task.scope.trim()) {
+              throw new Error("Planner returned a replacement task without an ID, title, or scope.");
+            }
+            if (!task.acceptanceCriteria?.length || task.acceptanceCriteria.some(criterion => !criterion.trim())) {
+              throw new Error("Replacement task " + task.id + " is missing explicit acceptance criteria.");
+            }
+            for (const targetPath of task.targetFiles) {
+              const normalizedPath = targetPath.replace(/\\/g, "/");
+              if (!normalizedPath.trim() || normalizedPath.startsWith("/") || /^[a-zA-Z]:/.test(normalizedPath) || normalizedPath.split("/").some(part => part === ".." || part === "")) {
+                throw new Error("Replacement task " + task.id + " contains an unsafe target path: " + targetPath);
+              }
+            }
+          }
+          // Validate IDs, dependencies, and acyclic scheduling before any worker is launched.
+          createIndependentTasks(replanned.tasks);
           const failedIds = new Set(failedTasks.map(task => task.id));
           const replacementTasks = replanned.tasks.map((task, index) => ({
             ...task,
@@ -663,7 +682,6 @@ function App() {
             // Replacement work is intentionally independent because sibling worktrees are isolated.
             dependsOn: task.dependsOn.map(id => "replan-" + (replanRound + 1) + "-" + replanned.tasks.findIndex(candidate => candidate.id === id) + "-" + id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48)),
           }));
-          if (!replacementTasks.length) throw new Error("Planner returned no replacement work.");
           supervisorTasks = [...supervisorTasks.filter(task => !failedIds.has(task.id)), ...replacementTasks];
           for (const task of replacementTasks) attemptsByTask.set(task.id, 0);
           replanRound += 1;
