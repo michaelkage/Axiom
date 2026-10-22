@@ -139,6 +139,8 @@ async function startRuntime(workspace) {
     throw error;
   }
   const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
+  const runtimeEnvironment = createRuntimeEnvironment(process.env, app.getPath("userData"));
+  await appendRuntimeLog(`Runtime data isolation: APPDATA=${runtimeEnvironment.APPDATA}; XDG_DATA_HOME=${runtimeEnvironment.XDG_DATA_HOME}`);
   runtimeProcess = spawn(executable, args, {
     cwd: workspace,
     windowsHide: true,
@@ -146,7 +148,7 @@ async function startRuntime(workspace) {
     // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
     shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...createRuntimeEnvironment(process.env, app.getPath("userData")), ...runtimeConfigurationEnvironment() }
+    env: { ...runtimeEnvironment, ...runtimeConfigurationEnvironment() }
   });
 
   let recentOutput = "";
