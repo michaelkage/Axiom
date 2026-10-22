@@ -14,6 +14,7 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
+const { createRemoteWorkspace, commitAndPushWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -24,6 +25,7 @@ let activeRuntimeUrl = null;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
+const remoteWorkspaceJobs = new Map();
 let stoppingRuntime = false;
 
 app.setName("Axiom");
@@ -696,6 +698,39 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
   await shell.openExternal(url.toString());
   return true;
+});
+
+ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const temporaryRoot = path.join(app.getPath("userData"), "remote-workspaces");
+  const job = await createRemoteWorkspace(request, { temporaryRoot });
+  const id = require("node:crypto").randomUUID();
+  job.id = id;
+  remoteWorkspaceJobs.set(id, job);
+  return { id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath, status: job.status, paths: job.paths };
+});
+
+ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  const result = await commitAndPushWorkspace(job, {
+    message: request.message,
+    verify: async directory => {
+      await remoteGit(directory, ["diff", "--check"]);
+      return true;
+    }
+  });
+  return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+});
+
+ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = remoteWorkspaceJobs.get(id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  const result = await cleanupRemoteWorkspace(job);
+  remoteWorkspaceJobs.delete(id);
+  return result;
 });
 
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
