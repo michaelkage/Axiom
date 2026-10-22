@@ -15,6 +15,7 @@ on:
       version:
         description: "Desktop release version (for example 0.4.4)"
         required: true
+        default: "0.4.11"
         type: string
 
 permissions:
