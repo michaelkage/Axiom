@@ -43,6 +43,11 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
     return { action: "retry", taskIds: retryable.slice(0, Math.max(1, policy.maxParallelWorkers) - active).map(task => task.id), reason: "Retry failed work within its per-task attempt limit." };
   }
   const exhausted = failed.filter(task => task.attempts >= task.maxAttempts);
+  // Do not replan while sibling workers are still running: their eventual outcomes may
+  // change which dependencies are blocked and what work remains. Drain active work first.
+  if (exhausted.length && active > 0 && !retryable.length) {
+    return { action: "wait", reason: "A task exhausted retries; wait for active workers to finish before replanning." };
+  }
   const blocked = tasks.filter(task => task.status === "blocked" || task.dependsOn.some(id => {
     const dependency = byId.get(id)!;
     return dependency.status === "blocked" || ((dependency.status === "failed" || dependency.status === "timed_out") && dependency.attempts >= dependency.maxAttempts);
