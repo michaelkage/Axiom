@@ -2,6 +2,7 @@ import { For } from "solid-js";
 
 interface WelcomeScreenProps {
   onSuggestion: (prompt: string) => void;
+  onOpenProject?: () => void;
 }
 
 const suggestions = [
@@ -40,6 +41,10 @@ export function WelcomeScreen(props: WelcomeScreenProps) {
       <p class="welcome-description">
         Start with an idea. Axiom can plan the work, build it, and help you shape every detail.
       </p>
+      <div class="welcome-primary-actions">
+        <button type="button" class="workflow-plan__primary" onClick={() => props.onOpenProject?.()}>Open a project</button>
+        <span>or start with an idea below</span>
+      </div>
       <div class="welcome-suggestions">
         <For each={suggestions}>
           {(suggestion) => (
