@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
       return () => ipcRenderer.removeListener("axiom:terminal-output", listener);
     }
   }),
+  remoteWorkspace: Object.freeze({
+    create: request => ipcRenderer.invoke("axiom:remote-workspace-create", request),
+    commitAndPush: request => ipcRenderer.invoke("axiom:remote-workspace-commit-push", request),
+    cleanup: id => ipcRenderer.invoke("axiom:remote-workspace-cleanup", id)
+  }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),
