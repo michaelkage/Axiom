@@ -26,7 +26,7 @@ import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart 
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
-import type { TaskExecutionRecord } from "../shared/axiomRuntime";
+import { TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 
 export interface QueuedMessage {
   id: string;
@@ -486,13 +486,13 @@ function App() {
         parentSessionId = session.id;
         sync.setCurrentSessionId(parentSessionId);
       }
-      const results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), {
+      // Keep successful work intact. Retry only workers with a confirmed failed or timed-out
+      // terminal event, once, and never retry blocked/cancelled work automatically.
+      const executionOptions = {
         request: plan.prompt,
         planSteps: plan.steps,
         signal: abortController.signal,
-        onOutcome: record => {
-          // Outcome events can arrive after streamed worker logs. Preserve those logs
-          // when the terminal lifecycle record does not carry its own transcript.
+        onOutcome: (record: TaskExecutionRecord) => {
           const prior = taskOutcomes().find(item => item.taskId === record.taskId);
           const mergedRecord = { ...prior, ...record, logs: record.logs ?? prior?.logs };
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
@@ -526,14 +526,37 @@ function App() {
             }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error }));
           }
         },
-        onLog: (taskId, line) => {
+        onLog: (taskId: string, line: string) => {
           const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
           const project = desktopApi()?.project;
           if (existing && project) void project.recordWorkerTask(existing).catch(error => logger.error("Could not persist worker log", { taskId, error }));
         },
-      });
+      };
+      let results: Awaited<ReturnType<typeof runSubAgentTasks>> = [];
+      try {
+        results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), executionOptions);
+      } catch (error) {
+        if (!(error instanceof TaskBatchExecutionError) || abortController.signal.aborted) throw error;
+        results = error.successfulResults as typeof results;
+        const failedIds = new Set(error.failedTaskIds);
+        const retryable = parallel.tasks.filter(task => failedIds.has(task.id) && ["failed", "timed_out"].includes(taskOutcomes().find(item => item.taskId === task.id)?.status ?? ""));
+        if (!retryable.length) throw error;
+        logger.warn("Turbo supervisor retrying failed worker tasks once", { taskIds: retryable.map(task => task.id), failures: error.message });
+        // Failed tasks were only dispatched after their dependencies had succeeded. Their
+        // retry can therefore run as a standalone task; successful sibling results are retained.
+        const retryTasks = retryable.map(task => ({ ...task, dependsOn: [] }));
+        try {
+          const retried = await runSubAgentTasks(parentSessionId, retryTasks, selectedAgent(), executionOptions);
+          results = [...results, ...retried];
+        } catch (retryError) {
+          if (retryError instanceof TaskBatchExecutionError) {
+            results = [...results, ...retryError.successfulResults] as typeof results;
+          }
+          throw retryError;
+        }
+      }
       const completed = results.map(({ task, result }) => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
