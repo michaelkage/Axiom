@@ -1,7 +1,7 @@
 {
   "name": "axiom-workspace",
   "description": "Source workspace for Axiom, a standalone AI-first project-building desktop application.",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "repository": {
     "type": "git",
     "url": "https://github.com/michaelkage/Axiom.git"
