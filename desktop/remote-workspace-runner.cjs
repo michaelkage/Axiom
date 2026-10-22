@@ -60,7 +60,8 @@ async function createRemoteWorkspace(input, options = {}) {
 async function commitAndPushWorkspace(job, options = {}) {
   if (!job || !job.workspacePath || !job.branch || !job.repositoryUrl) throw new TypeError("A valid remote workspace job is required.");
   if (job.status !== "ready" && job.status !== "verified") throw new Error("Workspace must be ready or verified before committing.");
-  if (options.verify && await options.verify(job.workspacePath) !== true) {
+  if (typeof options.verify !== "function") throw new Error("An explicit verification callback is required before committing.");
+  if (await options.verify(job.workspacePath) !== true) {
     job.status = "failed"; job.verificationPassed = false;
     throw new Error("Workspace verification did not pass; refusing to commit or push.");
   }
