@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace } = require("./remote-workspace");
+const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace } = require("./remote-workspace.cjs");
 
 test("validates full and selective remote workspace requests", () => {
   assert.equal(validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl: "https://github.com/acme/repo.git", branch: "feature/work" }).mode, "temporary-full");
