@@ -2,10 +2,7 @@
   "name": "axiom-workspace",
   "description": "Source workspace for Axiom, a standalone AI-first project-building desktop application.",
   "version": "0.4.11",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/michaelkage/Axiom.git"
-  },
+  "repository": { "type": "git", "url": "https://github.com/michaelkage/Axiom.git" },
   "scripts": {
     "build": "npm run build:webview",
     "build:webview": "vite build --config vite.config.ts",
@@ -43,7 +40,7 @@
     "marked": "^17.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "shiki": "^3.19.0",
