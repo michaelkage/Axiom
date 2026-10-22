@@ -207,4 +207,20 @@ describe("Axiom runtime helpers", () => {
     expect(compressionPercent(1000, 250)).toBe(75);
     expect(compressionPercent(0, 0)).toBeNull();
   });
+  it("forwards worker session metadata and transcript into the terminal outcome", async () => {
+    const tasks = parseSubTasks([
+      { id: "worker", title: "Worker session", scope: "execute in isolated session", targetFiles: ["worker.ts"], dependsOn: [], acceptanceCriteria: ["Session metadata is surfaced"] },
+    ]);
+    const outcomes: Array<Record<string, unknown>> = [];
+    await executeTaskBatches(tasks, async () => ({
+      sessionId: "session-123", worktreePath: "/tmp/axiom-worktree", agent: "builder", summary: "Implemented the change", logs: ["opened session", "finished edit"],
+    }), record => outcomes.push(record as unknown as Record<string, unknown>));
+    const terminal = outcomes.find(record => record.status === "succeeded");
+    expect(terminal).toMatchObject({
+      taskId: "worker", status: "succeeded", sessionId: "session-123",
+      worktreePath: "/tmp/axiom-worktree", agent: "builder", summary: "Implemented the change",
+      logs: ["opened session", "finished edit"],
+    });
+  });
+
 });
