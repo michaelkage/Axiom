@@ -48,10 +48,18 @@ export function McpIntegrationsPanel() {
     try {
       const [status, diagnostics] = await Promise.all([
         connectedApi.status(),
-        connectedApi.diagnostics().catch(() => null)
+        connectedApi.diagnostics().catch(error => ({
+          runtimeReachable: false,
+          runtimeVersion: null,
+          runtimeHealthy: false,
+          toolDiscoveryAvailable: false,
+          toolIds: [],
+          servers: [],
+          error: error instanceof Error ? error.message : "Live MCP diagnostics failed."
+        }))
       ]);
       setEntries(status);
-      if (diagnostics) setLiveDiagnostics(diagnostics);
+      setLiveDiagnostics(diagnostics);
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setLoading(false); }
   }
