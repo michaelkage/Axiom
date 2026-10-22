@@ -644,14 +644,14 @@ function App() {
             const outcome = taskOutcomes().find(item => item.taskId === task.id);
             return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles, acceptanceCriteria: task.acceptanceCriteria, attempts: attemptsByTask.get(task.id) ?? 0, error: outcome?.error ?? "No error detail was recorded", logs: (outcome?.logs ?? []).slice(-12) };
           });
-          const successfulTasks = supervisorTasks.filter(task => finalTaskSucceeded(task.id)).map(task => ({ id: task.id, title: task.title, summary: taskOutcomes().find(item => item.taskId === task.id)?.logs?.slice(-3).join("\\n") ?? "Succeeded; changes remain isolated for review." }));
+          const successfulTasks = supervisorTasks.filter(task => finalTaskSucceeded(task.id)).map(task => ({ id: task.id, title: task.title, summary: taskOutcomes().find(item => item.taskId === task.id)?.logs?.slice(-3).join("\n") ?? "Succeeded; changes remain isolated for review." }));
           const replanPrompt = [
             "Replan only the failed coding work described below. Return a fresh, small task plan with explicit testable acceptance criteria.",
             "Do not repeat completed tasks. Successful sibling changes are isolated in separate worktrees and have NOT been merged into the parent workspace; do not assume their files are available. Keep replacement tasks independent of successful tasks and do not declare the overall goal complete.",
             "Original user goal: " + plan.prompt,
-            "Failed work and real worker diagnostics:\\n" + JSON.stringify(diagnostics, null, 2),
-            "Already successful work (informational only; do not duplicate):\\n" + JSON.stringify(successfulTasks, null, 2),
-          ].join("\\n\\n");
+            "Failed work and real worker diagnostics:\n" + JSON.stringify(diagnostics, null, 2),
+            "Already successful work (informational only; do not duplicate):\n" + JSON.stringify(successfulTasks, null, 2),
+          ].join("\n\n");
           logger.info("Turbo supervisor requesting a bounded diagnostic replan", { round: replanRound + 1, failedTaskIds: failedTasks.map(task => task.id) });
           const replanned = await planParallelTasks(replanPrompt, requestedOmniRouteModel() || undefined, fallbackOmniRouteModel() || undefined);
           if (abortController.signal.aborted) throw new Error("Turbo execution cancelled while replanning.");
@@ -988,7 +988,7 @@ function App() {
       const active = outcomes.some(item => item.status === "running" || item.status === "queued");
       const state = await project.addChange({
         title: outcomes.length === 1 ? outcomes[0].title : "Agent run: " + outcomes.length + " tasks",
-        summary: outcomes.map(item => item.title + " [" + item.status + "]" + (item.error ? ": " + item.error : item.summary ? ": " + item.summary : "")).join("\\n").slice(0, 2000),
+        summary: outcomes.map(item => item.title + " [" + item.status + "]" + (item.error ? ": " + item.error : item.summary ? ": " + item.summary : "")).join("\n").slice(0, 2000),
         status: failed ? "failed" : active ? "working" : "review",
         files: []
       });
