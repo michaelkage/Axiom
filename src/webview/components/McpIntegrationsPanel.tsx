@@ -41,12 +41,18 @@ export function McpIntegrationsPanel() {
 
   async function refresh() {
     if (!connectedApi) {
-      setNotice("MCP connections are available in the Axiom desktop app. The browser preview cannot store credentials or configure OpenCode.");
+      setNotice("MCP connections are available in the Axiom desktop app. The browser preview cannot store credentials or configure runtime integrations.");
       setLoading(false);
       return;
     }
-    try { setEntries(await connectedApi.status()); }
-    catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+    try {
+      const [status, diagnostics] = await Promise.all([
+        connectedApi.status(),
+        connectedApi.diagnostics().catch(() => null)
+      ]);
+      setEntries(status);
+      if (diagnostics) setLiveDiagnostics(diagnostics);
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setLoading(false); }
   }
   onMount(() => { void refresh(); });
@@ -57,7 +63,7 @@ export function McpIntegrationsPanel() {
     try {
       await connectedApi.setEnabled({ id: entry.id, enabled: !entry.enabled });
       await refresh();
-      setNotice(entry.name + (!entry.enabled ? " enabled in OpenCode configuration. Restart Axiom to load it; OAuth-enabled servers may then prompt you to sign in." : " disabled. Restart Axiom to unload it."));
+      setNotice(entry.name + (!entry.enabled ? " enabled in the Axiom runtime configuration. Restart Axiom to load it; OAuth-enabled servers may then prompt you to sign in." : " disabled. Restart Axiom to unload it."));
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setBusyId(""); }
   }
@@ -115,7 +121,7 @@ export function McpIntegrationsPanel() {
       <Show when={loading()}><p role="status">Loading integration status…</p></Show>
       <section class="workflow-plan__parallel" aria-label="Live MCP diagnostics">
         <div class="workflow-plan__eyebrow">RUNTIME DIAGNOSTICS <span>{liveDiagnostics()?.runtimeReachable ? "RUNTIME REACHABLE" : "RUNTIME UNAVAILABLE"}</span></div>
-        <p>{liveDiagnostics()?.runtimeReachable ? "OpenCode answered its MCP status API." : "Axiom could not verify live MCP status. A saved credential is not a connected integration."}</p>
+        <p>{liveDiagnostics()?.runtimeReachable ? "The Axiom runtime answered its MCP status API." : "Axiom could not verify live MCP status. A saved credential is not a connected integration."}</p>
         <p>Bundled runtime: {liveDiagnostics()?.runtimeVersion || "version endpoint unavailable"}{liveDiagnostics()?.runtimeHealthy === true ? " · healthy" : ""}</p>
         <p>Tool discovery: {liveDiagnostics()?.toolDiscoveryAvailable ? "available" : "not verified by this runtime API"}</p>
         <Show when={liveDiagnostics()?.error}><p role="status">{liveDiagnostics()?.error}</p></Show>
@@ -136,6 +142,11 @@ export function McpIntegrationsPanel() {
             <Show when={entry.package}><p>Reviewed package: <code>{entry.package}</code></p></Show>
             <Show when={diagnosticFor(entry.id)}><p>Connection: {diagnosticFor(entry.id)?.status}. Tools: {diagnosticFor(entry.id)?.tools?.join(", ") || "none discovered"}.</p><Show when={diagnosticFor(entry.id)?.error}><p role="status">{diagnosticFor(entry.id)?.error}</p></Show></Show>
             <Show when={entry.reviewNote}><p role="status">{entry.reviewNote}</p></Show>
+            <Show when={entry.enabled}>
+              <button type="button" class="workflow-plan__secondary" disabled={!!busyId() || !!probeBusyId()} onClick={() => void probeWorker(entry)}>
+                {probeBusyId() === entry.id ? "Verifying worker tool call…" : "Verify real worker tool call"}
+              </button>
+            </Show>
             <Show when={SECRET_IDS.has(entry.id)}>
               <label class="omniroute-setup__field"> {entry.id === "brave-search" ? "Brave Search API key" : entry.id === "crawl4ai" ? "Optional Crawl4AI bearer token (local API at 127.0.0.1:11235)" : entry.id === "postgresql" ? "PostgreSQL connection URL (use a read-only database role)" : "SQLite database file path (must be inside the current project)"}
                 <input type="password" autocomplete="off" value={secrets()[entry.id] || ""} onInput={event => setSecrets(previous => ({ ...previous, [entry.id]: event.currentTarget.value }))} placeholder={entry.hasSecret ? "Saved securely · enter a replacement to rotate" : entry.id === "postgresql" ? "postgresql://user:password@host:5432/database" : entry.id === "sqlite" ? "Absolute path to an approved .db file" : entry.id === "crawl4ai" ? "Optional bearer token for local Crawl4AI service" : "Paste API key"} />
@@ -147,7 +158,7 @@ export function McpIntegrationsPanel() {
               </div>
             </Show>
             <Show when={REMOTE_IDS.has(entry.id)}>
-              <p>Remote MCP endpoint: <code>{entry.endpoint}</code>. OpenCode manages OAuth for remote MCP servers when the provider supports it.</p>
+              <p>Remote MCP endpoint: <code>{entry.endpoint}</code>. Axiom runtime manages OAuth for remote MCP servers when the provider supports it.</p>
               <button type="button" class="workflow-plan__secondary" disabled={!!busyId()} onClick={() => void enable(entry)}>{busyId() === entry.id ? "Saving…" : entry.enabled ? "Disable integration" : "Enable and sign in"}</button>
             </Show>
             <Show when={!SECRET_IDS.has(entry.id) && !REMOTE_IDS.has(entry.id)}>
@@ -158,7 +169,7 @@ export function McpIntegrationsPanel() {
         }</For>
       </div>
       <Show when={notice()}><p role="status" class="omniroute-setup__message">{notice()}</p></Show>
-      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Connection states come from the live OpenCode API. Worker verification creates a diagnostic session and only passes when the response contains an MCP tool-call part for the selected server. PostgreSQL uses DBHub in read-only mode and still requires a least-privilege database role; SQLite paths are restricted to the current project. Fetch uses the pinned official Python reference server via uvx. Crawl4AI uses a pinned stdio bridge and expects a separately running local API service at 127.0.0.1:11235.</small>
+      <small class="omniroute-setup__note">Remote OAuth and local MCP tools may require an Axiom restart. API keys are encrypted at rest, but are injected into the OpenCode runtime environment while the server is running. Connection states come from the live Axiom runtime API. Worker verification creates a diagnostic session and only passes when the response contains an MCP tool-call part for the selected server. PostgreSQL uses DBHub in read-only mode and still requires a least-privilege database role; SQLite paths are restricted to the current project. Fetch uses the pinned official Python reference server via uvx. Crawl4AI uses a pinned stdio bridge and expects a separately running local API service at 127.0.0.1:11235.</small>
     </section>
   );
 }
