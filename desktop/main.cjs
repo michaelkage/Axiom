@@ -203,16 +203,29 @@ async function createWindow() {
   let workspace = requestedWorkspace && fs.existsSync(requestedWorkspace) && fs.statSync(requestedWorkspace).isDirectory()
     ? requestedWorkspace
     : null;
-  while (!workspace) {
-    workspace = await chooseWorkspace();
-    if (workspace) break;
-    const choice = await dialog.showMessageBox({ type: "question", title: "Choose a project", message: "Axiom needs a project folder to continue.", detail: "Choose a folder to start building, or quit Axiom for now.", buttons: ["Choose Project", "Quit"], defaultId: 0, cancelId: 1 });
-    if (choice.response === 1) { app.quit(); return; }
+  if (!workspace && !requestedWorkspace) {
+    const choice = await dialog.showMessageBox({
+      type: "info",
+      title: "Welcome to Axiom",
+      message: "Welcome to Axiom",
+      detail: "Start with a project folder, or open Axiom first and connect a project when you are ready.",
+      buttons: ["Open Project", "Continue to Welcome", "Quit"],
+      defaultId: 1,
+      cancelId: 2
+    });
+    if (choice.response === 0) workspace = await chooseWorkspace();
+    if (choice.response === 2 || (choice.response === 0 && !workspace)) { app.quit(); return; }
   }
-
-  selectedWorkspace = path.resolve(workspace);
-  await currentWorkerStateStore().recoverInterrupted();
-  terminalRunner = createTerminalRunner({ workspaceRoot: selectedWorkspace });
+  const hasProject = !!workspace;
+  const runtimeWorkspace = hasProject
+    ? path.resolve(workspace)
+    : path.join(app.getPath("userData"), "welcome-workspace");
+  if (!hasProject) await fs.promises.mkdir(runtimeWorkspace, { recursive: true });
+  selectedWorkspace = hasProject ? runtimeWorkspace : null;
+  if (selectedWorkspace) {
+    await currentWorkerStateStore().recoverInterrupted();
+    terminalRunner = createTerminalRunner({ workspaceRoot: selectedWorkspace });
+  }
   if (omniRouteManager) {
     try { await omniRouteManager.startIfConfigured(); }
     catch (error) { await appendRuntimeLog("OmniRoute auto-start failed: " + (error instanceof Error ? error.message : String(error))); }
@@ -220,7 +233,7 @@ async function createWindow() {
   let serverUrl;
   while (!serverUrl) {
     try {
-      serverUrl = await startRuntime(selectedWorkspace);
+      serverUrl = await startRuntime(runtimeWorkspace);
     } catch (error) {
       const choice = await dialog.showMessageBox({
         type: "error",
@@ -237,6 +250,9 @@ async function createWindow() {
         if (nextWorkspace) {
           workspace = path.resolve(nextWorkspace);
           selectedWorkspace = workspace;
+          await fs.promises.mkdir(workspace, { recursive: true });
+          terminalRunner = createTerminalRunner({ workspaceRoot: workspace });
+          await currentWorkerStateStore().recoverInterrupted();
           continue;
         }
       }
@@ -272,7 +288,7 @@ async function createWindow() {
   await mainWindow.loadFile(htmlPath, {
     query: {
       serverUrl,
-      workspaceRoot: workspace
+      workspaceRoot: selectedWorkspace || ""
     }
   });
 }
