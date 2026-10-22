@@ -758,15 +758,20 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  const result = await commitAndPushWorkspace(job, {
-    message: request.message,
-    verify: async directory => {
-      await remoteGit(directory, ["diff", "--check"]);
-      return true;
-    }
-  });
-  await persistRemoteWorkspaceJobs();
-  return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+  try {
+    const result = await commitAndPushWorkspace(job, {
+      message: request.message,
+      verify: async directory => {
+        await remoteGit(directory, ["diff", "--check"]);
+        return true;
+      }
+    });
+    return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+  } finally {
+    // Persist intermediate failure state too: a push or remote-SHA check can fail
+    // after the local commit has already been created. Recovery must not forget it.
+    await persistRemoteWorkspaceJobs();
+  }
 });
 
 ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
