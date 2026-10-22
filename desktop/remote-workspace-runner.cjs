@@ -36,6 +36,24 @@ async function createRemoteWorkspace(input, options = {}) {
     throw new TypeError("Persistent mode requires an explicit, non-root workspace path.");
   }
   await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+  if (request.mode === "persistent") {
+    try {
+      const stat = await fs.stat(workspacePath);
+      if (!stat.isDirectory()) throw new Error("Destination exists and is not a directory.");
+      const gitStat = await fs.stat(path.join(workspacePath, ".git")).catch(() => null);
+      if (!gitStat || !gitStat.isDirectory()) throw new Error("Persistent destination exists but is not a Git checkout. Choose an empty path to avoid overwriting user files.");
+      const remote = (await git(workspacePath, ["remote", "get-url", "origin"])).stdout;
+      if (remote !== request.repositoryUrl) throw new Error("Persistent checkout origin does not match the requested repository.");
+      const branch = (await git(workspacePath, ["branch", "--show-current"])).stdout;
+      if (branch !== request.branch) throw new Error("Persistent checkout is on branch " + (branch || "(detached HEAD)") + ", not requested branch " + request.branch + ". Switch branches explicitly before reuse.");
+      const status = (await git(workspacePath, ["status", "--porcelain"])).stdout;
+      if (status) throw new Error("Persistent checkout has uncommitted changes. Commit or stash them before reuse; Axiom will not overwrite them.");
+      return { mode: request.mode, repositoryUrl: request.repositoryUrl, branch: request.branch, paths: request.paths, workspacePath, temporaryRoot, workspaceOwnership: "user", status: "ready", remoteCommitConfirmed: false, verificationPassed: false, pushSucceeded: false, reusedExistingCheckout: true };
+    } catch (error) {
+      if (error && error.code === "ENOENT") { /* Destination does not exist; clone below. */ }
+      else throw new Error("Could not reuse persistent workspace safely: " + String(error.message || error).slice(0, 500));
+    }
+  }
   try {
     const args = ["clone", "--no-tags", "--branch", request.branch];
     if (request.mode === "temporary-selective") args.push("--filter=blob:none", "--sparse");
