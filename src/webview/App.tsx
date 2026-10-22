@@ -540,6 +540,7 @@ function App() {
       const maxTurboRuntimeMs = 10 * 60 * 1000;
       const maxAttemptsPerTask = 2;
       const maxTotalAttempts = Math.max(parallel.tasks.length, parallel.tasks.length * maxAttemptsPerTask);
+      let retiredAttemptCount = 0;
       let supervisorTasks = [...parallel.tasks];
       let replanRound = 0;
       const attemptsByTask = new Map<string, number>(supervisorTasks.map(task => [task.id, 0]));
@@ -576,7 +577,8 @@ function App() {
       while (!abortController.signal.aborted) {
         const decision = decideTurboNext(turboTasks(), {
           maxParallelWorkers: Math.max(1, parallel.tasks.length),
-          maxTotalAttempts,
+          // Keep attempts from retired failed tasks in the global budget after replanning.
+          maxTotalAttempts: Math.max(0, maxTotalAttempts - retiredAttemptCount),
           maxRuntimeMs: maxTurboRuntimeMs,
           startedAt: turboStartedAt,
           now: Date.now(),
@@ -596,7 +598,9 @@ function App() {
             for (const task of runnable) attemptsByTask.set(task.id, (attemptsByTask.get(task.id) ?? 0) + 1);
             logger.info("Turbo supervisor dispatching bounded worker retry", { taskIds: runnable.map(task => task.id), attempts: runnable.map(task => ({ id: task.id, attempt: attemptsByTask.get(task.id) })), reason: decision.reason });
           } else {
-            logger.info("Turbo supervisor dispatching dependency-ready worker tasks", { taskIds: runnable.map(task => task.id), reason: decision.reason });
+            // Initial dispatches and replacement tasks consume the same finite budget as retries.
+            for (const task of runnable) attemptsByTask.set(task.id, (attemptsByTask.get(task.id) ?? 0) + 1);
+            logger.info("Turbo supervisor dispatching dependency-ready worker tasks", { taskIds: runnable.map(task => task.id), attempts: runnable.map(task => ({ id: task.id, attempt: attemptsByTask.get(task.id) })), reason: decision.reason });
           }
           // Dependencies that have already succeeded in this run are satisfied for scheduling.
           // Worker changes remain isolated in their own worktrees; do not imply they were merged.
@@ -682,6 +686,9 @@ function App() {
             // Replacement work is intentionally independent because sibling worktrees are isolated.
             dependsOn: task.dependsOn.map(id => "replan-" + (replanRound + 1) + "-" + replanned.tasks.findIndex(candidate => candidate.id === id) + "-" + id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48)),
           }));
+          // Preserve historical attempts when removing failed tasks from the active graph;
+          // otherwise each replan would reset the global safety budget.
+          retiredAttemptCount += failedTasks.reduce((sum, task) => sum + (attemptsByTask.get(task.id) ?? 0), 0);
           supervisorTasks = [...supervisorTasks.filter(task => !failedIds.has(task.id)), ...replacementTasks];
           for (const task of replacementTasks) attemptsByTask.set(task.id, 0);
           replanRound += 1;
