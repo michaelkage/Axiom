@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: axiom-platform-release-${{ github.ref }}
@@ -55,6 +55,14 @@ jobs:
           path: desktop/release/*
           if-no-files-found: error
 
+      - name: Publish macOS packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+
   linux:
     name: Linux ${{ matrix.target }} package
     runs-on: ubuntu-latest
@@ -87,3 +95,11 @@ jobs:
           name: axiom-linux-${{ matrix.target }}-x64
           path: desktop/release/*
           if-no-files-found: error
+
+      - name: Publish Linux packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/release/*.deb
+            desktop/release/*.rpm
