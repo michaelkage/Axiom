@@ -32,6 +32,15 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
     return { action: "stop", reason: "Turbo total-attempt budget exhausted." };
   }
   if (!tasks.length) return { action: "blocked", taskIds: [], reason: "No tasks were supplied; create a plan before dispatching workers." };
+  const ids = tasks.map(task => task.id);
+  const duplicateIds = ids.filter((id, index) => !id.trim() || ids.indexOf(id) !== index);
+  if (duplicateIds.length) {
+    return { action: "blocked", taskIds: [...new Set(duplicateIds)], reason: "Task IDs must be non-empty and unique: " + [...new Set(duplicateIds)].join(", ") };
+  }
+  const invalidAttempts = tasks.filter(task => !Number.isInteger(task.attempts) || task.attempts < 0 || !Number.isInteger(task.maxAttempts) || task.maxAttempts < 1 || task.attempts > task.maxAttempts);
+  if (invalidAttempts.length) {
+    return { action: "blocked", taskIds: invalidAttempts.map(task => task.id), reason: "Task attempt counters must be non-negative integers and attempts cannot exceed maxAttempts." };
+  }
   const byId = new Map(tasks.map(task => [task.id, task]));
   const missingDependencies = tasks.flatMap(task => task.dependsOn.filter(id => !byId.has(id)).map(id => task.id + " depends on missing task " + id));
   if (missingDependencies.length) return { action: "blocked", taskIds: [...new Set(missingDependencies)], reason: missingDependencies.join("; ") };
