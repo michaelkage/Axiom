@@ -44,4 +44,16 @@ describe("Turbo supervisor policy", () => {
       taskIds: ["dependent"],
     });
   });
+  it("blocks duplicate or empty task IDs before they can corrupt dependency lookup", () => {
+    expect(decideTurboNext([task("duplicate"), task("duplicate")], policy)).toMatchObject({
+      action: "blocked",
+      taskIds: ["duplicate"],
+    });
+    expect(decideTurboNext([task(" ")], policy)).toMatchObject({ action: "blocked" });
+  });
+  it("blocks invalid attempt counters instead of dispatching malformed work", () => {
+    expect(decideTurboNext([task("negative", { attempts: -1 })], policy)).toMatchObject({ action: "blocked", taskIds: ["negative"] });
+    expect(decideTurboNext([task("over-limit", { attempts: 3, maxAttempts: 2 })], policy)).toMatchObject({ action: "blocked", taskIds: ["over-limit"] });
+    expect(decideTurboNext([task("fractional", { attempts: 0.5 })], policy)).toMatchObject({ action: "blocked", taskIds: ["fractional"] });
+  });
 });
