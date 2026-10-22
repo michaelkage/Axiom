@@ -539,8 +539,14 @@ function App() {
         const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
         const worktree = typeof result === "object" && result !== null && "worktreePath" in result ? ", isolated worktree " + String(result.worktreePath) : "";
         const summary = typeof result === "object" && result !== null && "summary" in result ? ", summary: " + String(result.summary).slice(0, 500) : "";
-        return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "succeeded") + session + worktree + summary;
+        return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "missing terminal outcome") + session + worktree + summary;
       }).join("\n");
+      const finalOutcomes = taskOutcomes();
+      const allWorkersSucceeded = results.length === parallel.tasks.length
+        && parallel.tasks.every(task => finalOutcomes.some(outcome => outcome.taskId === task.id && outcome.status === "succeeded"));
+      if (!allWorkersSucceeded) {
+        throw new Error("The worker batch returned without a confirmed succeeded lifecycle event for every planned task. Review worker diagnostics before treating this run as complete. " + completed);
+      }
       setParallelPlan(null);
       setWorkflowRun({ prompt: plan.prompt, status: "complete" });
       setInput("");
