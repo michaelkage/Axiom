@@ -45,7 +45,7 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   const exhausted = failed.filter(task => task.attempts >= task.maxAttempts);
   // Do not replan while sibling workers are still running: their eventual outcomes may
   // change which dependencies are blocked and what work remains. Drain active work first.
-  if (exhausted.length && active > 0 && !retryable.length) {
+  if (exhausted.length && active > 0 && (retryable.length === 0 || active >= Math.max(1, policy.maxParallelWorkers))) {
     return { action: "wait", reason: "A task exhausted retries; wait for active workers to finish before replanning." };
   }
   const blocked = tasks.filter(task => task.status === "blocked" || task.dependsOn.some(id => {
