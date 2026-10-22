@@ -97,18 +97,23 @@ describe("Axiom runtime helpers", () => {
     expect(outcomes).toEqual(["a:queued", "b:queued", "a:running", "a:succeeded", "b:running", "b:succeeded"]);
   });
 
-  it("records failures and stops before dependent work", async () => {
+  it("terminalizes queued tasks when a failed batch prevents later work", async () => {
     const tasks = parseSubTasks([
-      { id: "a", title: "Fail", scope: "fail", targetFiles: ["a.ts"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
-      { id: "b", title: "Blocked", scope: "blocked", targetFiles: ["b.ts"], dependsOn: ["a"], acceptanceCriteria: ["Behavior is verified"] },
+      { id: "a", title: "Fail", scope: "fail", targetFiles: ["shared.ts"], dependsOn: [], acceptanceCriteria: ["Failure is reported"] },
+      { id: "b", title: "Queued writer", scope: "writes the same file later", targetFiles: ["shared.ts"], dependsOn: [], acceptanceCriteria: ["Does not run after earlier failure"] },
+      { id: "c", title: "Dependent", scope: "depends on failed task", targetFiles: ["dependent.ts"], dependsOn: ["a"], acceptanceCriteria: ["Is blocked"] },
     ]);
-    const outcomes: string[] = [];
+    const outcomes: Array<{ taskId: string; status: string; error?: string }> = [];
     await expect(executeTaskBatches(tasks, async task => {
       if (task.id === "a") throw new Error("agent unavailable");
       return "unexpected";
-    }, record => outcomes.push(record.taskId + ":" + record.status))).rejects.toThrow(/agent unavailable/);
-    expect(outcomes).toContain("a:failed");
-    expect(outcomes).not.toContain("b:running");
+    }, record => outcomes.push(record))).rejects.toThrow(/agent unavailable/);
+    expect(outcomes.find(record => record.taskId === "a")?.status).toBe("failed");
+    expect(outcomes.find(record => record.taskId === "b")).toMatchObject({
+      status: "blocked", error: "Not started because another task in the plan failed.",
+    });
+    expect(outcomes.find(record => record.taskId === "c")?.status).toBe("blocked");
+    expect(outcomes.some(record => record.taskId === "b" && record.status === "running")).toBe(false);
   });
 
   it("preserves successful peer results and reports blocked dependents after a worker fails", async () => {
