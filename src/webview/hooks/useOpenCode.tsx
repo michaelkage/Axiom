@@ -302,7 +302,7 @@ function createOpenCode() {
         const serialized = JSON.stringify(event);
         if (!serialized.includes(childSessionId)) return;
         const type = String(event.type || "runtime.event");
-        if (!/message\\.|session\\.(error|status|idle|updated)|tool\\./.test(type)) return;
+        if (!/message\.|session\.(error|status|idle|updated)|tool\./.test(type)) return;
         logWorker("[" + type + "] " + serialized.slice(0, 1400));
       }, undefined, taskDirectory);
       if (signal?.aborted) {
