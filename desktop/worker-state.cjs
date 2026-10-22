@@ -25,18 +25,17 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       const previous = index >= 0 ? tasks[index] : {};
       const terminalStatuses = new Set(["succeeded", "failed", "blocked", "cancelled", "timed_out"]);
       const previousIsTerminal = terminalStatuses.has(previous.status);
-      const conflictingLateOutcome = previousIsTerminal && task.status !== previous.status;
-      // Worker event delivery and IPC persistence can race. Once terminal, a task
-      // cannot be reopened or assigned a conflicting terminal outcome by a stale event.
+      // Worker event delivery and IPC persistence can race. Once terminal, a task's
+      // outcome payload is immutable; only a same-status update may extend its logs.
       const next = {
         ...previous,
         ...task,
-        ...(conflictingLateOutcome ? {
+        ...(previousIsTerminal ? {
           status: previous.status,
           error: previous.error,
           result: previous.result,
           finishedAt: previous.finishedAt,
-          logs: previous.logs ?? task.logs
+          logs: task.status === previous.status ? (task.logs ?? previous.logs) : (previous.logs ?? task.logs)
         } : {}),
         updatedAt: new Date().toISOString()
       };
