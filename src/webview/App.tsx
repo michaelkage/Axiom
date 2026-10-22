@@ -27,6 +27,7 @@ import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import { TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
+import { decideTurboNext, type TurboTask } from "../shared/turboSupervisor";
 
 export interface QueuedMessage {
   id: string;
@@ -535,28 +536,78 @@ function App() {
         },
       };
       let results: Awaited<ReturnType<typeof runSubAgentTasks>> = [];
+      const turboStartedAt = Date.now();
+      const maxTurboRuntimeMs = 10 * 60 * 1000;
+      const maxAttemptsPerTask = 2;
+      const maxTotalAttempts = Math.max(parallel.tasks.length, parallel.tasks.length * maxAttemptsPerTask);
+      const attemptsByTask = new Map<string, number>(parallel.tasks.map(task => [task.id, 0]));
+      const turboTasks = (): TurboTask[] => parallel.tasks.map(task => {
+        const outcome = taskOutcomes().find(item => item.taskId === task.id);
+        const attempts = attemptsByTask.get(task.id) ?? 0;
+        const status = outcome?.status ?? "queued";
+        return {
+          id: task.id,
+          title: task.title,
+          dependsOn: task.dependsOn,
+          acceptanceCriteria: task.acceptanceCriteria ?? [],
+          attempts,
+          maxAttempts: maxAttemptsPerTask,
+          status: status === "running" || status === "succeeded" || status === "failed" || status === "blocked" || status === "cancelled" || status === "timed_out" ? status : "queued",
+          lastError: outcome?.error,
+        };
+      });
       try {
         results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), executionOptions);
+        for (const task of parallel.tasks) attemptsByTask.set(task.id, 1);
       } catch (error) {
         if (!(error instanceof TaskBatchExecutionError) || abortController.signal.aborted) throw error;
         results = error.successfulResults as typeof results;
-        const failedIds = new Set(error.failedTaskIds);
-        const retryable = parallel.tasks.filter(task => failedIds.has(task.id) && ["failed", "timed_out"].includes(taskOutcomes().find(item => item.taskId === task.id)?.status ?? ""));
-        if (!retryable.length) throw error;
-        logger.info("Turbo supervisor retrying failed worker tasks once", { taskIds: retryable.map(task => task.id), failures: error.message });
-        // Failed tasks were only dispatched after their dependencies had succeeded. Their
-        // retry can therefore run as a standalone task; successful sibling results are retained.
-        const retryTasks = retryable.map(task => ({ ...task, dependsOn: [] }));
-        try {
-          const retried = await runSubAgentTasks(parentSessionId, retryTasks, selectedAgent(), executionOptions);
-          results = [...results, ...retried];
-        } catch (retryError) {
-          if (retryError instanceof TaskBatchExecutionError) {
-            results = [...results, ...retryError.successfulResults] as typeof results;
-          }
-          throw retryError;
+        for (const task of parallel.tasks) {
+          const outcome = taskOutcomes().find(item => item.taskId === task.id);
+          if (outcome?.status === "succeeded" || outcome?.status === "failed" || outcome?.status === "timed_out") attemptsByTask.set(task.id, 1);
         }
       }
+
+      // Drive retries from the same policy used by Turbo's pure decision engine.
+      // Every iteration consumes a bounded attempt; successful siblings are retained.
+      while (!abortController.signal.aborted) {
+        const decision = decideTurboNext(turboTasks(), {
+          maxParallelWorkers: Math.max(1, parallel.tasks.length),
+          maxTotalAttempts,
+          maxRuntimeMs: maxTurboRuntimeMs,
+          startedAt: turboStartedAt,
+          now: Date.now(),
+          stopRequested: abortController.signal.aborted,
+        });
+        if (decision.action === "complete") break;
+        if (decision.action === "stop") throw new Error("Turbo supervisor stopped: " + decision.reason);
+        if (decision.action === "retry") {
+          const retryable = parallel.tasks.filter(task => decision.taskIds.includes(task.id)
+            && (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask
+            && ["failed", "timed_out"].includes(taskOutcomes().find(item => item.taskId === task.id)?.status ?? ""));
+          if (!retryable.length) throw new Error("Turbo supervisor requested a retry but no failed task has a confirmed retryable terminal outcome. " + decision.reason);
+          for (const task of retryable) attemptsByTask.set(task.id, (attemptsByTask.get(task.id) ?? 0) + 1);
+          logger.info("Turbo supervisor dispatching bounded worker retry", { taskIds: retryable.map(task => task.id), attempts: retryable.map(task => ({ id: task.id, attempt: attemptsByTask.get(task.id) })), reason: decision.reason });
+          try {
+            const retried = await runSubAgentTasks(parentSessionId, retryable.map(task => ({ ...task, dependsOn: [] })), selectedAgent(), executionOptions);
+            results = [...results.filter(item => !retryable.some(task => task.id === item.task.id)), ...retried];
+          } catch (retryError) {
+            if (!(retryError instanceof TaskBatchExecutionError)) throw retryError;
+            results = [...results.filter(item => !retryable.some(task => task.id === item.task.id)), ...retryError.successfulResults] as typeof results;
+          }
+          continue;
+        }
+        if (decision.action === "wait") {
+          // runSubAgentTasks resolves only after its dispatched batch settles. If there are
+          // no active calls here, a wait decision means the remaining graph is not runnable.
+          throw new Error("Turbo supervisor cannot progress safely: " + decision.reason);
+        }
+        if (decision.action === "replan" || decision.action === "blocked") {
+          throw new Error("Turbo supervisor requires replanning or intervention: " + decision.reason + " Tasks: " + decision.taskIds.join(", "));
+        }
+        throw new Error("Turbo supervisor reached an unsupported decision: " + decision.action);
+      }
+      if (abortController.signal.aborted) throw new Error("Turbo execution cancelled by the user.");
       const completed = results.map(({ task, result }) => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
