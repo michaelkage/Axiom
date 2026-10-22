@@ -543,7 +543,7 @@ function App() {
         const failedIds = new Set(error.failedTaskIds);
         const retryable = parallel.tasks.filter(task => failedIds.has(task.id) && ["failed", "timed_out"].includes(taskOutcomes().find(item => item.taskId === task.id)?.status ?? ""));
         if (!retryable.length) throw error;
-        logger.warn("Turbo supervisor retrying failed worker tasks once", { taskIds: retryable.map(task => task.id), failures: error.message });
+        logger.info("Turbo supervisor retrying failed worker tasks once", { taskIds: retryable.map(task => task.id), failures: error.message });
         // Failed tasks were only dispatched after their dependencies had succeeded. Their
         // retry can therefore run as a standalone task; successful sibling results are retained.
         const retryTasks = retryable.map(task => ({ ...task, dependsOn: [] }));
