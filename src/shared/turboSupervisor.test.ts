@@ -12,6 +12,12 @@ describe("Turbo supervisor policy", () => {
     expect(decideTurboNext([task("a", { status: "failed", attempts: 1 })], policy)).toMatchObject({ action: "retry", taskIds: ["a"] });
     expect(decideTurboNext([task("a", { status: "failed", attempts: 2 })], policy).action).toBe("replan");
   });
+  it("waits for active siblings before replanning exhausted work", () => {
+    expect(decideTurboNext([
+      task("failed", { status: "failed", attempts: 2 }),
+      task("active", { status: "running", attempts: 1 }),
+    ], policy)).toMatchObject({ action: "wait" });
+  });
   it("honors stop and runtime/attempt budgets", () => {
     expect(decideTurboNext([task("a")], { ...policy, stopRequested: true }).action).toBe("stop");
     expect(decideTurboNext([task("a")], { ...policy, now: 70_100 }).action).toBe("stop");
