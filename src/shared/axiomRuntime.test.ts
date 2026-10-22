@@ -104,10 +104,16 @@ describe("Axiom runtime helpers", () => {
       { id: "c", title: "Dependent", scope: "depends on failed task", targetFiles: ["dependent.ts"], dependsOn: ["a"], acceptanceCriteria: ["Is blocked"] },
     ]);
     const outcomes: Array<{ taskId: string; status: string; error?: string }> = [];
-    await expect(executeTaskBatches(tasks, async task => {
-      if (task.id === "a") throw new Error("agent unavailable");
-      return "unexpected";
-    }, record => outcomes.push(record))).rejects.toThrow(/agent unavailable/);
+    let failure: unknown;
+    try {
+      await executeTaskBatches(tasks, async task => {
+        if (task.id === "a") throw new Error("agent unavailable");
+        return "unexpected";
+      }, record => outcomes.push(record));
+    } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(TaskBatchExecutionError);
+    expect((failure as TaskBatchExecutionError).blockedTaskIds).toEqual(expect.arrayContaining(["b", "c"]));
+    expect((failure as TaskBatchExecutionError).failedTaskIds).toContain("a");
     expect(outcomes.find(record => record.taskId === "a")?.status).toBe("failed");
     expect(outcomes.find(record => record.taskId === "b")).toMatchObject({
       status: "blocked", error: "Not started because another task in the plan failed.",
