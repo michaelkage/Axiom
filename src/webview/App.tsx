@@ -541,6 +541,7 @@ function App() {
       const maxAttemptsPerTask = 2;
       const maxTotalAttempts = Math.max(parallel.tasks.length, parallel.tasks.length * maxAttemptsPerTask);
       const attemptsByTask = new Map<string, number>(parallel.tasks.map(task => [task.id, 0]));
+      const finalTaskSucceeded = (taskId: string) => taskOutcomes().some(outcome => outcome.taskId === taskId && outcome.status === "succeeded");
       const turboTasks = (): TurboTask[] => parallel.tasks.map(task => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const attempts = attemptsByTask.get(task.id) ?? 0;
@@ -581,20 +582,41 @@ function App() {
         });
         if (decision.action === "complete") break;
         if (decision.action === "stop") throw new Error("Turbo supervisor stopped: " + decision.reason);
-        if (decision.action === "retry") {
-          const retryable = parallel.tasks.filter(task => decision.taskIds.includes(task.id)
-            && (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask
-            && ["failed", "timed_out"].includes(taskOutcomes().find(item => item.taskId === task.id)?.status ?? ""));
-          if (!retryable.length) throw new Error("Turbo supervisor requested a retry but no failed task has a confirmed retryable terminal outcome. " + decision.reason);
-          for (const task of retryable) attemptsByTask.set(task.id, (attemptsByTask.get(task.id) ?? 0) + 1);
-          logger.info("Turbo supervisor dispatching bounded worker retry", { taskIds: retryable.map(task => task.id), attempts: retryable.map(task => ({ id: task.id, attempt: attemptsByTask.get(task.id) })), reason: decision.reason });
-          try {
-            const retried = await runSubAgentTasks(parentSessionId, retryable.map(task => ({ ...task, dependsOn: [] })), selectedAgent(), executionOptions);
-            results = [...results.filter(item => !retryable.some(task => task.id === item.task.id)), ...retried];
-          } catch (retryError) {
-            if (!(retryError instanceof TaskBatchExecutionError)) throw retryError;
-            results = [...results.filter(item => !retryable.some(task => task.id === item.task.id)), ...retryError.successfulResults] as typeof results;
+        if (decision.action === "retry" || decision.action === "dispatch") {
+          const selectedTasks = parallel.tasks.filter(task => decision.taskIds.includes(task.id));
+          const runnable = selectedTasks.filter(task => {
+            const status = taskOutcomes().find(item => item.taskId === task.id)?.status ?? "queued";
+            if (decision.action === "retry") return (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask && ["failed", "timed_out"].includes(status);
+            return status === "queued";
+          });
+          if (!runnable.length) throw new Error("Turbo supervisor requested " + decision.action + " but no task has a matching runnable state. " + decision.reason);
+          if (decision.action === "retry") {
+            for (const task of runnable) attemptsByTask.set(task.id, (attemptsByTask.get(task.id) ?? 0) + 1);
+            logger.info("Turbo supervisor dispatching bounded worker retry", { taskIds: runnable.map(task => task.id), attempts: runnable.map(task => ({ id: task.id, attempt: attemptsByTask.get(task.id) })), reason: decision.reason });
+          } else {
+            logger.info("Turbo supervisor dispatching dependency-ready worker tasks", { taskIds: runnable.map(task => task.id), reason: decision.reason });
           }
+          // Dependencies that have already succeeded in this run are satisfied for scheduling.
+          // Worker changes remain isolated in their own worktrees; do not imply they were merged.
+          const runnableTasks = runnable.map(task => ({
+            ...task,
+            dependsOn: task.dependsOn.filter(id => !finalTaskSucceeded(id)),
+          }));
+          try {
+            const dispatched = await runSubAgentTasks(parentSessionId, runnableTasks, selectedAgent(), executionOptions);
+            results = [...results.filter(item => !runnable.some(task => task.id === item.task.id)), ...dispatched];
+          } catch (dispatchError) {
+            if (!(dispatchError instanceof TaskBatchExecutionError)) throw dispatchError;
+            results = [...results.filter(item => !runnable.some(task => task.id === item.task.id)), ...dispatchError.successfulResults] as typeof results;
+          }
+          // A blocked dependent becomes eligible only after every dependency has a confirmed
+          // success event. Re-queue it explicitly so the supervisor can dispatch it next.
+          setTaskOutcomes(previous => previous.map(outcome => {
+            if (outcome.status !== "blocked") return outcome;
+            const task = parallel.tasks.find(item => item.id === outcome.taskId);
+            if (!task || !task.dependsOn.every(id => finalTaskSucceeded(id))) return outcome;
+            return { ...outcome, status: "queued", error: undefined, finishedAt: undefined };
+          }));
           continue;
         }
         if (decision.action === "wait") {
