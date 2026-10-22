@@ -114,7 +114,7 @@ describe("Axiom runtime helpers", () => {
     expect(failure).toBeInstanceOf(TaskBatchExecutionError);
     expect((failure as TaskBatchExecutionError).blockedTaskIds).toEqual(expect.arrayContaining(["b", "c"]));
     expect((failure as TaskBatchExecutionError).failedTaskIds).toContain("a");
-    expect(outcomes.find(record => record.taskId === "a")?.status).toBe("failed");
+    expect(outcomes.filter(record => record.taskId === "a").at(-1)?.status).toBe("failed");
     expect(outcomes.find(record => record.taskId === "b")).toMatchObject({
       status: "blocked", error: "Not started because another task in the plan failed.",
     });
