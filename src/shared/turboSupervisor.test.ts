@@ -36,4 +36,12 @@ describe("Turbo supervisor policy", () => {
     expect(decideTurboNext([task("a", { status: "cancelled" })], policy).action).toBe("blocked");
   });
   it("flags missing dependencies rather than silently stalling", () => expect(decideTurboNext([task("a", { dependsOn: ["missing"] })], policy).action).toBe("blocked"));
+  it("dispatches a dependent after a failed prerequisite succeeds on retry", () => {
+    const prerequisite = task("prerequisite", { status: "succeeded", attempts: 2 });
+    const dependent = task("dependent", { status: "queued", dependsOn: ["prerequisite"] });
+    expect(decideTurboNext([prerequisite, dependent], policy)).toMatchObject({
+      action: "dispatch",
+      taskIds: ["dependent"],
+    });
+  });
 });
