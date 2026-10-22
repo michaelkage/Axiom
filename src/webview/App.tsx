@@ -540,9 +540,11 @@ function App() {
       const maxTurboRuntimeMs = 10 * 60 * 1000;
       const maxAttemptsPerTask = 2;
       const maxTotalAttempts = Math.max(parallel.tasks.length, parallel.tasks.length * maxAttemptsPerTask);
-      const attemptsByTask = new Map<string, number>(parallel.tasks.map(task => [task.id, 0]));
+      let supervisorTasks = [...parallel.tasks];
+      let replanRound = 0;
+      const attemptsByTask = new Map<string, number>(supervisorTasks.map(task => [task.id, 0]));
       const finalTaskSucceeded = (taskId: string) => taskOutcomes().some(outcome => outcome.taskId === taskId && outcome.status === "succeeded");
-      const turboTasks = (): TurboTask[] => parallel.tasks.map(task => {
+      const turboTasks = (): TurboTask[] => supervisorTasks.map(task => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const attempts = attemptsByTask.get(task.id) ?? 0;
         const status = outcome?.status ?? "queued";
@@ -583,7 +585,7 @@ function App() {
         if (decision.action === "complete") break;
         if (decision.action === "stop") throw new Error("Turbo supervisor stopped: " + decision.reason);
         if (decision.action === "retry" || decision.action === "dispatch") {
-          const selectedTasks = parallel.tasks.filter(task => decision.taskIds.includes(task.id));
+          const selectedTasks = supervisorTasks.filter(task => decision.taskIds.includes(task.id));
           const runnable = selectedTasks.filter(task => {
             const status = taskOutcomes().find(item => item.taskId === task.id)?.status ?? "queued";
             if (decision.action === "retry") return (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask && ["failed", "timed_out"].includes(status);
@@ -624,13 +626,48 @@ function App() {
           // no active calls here, a wait decision means the remaining graph is not runnable.
           throw new Error("Turbo supervisor cannot progress safely: " + decision.reason);
         }
-        if (decision.action === "replan" || decision.action === "blocked") {
-          throw new Error("Turbo supervisor requires replanning or intervention: " + decision.reason + " Tasks: " + decision.taskIds.join(", "));
+        if (decision.action === "replan") {
+          if (replanRound >= 2) throw new Error("Turbo reached its two-round replan limit. " + decision.reason);
+          const failedTasks = supervisorTasks.filter(task => decision.taskIds.includes(task.id));
+          const diagnostics = failedTasks.map(task => {
+            const outcome = taskOutcomes().find(item => item.taskId === task.id);
+            return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles, acceptanceCriteria: task.acceptanceCriteria, attempts: attemptsByTask.get(task.id) ?? 0, error: outcome?.error ?? "No error detail was recorded", logs: (outcome?.logs ?? []).slice(-12) };
+          });
+          const successfulTasks = supervisorTasks.filter(task => finalTaskSucceeded(task.id)).map(task => ({ id: task.id, title: task.title, summary: taskOutcomes().find(item => item.taskId === task.id)?.logs?.slice(-3).join("\\n") ?? "Succeeded; changes remain isolated for review." }));
+          const replanPrompt = [
+            "Replan only the failed coding work described below. Return a fresh, small task plan with explicit testable acceptance criteria.",
+            "Do not repeat completed tasks. Successful sibling changes are isolated in separate worktrees and have NOT been merged into the parent workspace; do not assume their files are available. Keep replacement tasks independent of successful tasks and do not declare the overall goal complete.",
+            "Original user goal: " + plan.prompt,
+            "Failed work and real worker diagnostics:\\n" + JSON.stringify(diagnostics, null, 2),
+            "Already successful work (informational only; do not duplicate):\\n" + JSON.stringify(successfulTasks, null, 2),
+          ].join("\\n\\n");
+          logger.info("Turbo supervisor requesting a bounded diagnostic replan", { round: replanRound + 1, failedTaskIds: failedTasks.map(task => task.id) });
+          const replanned = await planParallelTasks(replanPrompt, requestedOmniRouteModel() || undefined, fallbackOmniRouteModel() || undefined);
+          if (abortController.signal.aborted) throw new Error("Turbo execution cancelled while replanning.");
+          const failedIds = new Set(failedTasks.map(task => task.id));
+          const replacementTasks = replanned.tasks.map((task, index) => ({
+            ...task,
+            id: "replan-" + (replanRound + 1) + "-" + index + "-" + task.id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48),
+            // The original failed tasks were only dispatched after their dependencies succeeded.
+            // Replacement work is intentionally independent because sibling worktrees are isolated.
+            dependsOn: task.dependsOn.map(id => "replan-" + (replanRound + 1) + "-" + replanned.tasks.findIndex(candidate => candidate.id === id) + "-" + id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48)),
+          }));
+          if (!replacementTasks.length) throw new Error("Planner returned no replacement work.");
+          supervisorTasks = [...supervisorTasks.filter(task => !failedIds.has(task.id)), ...replacementTasks];
+          for (const task of replacementTasks) attemptsByTask.set(task.id, 0);
+          replanRound += 1;
+          logger.info("Turbo supervisor accepted validated replacement tasks", { round: replanRound, replacedTaskIds: [...failedIds], replacementTaskIds: replacementTasks.map(task => task.id) });
+          continue;
+        }
+        if (decision.action === "blocked") {
+          throw new Error("Turbo supervisor requires intervention: " + decision.reason + " Tasks: " + decision.taskIds.join(", "));
         }
         throw new Error("Turbo supervisor reached an unsupported decision: " + decision.action);
       }
       if (abortController.signal.aborted) throw new Error("Turbo execution cancelled by the user.");
-      const completed = results.map(({ task, result }) => {
+      const requiredTaskIds = new Set(supervisorTasks.map(task => task.id));
+      const requiredResults = results.filter(item => requiredTaskIds.has(item.task.id));
+      const completed = requiredResults.map(({ task, result }) => {
         const outcome = taskOutcomes().find(item => item.taskId === task.id);
         const session = typeof result === "object" && result !== null && "sessionId" in result ? ", session " + String(result.sessionId) : "";
         const worktree = typeof result === "object" && result !== null && "worktreePath" in result ? ", isolated worktree " + String(result.worktreePath) : "";
@@ -638,8 +675,8 @@ function App() {
         return "- " + task.title + " (task " + task.id + "): " + (outcome?.status ?? "missing terminal outcome") + session + worktree + summary;
       }).join("\n");
       const finalOutcomes = taskOutcomes();
-      const allWorkersSucceeded = results.length === parallel.tasks.length
-        && parallel.tasks.every(task => finalOutcomes.some(outcome => outcome.taskId === task.id && outcome.status === "succeeded"));
+      const allWorkersSucceeded = requiredResults.length === supervisorTasks.length
+        && supervisorTasks.every(task => finalOutcomes.some(outcome => outcome.taskId === task.id && outcome.status === "succeeded"));
       if (!allWorkersSucceeded) {
         throw new Error("The worker batch returned without a confirmed succeeded lifecycle event for every planned task. Review worker diagnostics before treating this run as complete. " + completed);
       }
