@@ -143,11 +143,20 @@ export async function executeTaskBatches<T>(
         }
       }
     }
+    // A failed batch aborts the plan, so queued tasks that are not dependency-blocked
+    // must still receive a terminal outcome instead of remaining "queued" forever.
     if (terminalStatus === "cancelled") {
       for (const task of tasks) {
         if (outcomeById.get(task.id) !== "queued") continue;
         outcomeById.set(task.id, "cancelled");
         emit({ taskId: task.id, title: task.title, status: "cancelled", finishedAt: Date.now(), error: reason });
+      }
+    } else {
+      for (const task of tasks) {
+        if (outcomeById.get(task.id) !== "queued") continue;
+        blocked.add(task.id);
+        outcomeById.set(task.id, "blocked");
+        emit({ taskId: task.id, title: task.title, status: "blocked", finishedAt: Date.now(), error: "Not started because another task in the plan failed." });
       }
     }
     const failed = tasks.filter(task => outcomeById.get(task.id) === "failed" || outcomeById.get(task.id) === "timed_out").map(task => task.id);
