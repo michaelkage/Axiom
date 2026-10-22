@@ -110,7 +110,10 @@ jobs:
           $workspace = Join-Path $env:RUNNER_TEMP "axiom-install-smoke"
           New-Item -ItemType Directory -Force -Path $workspace | Out-Null
           $app = Start-Process -FilePath $exe -ArgumentList @("--axiom-workspace=$workspace", "--disable-gpu") -PassThru
+          # Electron may derive userData from the package name (axiom-desktop)
+          # rather than app.setName(); inspect both supported locations.
           $runtimeLog = Join-Path $env:APPDATA "Axiom/logs/runtime.log"
+          $runtimeLogCandidates = @($runtimeLog, (Join-Path $env:APPDATA "axiom-desktop/logs/runtime.log"))
           $deadline = (Get-Date).AddSeconds(60)
           $log = ""
           $runtimeReady = $false
@@ -121,7 +124,9 @@ jobs:
               $detail = if (Test-Path $runtimeLog) { Get-Content $runtimeLog -Tail 80 | Out-String } else { "No runtime log was created." }
               throw "Installed Axiom exited during startup. $detail"
             }
-            if (Test-Path $runtimeLog) {
+            $foundLog = $runtimeLogCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($foundLog) {
+              $runtimeLog = $foundLog
               $log = Get-Content $runtimeLog -Tail 120 | Out-String
               if ($log -match "Runtime executable lookup failed|Runtime process error|Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
               $runtimeReady = $log -match "Runtime ready at http://127\.0\.0\.1:"
