@@ -71,7 +71,7 @@ async function runtimeExecutable() {
     );
     if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
   } catch { /* Fall through to the actionable runtime-not-found error. */ }
-  throw new Error("Axiom's bundled OpenCode runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
+  throw new Error("Axiom's bundled runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
 
 function runtimeConfigurationEnvironment() {
@@ -80,7 +80,7 @@ function runtimeConfigurationEnvironment() {
     const environment = manager ? manager.openCodeEnvironment({ workspaceRoot: selectedWorkspace }) : {};
     if (environment.OPENCODE_CONFIG_CONTENT) {
       try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
-      catch { throw new Error("Axiom generated invalid OpenCode configuration; runtime startup was blocked."); }
+      catch { throw new Error("Axiom generated invalid local runtime configuration; startup was blocked."); }
     }
   }
   return Object.keys(merged).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) } : {};
@@ -130,7 +130,7 @@ async function startRuntime(workspace) {
   let executable;
   try {
     executable = await runtimeExecutable();
-    await appendRuntimeLog(`Launching OpenCode runtime from ${executable}`);
+    await appendRuntimeLog(`Launching Axiom local runtime from ${executable}`);
   } catch (error) {
     await appendRuntimeLog(`Runtime executable lookup failed: ${error.stack || error.message}`);
     throw error;
