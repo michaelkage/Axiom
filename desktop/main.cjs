@@ -13,6 +13,7 @@ const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
+const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -145,7 +146,7 @@ async function startRuntime(workspace) {
     // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
     shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ...runtimeConfigurationEnvironment() }
+    env: { ...createRuntimeEnvironment(process.env, app.getPath("userData")), ...runtimeConfigurationEnvironment() }
   });
 
   let recentOutput = "";
