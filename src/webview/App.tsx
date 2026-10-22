@@ -628,7 +628,18 @@ function App() {
         }
         if (decision.action === "replan") {
           if (replanRound >= 2) throw new Error("Turbo reached its two-round replan limit. " + decision.reason);
-          const failedTasks = supervisorTasks.filter(task => decision.taskIds.includes(task.id));
+          const affectedIds = new Set(decision.taskIds);
+          let expandedAffected = true;
+          while (expandedAffected) {
+            expandedAffected = false;
+            for (const task of supervisorTasks) {
+              if (!affectedIds.has(task.id) && task.dependsOn.some(id => affectedIds.has(id)) && !finalTaskSucceeded(task.id)) {
+                affectedIds.add(task.id);
+                expandedAffected = true;
+              }
+            }
+          }
+          const failedTasks = supervisorTasks.filter(task => affectedIds.has(task.id));
           const diagnostics = failedTasks.map(task => {
             const outcome = taskOutcomes().find(item => item.taskId === task.id);
             return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles, acceptanceCriteria: task.acceptanceCriteria, attempts: attemptsByTask.get(task.id) ?? 0, error: outcome?.error ?? "No error detail was recorded", logs: (outcome?.logs ?? []).slice(-12) };
