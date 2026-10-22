@@ -48,13 +48,17 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   if (exhausted.length && active > 0 && (retryable.length === 0 || active >= Math.max(1, policy.maxParallelWorkers))) {
     return { action: "wait", reason: "A task exhausted retries; wait for active workers to finish before replanning." };
   }
-  const blocked = tasks.filter(task => task.status === "blocked" || task.dependsOn.some(id => {
-    const dependency = byId.get(id)!;
-    return dependency.status === "blocked" || ((dependency.status === "failed" || dependency.status === "timed_out") && dependency.attempts >= dependency.maxAttempts);
-  }));
+  const blocked = tasks.filter(task => {
+    const dependenciesSucceeded = task.dependsOn.every(id => byId.get(id)!.status === "succeeded");
+    if (task.status === "blocked" && dependenciesSucceeded) return false;
+    return task.status === "blocked" || task.dependsOn.some(id => {
+      const dependency = byId.get(id)!;
+      return dependency.status === "blocked" || ((dependency.status === "failed" || dependency.status === "timed_out") && dependency.attempts >= dependency.maxAttempts);
+    });
+  });
   if (exhausted.length) return { action: "replan", taskIds: exhausted.map(task => task.id), reason: "A task exhausted retries; diagnose, split, or reassign it instead of looping." };
   if (blocked.length) return { action: "blocked", taskIds: blocked.map(task => task.id), reason: "Some tasks are blocked by unresolved dependencies." };
-  const ready = tasks.filter(task => task.status === "queued" && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
+  const ready = tasks.filter(task => (task.status === "queued" || task.status === "blocked") && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
   const slots = Math.max(0, policy.maxParallelWorkers - active);
   if (ready.length && slots > 0) return { action: "dispatch", taskIds: ready.slice(0, slots).map(task => task.id), reason: "Dispatch dependency-ready tasks within the parallel-worker limit." };
   if (tasks.every(task => task.status === "succeeded")) return { action: "complete", reason: "All planned tasks succeeded; verify overall acceptance criteria before declaring the goal complete." };
