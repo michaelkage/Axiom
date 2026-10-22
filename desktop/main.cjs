@@ -26,6 +26,39 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+const remoteWorkspaceJobsFile = () => path.join(app.getPath("userData"), "remote-workspace-jobs.json");
+async function persistRemoteWorkspaceJobs() {
+  const file = remoteWorkspaceJobsFile();
+  const payload = [...remoteWorkspaceJobs.values()].map(job => ({
+    id: job.id, mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch,
+    paths: job.paths, workspacePath: job.workspacePath, temporaryRoot: job.temporaryRoot,
+    workspaceOwnership: job.workspaceOwnership, status: job.status,
+    remoteCommitConfirmed: job.remoteCommitConfirmed === true,
+    verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true,
+    commitSha: job.commitSha || null
+  }));
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  const temporary = file + ".tmp";
+  await fs.promises.writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  await fs.promises.rename(temporary, file);
+}
+async function restoreRemoteWorkspaceJobs() {
+  try {
+    const raw = await fs.promises.readFile(remoteWorkspaceJobsFile(), "utf8");
+    const jobs = JSON.parse(raw);
+    if (!Array.isArray(jobs)) throw new Error("Invalid remote workspace job state.");
+    for (const job of jobs) {
+      if (!job || typeof job.id !== "string" || typeof job.workspacePath !== "string" || typeof job.repositoryUrl !== "string") continue;
+      // Only restore paths under Axiom's managed temp root or explicitly user-owned persistent checkouts.
+      const managedRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
+      const workspacePath = path.resolve(job.workspacePath);
+      if (job.mode !== "persistent" && !workspacePath.startsWith(managedRoot + path.sep)) continue;
+      remoteWorkspaceJobs.set(job.id, { ...job, workspacePath, remoteCommitConfirmed: job.remoteCommitConfirmed === true, verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true });
+    }
+  } catch (error) {
+    if (error && error.code !== "ENOENT") await appendRuntimeLog("Could not restore remote workspace jobs: " + String(error.message || error).slice(0, 500));
+  }
+}
 let stoppingRuntime = false;
 
 app.setName("Axiom");
@@ -707,7 +740,18 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   const id = require("node:crypto").randomUUID();
   job.id = id;
   remoteWorkspaceJobs.set(id, job);
+  await persistRemoteWorkspaceJobs();
   return { id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath, status: job.status, paths: job.paths };
+});
+
+ipcMain.handle("axiom:remote-workspace-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return [...remoteWorkspaceJobs.values()].map(job => ({
+    id: job.id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath,
+    status: job.status, paths: job.paths, commitSha: job.commitSha || null,
+    remoteCommitConfirmed: job.remoteCommitConfirmed === true,
+    verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true
+  }));
 });
 
 ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
@@ -721,6 +765,7 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
       return true;
     }
   });
+  await persistRemoteWorkspaceJobs();
   return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
 });
 
@@ -730,6 +775,7 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
   if (!job) throw new Error("Remote workspace job not found in this session.");
   const result = await cleanupRemoteWorkspace(job);
   remoteWorkspaceJobs.delete(id);
+  await persistRemoteWorkspaceJobs();
   return result;
 });
 
@@ -911,7 +957,8 @@ async function stopRuntime() {
   stoppingRuntime = false;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await restoreRemoteWorkspaceJobs();
   omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage });
   mcpManager = createMcpManager({ userDataPath: app.getPath("userData"), safeStorage });
   const { Menu } = require("electron");
