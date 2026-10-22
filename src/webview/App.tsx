@@ -397,7 +397,7 @@ function App() {
   );
 
   // Axiom's first workflow slice: make the intent and execution steps visible
-  // before handing the request to the existing OpenCode runtime.
+  // before handing the request to the Axiom runtime.
   const [workflowPlan, setWorkflowPlan] = createSignal<{ prompt: string; steps: string[] } | null>(null);
   let skipPlanOnce = false;
 
@@ -945,7 +945,7 @@ function App() {
     const text = withAxiomProjectContext(input().trim(), sync.workspaceRoot());
     if (!text || !sync.isReady()) {
       if (workflowRun()?.status === "running") {
-        const message = !text ? "No prompt was available to run." : "Axiom is not connected to the OpenCode runtime.";
+        const message = !text ? "No prompt was available to run." : "Axiom is not connected to its local runtime.";
         setWorkflowError(message);
         setWorkflowRun({ ...workflowRun()!, status: "failed" });
       }
@@ -1012,7 +1012,7 @@ function App() {
         const res = await createSession();
         const newSession = res?.data as Session | undefined;
         if (!newSession?.id) {
-          const message = "The OpenCode runtime did not return a new session.";
+          const message = "The Axiom runtime did not return a new session.";
           console.error("[App] Failed to create session");
           setWorkflowError(message);
           if (workflowRun()?.status === "running") setWorkflowRun({ ...workflowRun()!, status: "failed" });
@@ -1586,10 +1586,6 @@ function App() {
               <ol>
                 <For each={plan.steps}>{(step) => <li>{step}</li>}</For>
               </ol>
-              <div class="workflow-plan__eyebrow">ACCEPTANCE CHECKLIST</div>
-              <ul class="workflow-acceptance-criteria">
-                <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
-              </ul>
               <div class="workflow-plan__eyebrow">ACCEPTANCE CHECKLIST</div>
               <ul class="workflow-acceptance-criteria">
                 <For each={buildAcceptanceCriteria(plan.prompt)}>{(criterion) => <li>{criterion}</li>}</For>
