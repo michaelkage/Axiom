@@ -1501,7 +1501,7 @@ function App() {
       </Show>
 
       <Show when={!hasMessages()}>
-        <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} />
+        <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} onOpenProject={() => void switchStandaloneProject()} />
         <ProviderReadinessPanel loadReadiness={getProviderReadiness} testConnection={testProviderConnection} />
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />
