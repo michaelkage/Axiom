@@ -53,3 +53,39 @@ test("worker probe does not count pending or failed calls as successful", async 
     assert.equal(result.status, state === "error" ? "tool_failed" : "tool_incomplete");
   }
 });
+
+test("worker probe rejects calls to a different integration", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) return { ok: true, json: async () => ({ id: "ses_test" }) };
+    return { ok: true, json: async () => ({ parts: [
+      { type: "tool", tool: "github_search_repositories", state: { status: "completed" } }
+    ] }) };
+  };
+  const result = await runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl });
+  assert.equal(result.invoked, false);
+  assert.equal(result.status, "no_mcp_tool_invocation");
+  assert.equal(result.toolName, null);
+});
+
+test("worker probe rejects a session response without a session ID", async () => {
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ data: {} }) });
+  await assert.rejects(
+    runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
+    /no identifiable diagnostic session/
+  );
+});
+
+test("worker probe reports runtime HTTP failures instead of success", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) return { ok: true, json: async () => ({ id: "ses_test" }) };
+    return { ok: false, status: 503 };
+  };
+  await assert.rejects(
+    runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
+    /worker request failed \(HTTP 503\)/
+  );
+});
