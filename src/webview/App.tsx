@@ -27,7 +27,7 @@ import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import { createIndependentTasks, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
-import { decideTurboNext, type TurboTask } from "../shared/turboSupervisor";
+import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
 
 export interface QueuedMessage {
   id: string;
@@ -617,10 +617,13 @@ function App() {
           }
           // A blocked dependent becomes eligible only after every dependency has a confirmed
           // success event. Re-queue it explicitly so the supervisor can dispatch it next.
+          const requeueableTaskIds = new Set(getRequeueableBlockedTaskIds(
+            supervisorTasks,
+            taskOutcomes().filter(outcome => outcome.status === "blocked").map(outcome => outcome.taskId),
+            taskOutcomes().filter(outcome => outcome.status === "succeeded").map(outcome => outcome.taskId),
+          ));
           setTaskOutcomes(previous => previous.map(outcome => {
-            if (outcome.status !== "blocked") return outcome;
-            const task = supervisorTasks.find(item => item.id === outcome.taskId);
-            if (!task || !task.dependsOn.every(id => finalTaskSucceeded(id))) return outcome;
+            if (outcome.status !== "blocked" || !requeueableTaskIds.has(outcome.taskId)) return outcome;
             return { ...outcome, status: "queued", error: undefined, finishedAt: undefined };
           }));
           continue;
