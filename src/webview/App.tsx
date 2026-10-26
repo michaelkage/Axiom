@@ -560,17 +560,9 @@ function App() {
           lastError: outcome?.error,
         };
       });
-      try {
-        results = await runSubAgentTasks(parentSessionId, parallel.tasks, selectedAgent(), executionOptions);
-        for (const task of parallel.tasks) attemptsByTask.set(task.id, 1);
-      } catch (error) {
-        if (!(error instanceof TaskBatchExecutionError) || abortController.signal.aborted) throw error;
-        results = error.successfulResults as typeof results;
-        for (const task of parallel.tasks) {
-          const outcome = taskOutcomes().find(item => item.taskId === task.id);
-          if (outcome?.status === "succeeded" || outcome?.status === "failed" || outcome?.status === "timed_out") attemptsByTask.set(task.id, 1);
-        }
-      }
+      // All initial and replacement tasks enter through the supervisor loop below.
+      // Dispatching the full plan here would run dependent tasks before their prerequisites
+      // succeed, bypassing the dependency graph on the first attempt.
 
       // Drive retries from the same policy used by Turbo's pure decision engine.
       // Every iteration consumes a bounded attempt; successful siblings are retained.
