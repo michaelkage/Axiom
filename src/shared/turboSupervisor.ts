@@ -98,3 +98,17 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   if (active > 0) return { action: "wait", reason: "Workers are still running; wait for their next lifecycle or diagnostic event." };
   return { action: "blocked", taskIds: tasks.filter(task => task.status !== "succeeded").map(task => task.id), reason: "No task is runnable. Inspect diagnostics and replan." };
 }
+
+/** Return blocked task IDs whose complete dependency set has succeeded. */
+export function getRequeueableBlockedTaskIds(
+  tasks: Array<Pick<TurboTask, "id" | "dependsOn">>,
+  blockedTaskIds: string[],
+  succeededTaskIds: string[],
+): string[] {
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const succeeded = new Set(succeededTaskIds);
+  return [...new Set(blockedTaskIds)].filter(id => {
+    const task = byId.get(id);
+    return !!task && task.dependsOn.every(dependencyId => succeeded.has(dependencyId));
+  });
+}
