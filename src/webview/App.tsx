@@ -103,6 +103,7 @@ function App() {
     saveContext: (context: string) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     addChange: (change: { title: string; summary: string; status: string; files?: string[]; checks?: Array<{ name: string; state: string; details: string }> }) => Promise<NonNullable<ReturnType<typeof desktopProjectState>>>;
     chooseProject: () => Promise<string | null>;
+    createProject: () => Promise<string | null>;
     listFiles: (relativePath: string) => Promise<Array<{ name: string; path: string; kind: string }>>;
     readFile: (relativePath: string) => Promise<{ path: string; content: string; size: number }>;
     writeFile: (relativePath: string, content: string) => Promise<{ path: string; size: number }>;
@@ -1044,6 +1045,20 @@ function App() {
     }
   };
 
+  const createStandaloneProject = async () => {
+    const project = desktopApi()?.project;
+    if (!project) {
+      setDesktopProjectNotice("Creating a project folder is available in the Axiom desktop app.");
+      return;
+    }
+    try {
+      const created = await project.createProject();
+      if (created) setDesktopProjectNotice("Creating project. Axiom will restart with the new folder.");
+    } catch (error) {
+      setDesktopProjectNotice("Could not create project: " + getSdkErrorMessage(error));
+    }
+  };
+
   // Set default agent from initData once available
   createEffect(() => {
     const init = initData();
@@ -1682,7 +1697,7 @@ function App() {
       </Show>
 
       <Show when={!hasMessages()}>
-        <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} onOpenProject={() => void switchStandaloneProject()} />
+        <WelcomeScreen onSuggestion={(prompt) => setInput(prompt)} onOpenProject={() => void switchStandaloneProject()} onCreateProject={() => void createStandaloneProject()} />
         <ProviderReadinessPanel loadReadiness={getProviderReadiness} testConnection={testProviderConnection} />
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />

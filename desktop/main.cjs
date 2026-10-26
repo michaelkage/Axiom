@@ -873,6 +873,35 @@ ipcMain.handle("axiom:choose-project", async event => {
   return resolvedWorkspace;
 });
 
+ipcMain.handle("axiom:create-project", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Create an Axiom project",
+    buttonLabel: "Create Project",
+    defaultPath: path.join(app.getPath("documents"), "Axiom Project"),
+    properties: ["createDirectory"]
+  });
+  if (result.canceled || !result.filePath) return null;
+  const resolvedWorkspace = path.resolve(result.filePath);
+  if (resolvedWorkspace === path.parse(resolvedWorkspace).root) {
+    throw new Error("A project cannot be created at a filesystem root.");
+  }
+  try {
+    await fs.promises.mkdir(resolvedWorkspace);
+  } catch (error) {
+    if (error && error.code === "EEXIST") {
+      throw new Error("That folder already exists. Choose a new folder name so Axiom does not overwrite an existing project.");
+    }
+    throw error;
+  }
+  isQuitting = true;
+  await appendRuntimeLog("Creating project at " + resolvedWorkspace + ".");
+  await stopRuntime();
+  app.relaunch({ args: [...process.argv.slice(1).filter(arg => !arg.startsWith("--axiom-workspace=")), `--axiom-workspace=${resolvedWorkspace}`] });
+  app.quit();
+  return resolvedWorkspace;
+});
+
 ipcMain.on("axiom:webview-message", async (event, message) => {
   if (!trustedRenderer(event)) return;
   if (!message || typeof message.type !== "string") return;
