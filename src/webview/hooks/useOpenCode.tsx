@@ -261,7 +261,13 @@ function createOpenCode() {
       };
       logWorker("Worker session created: " + childSessionId);
       logWorker("Isolated worktree: " + taskDirectory);
-      const taskError = (message: string) => Object.assign(new Error(message), { sessionId: childSessionId, worktreePath: taskDirectory, logs: workerLogs.slice() });
+      let workerAgent: string | undefined;
+      const taskError = (message: string) => Object.assign(new Error(message), {
+        sessionId: childSessionId,
+        worktreePath: taskDirectory,
+        ...(workerAgent ? { agent: workerAgent } : {}),
+        logs: workerLogs.slice(),
+      });
       const abortWorker = () => {
         void c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
       };
@@ -296,6 +302,7 @@ function createOpenCode() {
       const agent = task.agentHint && availableAgentNames.has(task.agentHint)
         ? task.agentHint
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
+      workerAgent = agent;
       if (signal?.aborted) throw taskError("Parallel task cancelled before prompting the worker.");
       signal?.addEventListener("abort", abortWorker, { once: true });
       const stopWorkerEvents = subscribeToEvents(event => {
