@@ -143,6 +143,34 @@ describe("Axiom runtime helpers", () => {
     expect(outcomes).toContain("downstream:blocked");
   });
 
+  it("preserves worker identity, logs, and context metrics when a worker fails", async () => {
+    const tasks = parseSubTasks([
+      { id: "worker", title: "Worker session", scope: "execute in isolated session", targetFiles: ["worker.ts"], dependsOn: [], acceptanceCriteria: ["Failure diagnostics are complete"] },
+    ]);
+    const outcomes: Array<Record<string, unknown>> = [];
+    await expect(executeTaskBatches(tasks, async () => {
+      throw Object.assign(new Error("provider disconnected"), {
+        sessionId: "session-failed",
+        worktreePath: "/tmp/axiom-worktree",
+        agent: "builder",
+        summary: "Edited two files before provider disconnected",
+        contextEstimatedTokensBefore: 2400,
+        contextEstimatedTokensAfter: 900,
+        contextSavingsPercent: 62.5,
+        logs: ["session created", "patch applied", "provider disconnected"],
+      });
+    }, record => outcomes.push(record as unknown as Record<string, unknown>))).rejects.toThrow(/provider disconnected/);
+
+    expect(outcomes.find(record => record.status === "failed")).toMatchObject({
+      taskId: "worker", status: "failed", error: "provider disconnected",
+      sessionId: "session-failed", worktreePath: "/tmp/axiom-worktree", agent: "builder",
+      summary: "Edited two files before provider disconnected",
+      contextEstimatedTokensBefore: 2400, contextEstimatedTokensAfter: 900,
+      contextSavingsPercent: 62.5,
+      logs: ["session created", "patch applied", "provider disconnected"],
+    });
+  });
+
   it("times out a task and passes an abort signal to the runner", async () => {
     const tasks = parseSubTasks([
       { id: "slow", title: "Slow", scope: "wait", targetFiles: ["slow.ts"], dependsOn: [], acceptanceCriteria: ["Timeout is surfaced"] },
