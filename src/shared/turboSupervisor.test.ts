@@ -51,6 +51,17 @@ describe("Turbo supervisor policy", () => {
     });
     expect(decideTurboNext([task(" ")], policy)).toMatchObject({ action: "blocked" });
   });
+  it("identifies the tasks involved in a dependency cycle", () => {
+    const result = decideTurboNext([
+      task("a", { dependsOn: ["b"] }),
+      task("b", { dependsOn: ["a"] }),
+      task("independent"),
+    ], policy);
+    expect(result.action).toBe("blocked");
+    if (result.action !== "blocked") throw new Error("Expected a blocked decision");
+    expect(result.taskIds.sort()).toEqual(["a", "b"]);
+    expect(result.reason).toContain("cycle");
+  });
   it("blocks invalid attempt counters instead of dispatching malformed work", () => {
     expect(decideTurboNext([task("negative", { attempts: -1 })], policy)).toMatchObject({ action: "blocked", taskIds: ["negative"] });
     expect(decideTurboNext([task("over-limit", { attempts: 3, maxAttempts: 2 })], policy)).toMatchObject({ action: "blocked", taskIds: ["over-limit"] });
