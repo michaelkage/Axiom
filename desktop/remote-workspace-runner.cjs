@@ -9,8 +9,26 @@ const { validateRemoteWorkspaceRequest, mayCleanupRemoteWorkspace } = require(".
 const execFileAsync = promisify(execFile);
 
 function safeRemoteUrl(value) {
-  const url = value.startsWith("git@") ? null : new URL(value);
-  if (url && (url.username || url.password || url.search || url.hash)) {
+  if (typeof value !== "string" || !value.trim() || /[\\s\\0]/.test(value)) {
+    throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
+  }
+  // Git's SCP-style SSH syntax is not a URL, so validate it separately.
+  if (value.startsWith("git@")) {
+    if (!/^git@[A-Za-z0-9.-]+:[^?#\\s]+$/.test(value) || value.includes("..")) {
+      throw new TypeError("SSH repository URL must use git@host:path syntax without query parameters or fragments.");
+    }
+    return value;
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "ssh:") {
+    throw new TypeError("Repository URL must use HTTPS or SSH.");
+  }
+  if (!url.hostname || url.password || url.search || url.hash || (url.protocol === "https:" && url.username)) {
     throw new TypeError("Repository URL must not contain embedded credentials, query parameters, or fragments. Configure Git credentials or an SSH agent instead.");
   }
   return value;
