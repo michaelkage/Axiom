@@ -222,6 +222,10 @@ export async function executeTaskBatches<T>(
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
+          ...(typeof detail.summary === "string" ? { summary: detail.summary.slice(0, 1200) } : {}),
+          ...(typeof detail.contextEstimatedTokensBefore === "number" ? { contextEstimatedTokensBefore: detail.contextEstimatedTokensBefore } : {}),
+          ...(typeof detail.contextEstimatedTokensAfter === "number" ? { contextEstimatedTokensAfter: detail.contextEstimatedTokensAfter } : {}),
+          ...(typeof detail.contextSavingsPercent === "number" ? { contextSavingsPercent: detail.contextSavingsPercent } : {}),
           ...(Array.isArray(detail.logs) ? { logs: detail.logs.filter((line): line is string => typeof line === "string").slice(-200) } : {}),
         });
         throw error;
