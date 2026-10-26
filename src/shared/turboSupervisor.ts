@@ -27,10 +27,10 @@ export type TurboDecision =
 export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboDecision {
   if (policy.stopRequested) return { action: "stop", reason: "Stop requested by the user." };
   if (!Number.isFinite(policy.maxParallelWorkers) || !Number.isInteger(policy.maxParallelWorkers) || policy.maxParallelWorkers < 1
-    || !Number.isFinite(policy.maxTotalAttempts) || !Number.isInteger(policy.maxTotalAttempts) || policy.maxTotalAttempts < 1
+    || !Number.isFinite(policy.maxTotalAttempts) || !Number.isInteger(policy.maxTotalAttempts) || policy.maxTotalAttempts < 0
     || !Number.isFinite(policy.maxRuntimeMs) || policy.maxRuntimeMs < 1
     || !Number.isFinite(policy.startedAt) || !Number.isFinite(policy.now)) {
-    return { action: "blocked", taskIds: [], reason: "Turbo policy budgets and timestamps must be finite; worker and attempt limits must be positive integers." };
+    return { action: "blocked", taskIds: [], reason: "Turbo policy budgets and timestamps must be finite; worker limits must be positive integers and the remaining attempt budget must be a non-negative integer." };
   }
   if (policy.now - policy.startedAt >= policy.maxRuntimeMs) return { action: "stop", reason: "Turbo runtime budget exhausted." };
   const totalAttempts = tasks.reduce((sum, task) => sum + task.attempts, 0);

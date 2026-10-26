@@ -72,6 +72,13 @@ describe("Turbo supervisor policy", () => {
       .toEqual(["replan-1-0-replacement"]);
   });
 
+  it("stops cleanly when replanning has exhausted the remaining attempt budget", () => {
+    expect(decideTurboNext([task("a")], { ...policy, maxTotalAttempts: 0 })).toMatchObject({
+      action: "stop",
+      reason: "Turbo total-attempt budget exhausted.",
+    });
+  });
+
   it("rejects invalid policy budgets instead of silently stalling", () => {
     expect(decideTurboNext([task("a")], { ...policy, maxParallelWorkers: 0 })).toMatchObject({ action: "blocked", taskIds: [] });
     expect(decideTurboNext([task("a")], { ...policy, maxTotalAttempts: Number.NaN })).toMatchObject({ action: "blocked", taskIds: [] });
