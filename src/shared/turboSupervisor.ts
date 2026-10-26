@@ -45,6 +45,30 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   const missingDependencies = tasks.flatMap(task => task.dependsOn.filter(id => !byId.has(id)).map(id => task.id + " depends on missing task " + id));
   if (missingDependencies.length) return { action: "blocked", taskIds: [...new Set(missingDependencies)], reason: missingDependencies.join("; ") };
 
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const cycleTaskIds = new Set<string>();
+  const visit = (id: string, path: string[]) => {
+    if (visiting.has(id)) {
+      const cycleStart = path.indexOf(id);
+      for (const cycleId of path.slice(Math.max(0, cycleStart))) cycleTaskIds.add(cycleId);
+      cycleTaskIds.add(id);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependencyId of byId.get(id)!.dependsOn) {
+      if (byId.has(dependencyId)) visit(dependencyId, [...path, id]);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const task of tasks) visit(task.id, []);
+  if (cycleTaskIds.size) {
+    const cycleIds = [...cycleTaskIds];
+    return { action: "blocked", taskIds: cycleIds, reason: "Task dependencies contain a cycle involving: " + cycleIds.join(", ") };
+  }
+
   const active = tasks.filter(task => task.status === "running").length;
   const failed = tasks.filter(task => task.status === "failed" || task.status === "timed_out");
   const retryable = failed.filter(task => task.attempts < task.maxAttempts);
