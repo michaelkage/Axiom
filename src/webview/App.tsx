@@ -511,7 +511,15 @@ function App() {
                     : "Worker session failed. Review the diagnostic details and isolated worktree before retrying.";
             void project.addChange({
               title: "Worker " + record.status + ": " + record.title,
-              summary: summary + (record.error ? " Reason: " + record.error.slice(0, 700) : ""),
+              summary: [
+                summary,
+                record.error ? "Reason: " + record.error.slice(0, 700) : "",
+                record.contextEstimatedTokensBefore != null ? "Estimated context before packing: " + record.contextEstimatedTokensBefore + " tokens." : "",
+                record.contextEstimatedTokensAfter != null ? "Estimated context after packing: " + record.contextEstimatedTokensAfter + " tokens." : "",
+                record.contextSavingsPercent != null ? "Estimated context reduction: " + record.contextSavingsPercent + "%." : "",
+                record.summary ? "Worker result: " + record.summary.slice(0, 500) : "",
+                record.logs?.length ? "Recent worker logs:\n" + record.logs.slice(-8).join("\n").slice(0, 1200) : "",
+              ].filter(Boolean).join("\n\n"),
               status: record.status === "succeeded" ? "review" : "failed",
               checks: [{
                 name: "Axiom worker lifecycle",
@@ -522,6 +530,9 @@ function App() {
                   record.agent ? "Agent: " + record.agent : "",
                   record.startedAt ? "Started: " + new Date(record.startedAt).toISOString() : "",
                   record.finishedAt ? "Finished: " + new Date(record.finishedAt).toISOString() : "",
+                  record.contextEstimatedTokensBefore != null ? "Context before: " + record.contextEstimatedTokensBefore + " tokens" : "",
+                  record.contextEstimatedTokensAfter != null ? "Context after: " + record.contextEstimatedTokensAfter + " tokens" : "",
+                  record.contextSavingsPercent != null ? "Estimated context reduction: " + record.contextSavingsPercent + "%" : "",
                 ].filter(Boolean).join(" · ") || "No additional worker metadata was returned."
               }]
             }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error }));
