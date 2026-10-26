@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideTurboNext, type TurboTask } from "./turboSupervisor";
+import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "./turboSupervisor";
 const policy = { maxParallelWorkers: 2, maxTotalAttempts: 10, maxRuntimeMs: 60_000, startedAt: 100, now: 200 };
 const task = (id: string, extra: Partial<TurboTask> = {}): TurboTask => ({ id, title: id, dependsOn: [], acceptanceCriteria: ["verified"], attempts: 0, maxAttempts: 2, status: "queued", ...extra });
 describe("Turbo supervisor policy", () => {
@@ -62,6 +62,16 @@ describe("Turbo supervisor policy", () => {
     expect(result.taskIds.sort()).toEqual(["a", "b"]);
     expect(result.reason).toContain("cycle");
   });
+  it("requeues blocked replacement tasks using the current task graph", () => {
+    const tasks = [
+      task("original-prerequisite", { status: "succeeded" }),
+      task("replan-1-0-replacement", { dependsOn: ["original-prerequisite"], status: "blocked" }),
+      task("still-blocked", { dependsOn: ["not-yet-succeeded"], status: "blocked" }),
+    ];
+    expect(getRequeueableBlockedTaskIds(tasks, ["replan-1-0-replacement", "still-blocked", "unknown-task"], ["original-prerequisite"]))
+      .toEqual(["replan-1-0-replacement"]);
+  });
+
   it("blocks invalid attempt counters instead of dispatching malformed work", () => {
     expect(decideTurboNext([task("negative", { attempts: -1 })], policy)).toMatchObject({ action: "blocked", taskIds: ["negative"] });
     expect(decideTurboNext([task("over-limit", { attempts: 3, maxAttempts: 2 })], policy)).toMatchObject({ action: "blocked", taskIds: ["over-limit"] });
