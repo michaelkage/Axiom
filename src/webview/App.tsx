@@ -583,7 +583,7 @@ function App() {
           const runnable = selectedTasks.filter(task => {
             const status = taskOutcomes().find(item => item.taskId === task.id)?.status ?? "queued";
             if (decision.action === "retry") return (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask && ["failed", "timed_out"].includes(status);
-            return status === "queued";
+            return status === "queued" || status === "blocked";
           });
           if (!runnable.length) throw new Error("Turbo supervisor requested " + decision.action + " but no task has a matching runnable state. " + decision.reason);
           if (decision.action === "retry") {
