@@ -25,13 +25,13 @@ export type TurboDecision =
 
 /** Deterministic supervisor policy. The host feeds real worker events and performs returned actions. */
 export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboDecision {
+  if (policy.stopRequested) return { action: "stop", reason: "Stop requested by the user." };
   if (!Number.isFinite(policy.maxParallelWorkers) || !Number.isInteger(policy.maxParallelWorkers) || policy.maxParallelWorkers < 1
     || !Number.isFinite(policy.maxTotalAttempts) || !Number.isInteger(policy.maxTotalAttempts) || policy.maxTotalAttempts < 1
     || !Number.isFinite(policy.maxRuntimeMs) || policy.maxRuntimeMs < 1
     || !Number.isFinite(policy.startedAt) || !Number.isFinite(policy.now)) {
     return { action: "blocked", taskIds: [], reason: "Turbo policy budgets and timestamps must be finite; worker and attempt limits must be positive integers." };
   }
-  if (policy.stopRequested) return { action: "stop", reason: "Stop requested by the user." };
   if (policy.now - policy.startedAt >= policy.maxRuntimeMs) return { action: "stop", reason: "Turbo runtime budget exhausted." };
   const totalAttempts = tasks.reduce((sum, task) => sum + task.attempts, 0);
   if (totalAttempts >= policy.maxTotalAttempts && tasks.some(task => !["succeeded", "cancelled"].includes(task.status))) {
