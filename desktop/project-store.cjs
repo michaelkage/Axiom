@@ -45,18 +45,30 @@ function createProjectStore(userDataPath, workspaceRoot) {
     return read();
   }
 
+  // Serialize read-modify-write operations so concurrent worker lifecycle events
+  // cannot overwrite one another with snapshots read before a neighboring write.
+  let writeQueue = Promise.resolve();
+  function serializeWrite(operation) {
+    const result = writeQueue.then(operation);
+    writeQueue = result.catch(() => undefined);
+    return result;
+  }
+
   async function saveContext(context) {
     if (typeof context !== "string") throw new TypeError("Project context must be text.");
     if (context.length > MAX_CONTEXT_LENGTH) throw new RangeError("Project context is limited to 50,000 characters.");
-    const state = await read();
-    state.context = context;
-    return write(state);
+    return serializeWrite(async () => {
+      const state = await read();
+      state.context = context;
+      return write(state);
+    });
   }
 
   async function addChange(change) {
     if (!isValidChange(change)) throw new TypeError("Change event requires a title, summary, and valid status.");
-    const state = await read();
-    state.changes.push({
+    return serializeWrite(async () => {
+      const state = await read();
+      state.changes.push({
       id: typeof change.id === "string" && change.id.length < 128 ? change.id : crypto.randomUUID(),
       title: change.title.trim().slice(0, 160),
       summary: change.summary.trim().slice(0, 2000),
@@ -69,8 +81,9 @@ function createProjectStore(userDataPath, workspaceRoot) {
       })) : [],
       files: Array.isArray(change.files) ? change.files.filter(file => typeof file === "string").slice(0, 200).map(file => file.slice(0, 500)) : []
     });
-    state.changes = state.changes.slice(-MAX_EVENTS);
-    return write(state);
+      state.changes = state.changes.slice(-MAX_EVENTS);
+      return write(state);
+    });
   }
 
   return { read, saveContext, addChange };
