@@ -619,7 +619,7 @@ function App() {
           // success event. Re-queue it explicitly so the supervisor can dispatch it next.
           setTaskOutcomes(previous => previous.map(outcome => {
             if (outcome.status !== "blocked") return outcome;
-            const task = parallel.tasks.find(item => item.id === outcome.taskId);
+            const task = supervisorTasks.find(item => item.id === outcome.taskId);
             if (!task || !task.dependsOn.every(id => finalTaskSucceeded(id))) return outcome;
             return { ...outcome, status: "queued", error: undefined, finishedAt: undefined };
           }));
