@@ -72,6 +72,22 @@ describe("Turbo supervisor policy", () => {
       .toEqual(["replan-1-0-replacement"]);
   });
 
+  it("rejects invalid policy budgets instead of silently stalling", () => {
+    expect(decideTurboNext([task("a")], { ...policy, maxParallelWorkers: 0 })).toMatchObject({ action: "blocked", taskIds: [] });
+    expect(decideTurboNext([task("a")], { ...policy, maxTotalAttempts: Number.NaN })).toMatchObject({ action: "blocked", taskIds: [] });
+    expect(decideTurboNext([task("a")], { ...policy, maxRuntimeMs: Number.POSITIVE_INFINITY })).toMatchObject({ action: "blocked", taskIds: [] });
+  });
+
+  it("does not retry failed work until its dependencies have succeeded", () => {
+    const prerequisite = task("prerequisite", { status: "running", attempts: 1 });
+    const dependent = task("dependent", { status: "failed", attempts: 1, dependsOn: ["prerequisite"] });
+    expect(decideTurboNext([prerequisite, dependent], policy)).toMatchObject({ action: "wait" });
+    expect(decideTurboNext([
+      task("prerequisite", { status: "succeeded", attempts: 1 }),
+      dependent,
+    ], policy)).toMatchObject({ action: "retry", taskIds: ["dependent"] });
+  });
+
   it("blocks invalid attempt counters instead of dispatching malformed work", () => {
     expect(decideTurboNext([task("negative", { attempts: -1 })], policy)).toMatchObject({ action: "blocked", taskIds: ["negative"] });
     expect(decideTurboNext([task("over-limit", { attempts: 3, maxAttempts: 2 })], policy)).toMatchObject({ action: "blocked", taskIds: ["over-limit"] });

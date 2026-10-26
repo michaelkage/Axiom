@@ -25,6 +25,12 @@ export type TurboDecision =
 
 /** Deterministic supervisor policy. The host feeds real worker events and performs returned actions. */
 export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboDecision {
+  if (!Number.isFinite(policy.maxParallelWorkers) || !Number.isInteger(policy.maxParallelWorkers) || policy.maxParallelWorkers < 1
+    || !Number.isFinite(policy.maxTotalAttempts) || !Number.isInteger(policy.maxTotalAttempts) || policy.maxTotalAttempts < 1
+    || !Number.isFinite(policy.maxRuntimeMs) || policy.maxRuntimeMs < 1
+    || !Number.isFinite(policy.startedAt) || !Number.isFinite(policy.now)) {
+    return { action: "blocked", taskIds: [], reason: "Turbo policy budgets and timestamps must be finite; worker and attempt limits must be positive integers." };
+  }
   if (policy.stopRequested) return { action: "stop", reason: "Stop requested by the user." };
   if (policy.now - policy.startedAt >= policy.maxRuntimeMs) return { action: "stop", reason: "Turbo runtime budget exhausted." };
   const totalAttempts = tasks.reduce((sum, task) => sum + task.attempts, 0);
@@ -71,7 +77,7 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
 
   const active = tasks.filter(task => task.status === "running").length;
   const failed = tasks.filter(task => task.status === "failed" || task.status === "timed_out");
-  const retryable = failed.filter(task => task.attempts < task.maxAttempts);
+  const retryable = failed.filter(task => task.attempts < task.maxAttempts && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
   if (retryable.length && active < Math.max(1, policy.maxParallelWorkers)) {
     return { action: "retry", taskIds: retryable.slice(0, Math.max(1, policy.maxParallelWorkers) - active).map(task => task.id), reason: "Retry failed work within its per-task attempt limit." };
   }
