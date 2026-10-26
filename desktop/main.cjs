@@ -249,7 +249,9 @@ async function createWindow() {
       cancelId: 2
     });
     if (choice.response === 0) workspace = await chooseWorkspace();
-    if (choice.response === 2 || (choice.response === 0 && !workspace)) { app.quit(); return; }
+    if (choice.response === 2) { app.quit(); return; }
+    // Cancelling the folder picker means "not now", not "quit". The welcome
+    // workspace is deliberately project-free so users can enter Axiom first.
   }
   const hasProject = !!workspace;
   const runtimeWorkspace = hasProject
