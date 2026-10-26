@@ -262,10 +262,12 @@ function createOpenCode() {
       logWorker("Worker session created: " + childSessionId);
       logWorker("Isolated worktree: " + taskDirectory);
       let workerAgent: string | undefined;
+      let contextMetrics: { contextEstimatedTokensBefore: number; contextEstimatedTokensAfter: number; contextSavingsPercent: number } | undefined;
       const taskError = (message: string) => Object.assign(new Error(message), {
         sessionId: childSessionId,
         worktreePath: taskDirectory,
         ...(workerAgent ? { agent: workerAgent } : {}),
+        ...(contextMetrics ?? {}),
         logs: workerLogs.slice(),
       });
       const abortWorker = () => {
@@ -286,6 +288,11 @@ function createOpenCode() {
         })),
         constraints: ["Do not overlap with sibling tasks. Preserve unrelated behavior.", "Run focused checks where available and report exact commands and observed outcomes."],
       });
+      contextMetrics = {
+        contextEstimatedTokensBefore: packed.inputEstimatedTokens,
+        contextEstimatedTokensAfter: packed.estimatedTokens,
+        contextSavingsPercent: packed.estimatedSavingsPercent,
+      };
       const taskPrompt = [
         "Axiom parallel task: " + task.title,
         "Task scope: " + task.scope,
