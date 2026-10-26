@@ -879,7 +879,6 @@ ipcMain.handle("axiom:create-project", async event => {
     title: "Create an Axiom project",
     buttonLabel: "Create Project",
     defaultPath: path.join(app.getPath("documents"), "Axiom Project"),
-    properties: ["createDirectory"]
   });
   if (result.canceled || !result.filePath) return null;
   const resolvedWorkspace = path.resolve(result.filePath);
