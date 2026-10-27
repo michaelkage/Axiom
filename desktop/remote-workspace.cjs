@@ -5,7 +5,7 @@ const WORKSPACE_MODES = Object.freeze(["persistent", "temporary-full", "temporar
 const TERMINAL_SUCCESS = new Set(["verified", "committed", "pushed"]);
 
 function validateRepositoryUrl(repositoryUrl) {
-  if (typeof repositoryUrl !== "string" || !repositoryUrl.trim() || /[\\s\\\\\\0]/.test(repositoryUrl)) {
+  if (typeof repositoryUrl !== "string" || !repositoryUrl.trim() || /[\s\\\0]/.test(repositoryUrl)) {
     throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
   }
   if (repositoryUrl.startsWith("git@")) {
