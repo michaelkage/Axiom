@@ -98,7 +98,7 @@ export function isCurrentTaskAttempt(taskId: string, originatingAttempt: number 
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
-  startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; logs?: string[]; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
+  attempt?: number; startedAt?: number; finishedAt?: number; sessionId?: string; worktreePath?: string; agent?: string; summary?: string; error?: string; logs?: string[]; contextEstimatedTokensBefore?: number; contextEstimatedTokensAfter?: number; contextSavingsPercent?: number;
 }
 export interface CompletedTaskContext { task: AxiomSubTask; result: unknown; }
 export interface TaskBatchExecutionOptions {
