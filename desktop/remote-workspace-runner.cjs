@@ -9,12 +9,12 @@ const { validateRemoteWorkspaceRequest, mayCleanupRemoteWorkspace } = require(".
 const execFileAsync = promisify(execFile);
 
 function safeRemoteUrl(value) {
-  if (typeof value !== "string" || !value.trim() || /[\\s\\0]/.test(value)) {
+  if (typeof value !== "string" || !value.trim() || /[\s\0]/.test(value)) {
     throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
   }
   // Git's SCP-style SSH syntax is not a URL, so validate it separately.
   if (value.startsWith("git@")) {
-    if (!/^git@[A-Za-z0-9.-]+:[^?#\\s]+$/.test(value) || value.includes("..")) {
+    if (!/^git@[A-Za-z0-9.-]+:[^?#\s]+$/.test(value) || value.includes("..")) {
       throw new TypeError("SSH repository URL must use git@host:path syntax without query parameters or fragments.");
     }
     return value;

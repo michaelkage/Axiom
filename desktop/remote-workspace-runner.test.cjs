@@ -21,6 +21,8 @@ test("remote workspace runner rejects unsafe protocols and malformed SSH remotes
   assert.throws(() => safeRemoteUrl("file:///tmp/repo.git"), /HTTPS or SSH/);
   assert.throws(() => safeRemoteUrl("git@github.com"), /SSH repository URL/);
   assert.throws(() => safeRemoteUrl("git@github.com:org/repo.git?token=secret"), /SSH repository URL/);
+  assert.throws(() => safeRemoteUrl("https://github.com/org/repo.git\n--upload-pack=evil"), /valid HTTPS or SSH/);
+  assert.throws(() => safeRemoteUrl("https://github.com/org/repo.git\\n"), /valid HTTPS or SSH/);
   assert.throws(() => safeRemoteUrl("ssh://user:token@github.com/org/repo.git"), /embedded credentials/);
 });
 
