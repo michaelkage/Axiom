@@ -494,9 +494,15 @@ function App() {
       // arrive close together; fire-and-forget writes must not let an older snapshot overwrite
       // a newer terminal status in the project store.
       const workerPersistenceByTask = new Map<string, Promise<void>>();
-      const enqueueWorkerPersistence = (taskId: string, operation: () => Promise<void>) => {
+      const latestWorkerRecordByTask = new Map<string, TaskExecutionRecord>();
+      const enqueueWorkerPersistence = (taskId: string) => {
         const previous = workerPersistenceByTask.get(taskId) ?? Promise.resolve();
-        const next = previous.catch(() => undefined).then(operation);
+        const next = previous.catch(() => undefined).then(async () => {
+          // Read the freshest snapshot only when this queued write starts. Several
+          // log/outcome callbacks may have arrived while an earlier write was pending.
+          const latest = latestWorkerRecordByTask.get(taskId);
+          if (latest) await desktopApi()?.project?.recordWorkerTask(latest);
+        });
         workerPersistenceByTask.set(taskId, next);
         void next.catch(error => logger.error("Could not persist worker diagnostics", { taskId, error }));
       };
@@ -516,9 +522,8 @@ function App() {
           };
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
           const project = desktopApi()?.project;
-          if (project) enqueueWorkerPersistence(record.taskId, async () => {
-            await project.recordWorkerTask(mergedRecord);
-          });
+          latestWorkerRecordByTask.set(record.taskId, mergedRecord);
+          if (project) enqueueWorkerPersistence(record.taskId);
           if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
             const summary = record.status === "succeeded"
               ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
@@ -563,9 +568,10 @@ function App() {
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
           const project = desktopApi()?.project;
-          if (existing && project) enqueueWorkerPersistence(taskId, async () => {
-            await project.recordWorkerTask(existing);
-          });
+          if (existing && project) {
+            latestWorkerRecordByTask.set(taskId, existing);
+            enqueueWorkerPersistence(taskId);
+          }
         },
       };
       let results: Awaited<ReturnType<typeof runSubAgentTasks>> = [];
