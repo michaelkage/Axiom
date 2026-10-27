@@ -14,6 +14,7 @@ test("validates full and selective remote workspace requests", () => {
     "https://github.com/acme/repo.git#fragment",
     "https://github.com/acme/repo.git\\n--upload-pack=evil",
     "https://github.com/acme/repo.git\\\\n",
+    "https://github.com/acme/repo.git\\nextra",
     "git@github.com:acme/repo.git?token=secret",
     "https://github.com\\\\acme\\\\repo.git"
   ]) {
