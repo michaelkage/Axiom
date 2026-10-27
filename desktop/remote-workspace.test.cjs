@@ -16,6 +16,7 @@ test("validates full and selective remote workspace requests", () => {
     "https://github.com/acme/repo.git\\\\n",
     "https://github.com/acme/repo.git\nextra",
     "git@github.com:acme/repo.git?token=secret",
+    "git@github.com:acme/repo.git extra",
     "https://github.com\\\\acme\\\\repo.git"
   ]) {
     assert.throws(() => validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl, branch: "main" }), /Repository URL|SSH repository URL/);
