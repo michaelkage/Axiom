@@ -535,7 +535,7 @@ function App() {
                     ? "Worker execution was cancelled. Review its isolated worktree before retrying."
                     : "Worker session failed. Review the diagnostic details and isolated worktree before retrying.";
             void project.addChange({
-              id: "worker:" + record.taskId + ":" + (record.attempt ?? attemptsByTask.get(record.taskId) ?? 0) + ":" + record.status,
+              id: "worker:" + record.taskId + ":" + mergedRecord.attempt + ":" + record.status,
               title: "Worker " + record.status + ": " + record.title,
               summary: [
                 summary,
