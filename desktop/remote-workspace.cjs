@@ -9,7 +9,7 @@ function validateRepositoryUrl(repositoryUrl) {
     throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
   }
   if (repositoryUrl.startsWith("git@")) {
-    if (!/^git@[A-Za-z0-9.-]+:[^?#\\s]+$/.test(repositoryUrl) || repositoryUrl.includes("..")) {
+    if (!/^git@[A-Za-z0-9.-]+:[^?#\s]+$/.test(repositoryUrl) || repositoryUrl.includes("..")) {
       throw new TypeError("SSH repository URL must use git@host:path syntax without query parameters or fragments.");
     }
     return repositoryUrl;
