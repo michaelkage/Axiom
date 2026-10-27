@@ -25,17 +25,30 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       const previous = index >= 0 ? tasks[index] : {};
       const terminalStatuses = new Set(["succeeded", "failed", "blocked", "cancelled", "timed_out"]);
       const previousIsTerminal = terminalStatuses.has(previous.status);
-      // Worker event delivery and IPC persistence can race. Once terminal, a task's
-      // outcome payload is immutable; only a same-status update may extend its logs.
-      const next = {
+      const incomingAttempt = Number.isInteger(task.attempt) && task.attempt > 0 ? task.attempt : 1;
+      const previousAttempt = Number.isInteger(previous.attempt) && previous.attempt > 0 ? previous.attempt : 1;
+      // Retry attempts share a stable task ID. Reject delayed events from an older
+      // attempt, but allow a newer attempt's running event to reopen a terminal task.
+      if (index >= 0 && incomingAttempt < previousAttempt) return previous;
+      const startsNewAttempt = previousIsTerminal && incomingAttempt > previousAttempt && task.status === "running";
+      const next = startsNewAttempt ? {
+        ...task,
+        attempt: incomingAttempt,
+        logs: task.logs ?? [],
+        error: task.error,
+        result: task.result,
+        finishedAt: task.finishedAt,
+        updatedAt: new Date().toISOString()
+      } : {
         ...previous,
         ...task,
+        attempt: Math.max(previousAttempt, incomingAttempt),
         ...(previousIsTerminal ? {
           status: previous.status,
           error: previous.error,
           result: previous.result,
           finishedAt: previous.finishedAt,
-          logs: task.status === previous.status ? (task.logs ?? previous.logs) : (previous.logs ?? task.logs)
+          logs: task.status === previous.status && incomingAttempt === previousAttempt ? (task.logs ?? previous.logs) : (previous.logs ?? task.logs)
         } : {}),
         updatedAt: new Date().toISOString()
       };

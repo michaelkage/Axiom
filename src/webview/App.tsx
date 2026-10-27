@@ -496,7 +496,14 @@ function App() {
         signal: abortController.signal,
         onOutcome: (record: TaskExecutionRecord) => {
           const prior = taskOutcomes().find(item => item.taskId === record.taskId);
-          const mergedRecord = { ...prior, ...record, logs: record.logs ?? prior?.logs };
+          const mergedRecord = {
+            ...prior,
+            ...record,
+            // Persist the supervisor's attempt generation so legitimate retries can
+            // supersede terminal outcomes while delayed events from older attempts cannot.
+            attempt: attemptsByTask.get(record.taskId) ?? record.attempt ?? prior?.attempt ?? 1,
+            logs: record.logs ?? prior?.logs,
+          };
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
           const project = desktopApi()?.project;
           if (project) void project.recordWorkerTask(mergedRecord).catch(error => logger.error("Could not persist worker outcome", { taskId: record.taskId, error }));
