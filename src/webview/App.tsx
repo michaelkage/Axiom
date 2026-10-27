@@ -510,14 +510,14 @@ function App() {
         request: plan.prompt,
         planSteps: plan.steps,
         signal: abortController.signal,
-        onOutcome: (record: TaskExecutionRecord) => {
+        onOutcome: (record: TaskExecutionRecord, originatingAttempt?: number) => {
           const prior = taskOutcomes().find(item => item.taskId === record.taskId);
           const mergedRecord = {
             ...prior,
             ...record,
             // Persist the supervisor's attempt generation so legitimate retries can
             // supersede terminal outcomes while delayed events from older attempts cannot.
-            attempt: attemptsByTask.get(record.taskId) ?? record.attempt ?? prior?.attempt ?? 1,
+            attempt: originatingAttempt ?? attemptsByTask.get(record.taskId) ?? record.attempt ?? prior?.attempt ?? 1,
             logs: record.logs ?? prior?.logs,
           };
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
@@ -563,7 +563,8 @@ function App() {
             }).then(() => window.dispatchEvent(new Event("axiom-project-state-updated"))).catch(error => logger.error("Could not persist worker lifecycle event", { taskId: record.taskId, error }));
           }
         },
-        onLog: (taskId: string, line: string) => {
+        onLog: (taskId: string, line: string, originatingAttempt?: number) => {
+          if (originatingAttempt != null && (attemptsByTask.get(taskId) ?? 0) !== originatingAttempt) return;
           const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
@@ -640,7 +641,23 @@ function App() {
             dependsOn: task.dependsOn.filter(id => !finalTaskSucceeded(id)),
           }));
           try {
-            const dispatched = await runSubAgentTasks(parentSessionId, runnableTasks, selectedAgent(), executionOptions);
+            // Bind callbacks to the exact attempt being dispatched. A timed-out runner may
+            // still emit late events after the supervisor has started its retry.
+            const dispatchedAttempts = new Map(runnable.map(task => [task.id, attemptsByTask.get(task.id) ?? 0]));
+            const dispatchedExecutionOptions = {
+              ...executionOptions,
+              onOutcome: (record: TaskExecutionRecord) => {
+                const attempt = dispatchedAttempts.get(record.taskId);
+                if (attempt == null || (attemptsByTask.get(record.taskId) ?? 0) !== attempt) return;
+                executionOptions.onOutcome(record, attempt);
+              },
+              onLog: (taskId: string, line: string) => {
+                const attempt = dispatchedAttempts.get(taskId);
+                if (attempt == null || (attemptsByTask.get(taskId) ?? 0) !== attempt) return;
+                executionOptions.onLog(taskId, line, attempt);
+              },
+            };
+            const dispatched = await runSubAgentTasks(parentSessionId, runnableTasks, selectedAgent(), dispatchedExecutionOptions);
             results = [...results.filter(item => !runnable.some(task => task.id === item.task.id)), ...dispatched];
           } catch (dispatchError) {
             if (!(dispatchError instanceof TaskBatchExecutionError)) throw dispatchError;
