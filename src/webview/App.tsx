@@ -490,6 +490,16 @@ function App() {
       }
       // Keep successful work intact. Retry only workers with a confirmed failed or timed-out
       // terminal event, once, and never retry blocked/cancelled work automatically.
+      // Serialize worker persistence per task. Worker log callbacks and terminal outcomes can
+      // arrive close together; fire-and-forget writes must not let an older snapshot overwrite
+      // a newer terminal status in the project store.
+      const workerPersistenceByTask = new Map<string, Promise<void>>();
+      const enqueueWorkerPersistence = (taskId: string, operation: () => Promise<void>) => {
+        const previous = workerPersistenceByTask.get(taskId) ?? Promise.resolve();
+        const next = previous.catch(() => undefined).then(operation);
+        workerPersistenceByTask.set(taskId, next);
+        void next.catch(error => logger.error("Could not persist worker diagnostics", { taskId, error }));
+      };
       const executionOptions = {
         request: plan.prompt,
         planSteps: plan.steps,
@@ -506,7 +516,9 @@ function App() {
           };
           setTaskOutcomes(previous => [...previous.filter(item => item.taskId !== record.taskId), mergedRecord]);
           const project = desktopApi()?.project;
-          if (project) void project.recordWorkerTask(mergedRecord).catch(error => logger.error("Could not persist worker outcome", { taskId: record.taskId, error }));
+          if (project) enqueueWorkerPersistence(record.taskId, async () => {
+            await project.recordWorkerTask(mergedRecord);
+          });
           if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
             const summary = record.status === "succeeded"
               ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
@@ -551,7 +563,9 @@ function App() {
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
           const project = desktopApi()?.project;
-          if (existing && project) void project.recordWorkerTask(existing).catch(error => logger.error("Could not persist worker log", { taskId, error }));
+          if (existing && project) enqueueWorkerPersistence(taskId, async () => {
+            await project.recordWorkerTask(existing);
+          });
         },
       };
       let results: Awaited<ReturnType<typeof runSubAgentTasks>> = [];
