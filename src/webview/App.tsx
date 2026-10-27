@@ -26,7 +26,7 @@ import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart 
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
-import { createIndependentTasks, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
+import { createIndependentTasks, isCurrentTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
 
 export interface QueuedMessage {
@@ -564,7 +564,7 @@ function App() {
           }
         },
         onLog: (taskId: string, line: string, originatingAttempt?: number) => {
-          if (originatingAttempt != null && (attemptsByTask.get(taskId) ?? 0) !== originatingAttempt) return;
+          if (!isCurrentTaskAttempt(taskId, originatingAttempt, attemptsByTask)) return;
           const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
@@ -648,12 +648,12 @@ function App() {
               ...executionOptions,
               onOutcome: (record: TaskExecutionRecord) => {
                 const attempt = dispatchedAttempts.get(record.taskId);
-                if (attempt == null || (attemptsByTask.get(record.taskId) ?? 0) !== attempt) return;
+                if (!isCurrentTaskAttempt(record.taskId, attempt, attemptsByTask)) return;
                 executionOptions.onOutcome(record, attempt);
               },
               onLog: (taskId: string, line: string) => {
                 const attempt = dispatchedAttempts.get(taskId);
-                if (attempt == null || (attemptsByTask.get(taskId) ?? 0) !== attempt) return;
+                if (!isCurrentTaskAttempt(taskId, attempt, attemptsByTask)) return;
                 executionOptions.onLog(taskId, line, attempt);
               },
             };
