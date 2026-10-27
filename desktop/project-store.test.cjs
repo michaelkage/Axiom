@@ -27,6 +27,23 @@ test("project state persists context and bounded change history", async () => {
   }
 });
 
+test("change events with the same id update instead of duplicating the feed entry", async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-project-store-"));
+  try {
+    const workspace = path.join(temporary, "repo");
+    await fs.mkdir(workspace);
+    const store = createProjectStore(path.join(temporary, "user-data"), workspace);
+    await store.addChange({ id: "worker:task-a:2:failed", title: "Worker failed: Task A", summary: "First diagnostic", status: "failed" });
+    await store.addChange({ id: "worker:task-a:2:failed", title: "Worker failed: Task A", summary: "Updated diagnostic", status: "failed" });
+    const state = await store.read();
+    assert.equal(state.changes.length, 1);
+    assert.equal(state.changes[0].id, "worker:task-a:2:failed");
+    assert.equal(state.changes[0].summary, "Updated diagnostic");
+  } finally {
+    await fs.rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test("change events reject invalid statuses and empty titles", () => {
   assert.equal(isValidChange({ title: "X", summary: "Y", status: "verified" }), true);
   assert.equal(isValidChange({ title: "X", summary: "Y", status: "successful-ish" }), false);
