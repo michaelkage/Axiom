@@ -648,12 +648,12 @@ function App() {
               ...executionOptions,
               onOutcome: (record: TaskExecutionRecord) => {
                 const attempt = dispatchedAttempts.get(record.taskId);
-                if (!isCurrentTaskAttempt(record.taskId, attempt, attemptsByTask)) return;
+                if (attempt == null || !isCurrentTaskAttempt(record.taskId, attempt, attemptsByTask)) return;
                 executionOptions.onOutcome(record, attempt);
               },
               onLog: (taskId: string, line: string) => {
                 const attempt = dispatchedAttempts.get(taskId);
-                if (!isCurrentTaskAttempt(taskId, attempt, attemptsByTask)) return;
+                if (attempt == null || !isCurrentTaskAttempt(taskId, attempt, attemptsByTask)) return;
                 executionOptions.onLog(taskId, line, attempt);
               },
             };
