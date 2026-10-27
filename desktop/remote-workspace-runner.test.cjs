@@ -12,7 +12,16 @@ test("remote workspace runner rejects embedded credentials", () => {
 });
 test("remote workspace runner accepts credential-free HTTPS and SSH remotes", () => {
   assert.equal(safeRemoteUrl("https://github.com/org/repo.git"), "https://github.com/org/repo.git");
+  assert.equal(safeRemoteUrl("ssh://git@github.com/org/repo.git"), "ssh://git@github.com/org/repo.git");
   assert.equal(safeRemoteUrl("git@github.com:org/repo.git"), "git@github.com:org/repo.git");
+});
+
+test("remote workspace runner rejects unsafe protocols and malformed SSH remotes", () => {
+  assert.throws(() => safeRemoteUrl("http://github.com/org/repo.git"), /HTTPS or SSH/);
+  assert.throws(() => safeRemoteUrl("file:///tmp/repo.git"), /HTTPS or SSH/);
+  assert.throws(() => safeRemoteUrl("git@github.com"), /SSH repository URL/);
+  assert.throws(() => safeRemoteUrl("git@github.com:org/repo.git?token=secret"), /SSH repository URL/);
+  assert.throws(() => safeRemoteUrl("ssh://user:token@github.com/org/repo.git"), /embedded credentials/);
 });
 
 async function makeCheckout(directory, { remote = "https://github.com/org/repo.git", branch = "feature/axiom" } = {}) {
