@@ -8,9 +8,18 @@ import {
   TaskBatchExecutionError,
   parseSubTasks,
   planSubTasksWithOmniRoute,
+  isCurrentTaskAttempt,
 } from "./axiomRuntime";
 
 describe("Axiom runtime helpers", () => {
+  it("rejects callbacks from an earlier worker attempt while allowing the active attempt", () => {
+    const attempts = new Map([["task-a", 2], ["task-b", 1]]);
+    expect(isCurrentTaskAttempt("task-a", 1, attempts)).toBe(false);
+    expect(isCurrentTaskAttempt("task-a", 2, attempts)).toBe(true);
+    expect(isCurrentTaskAttempt("task-b", 1, attempts)).toBe(true);
+    expect(isCurrentTaskAttempt("task-missing", 1, attempts)).toBe(false);
+    expect(isCurrentTaskAttempt("task-a", undefined, attempts)).toBe(true);
+  });
   it("rejects planner tasks without explicit acceptance criteria", () => {
     expect(() => parseSubTasks([
       { id: "missing-criteria", title: "Task", scope: "Do work", targetFiles: ["src/task.ts"], dependsOn: [] },
