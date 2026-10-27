@@ -90,6 +90,11 @@ export function createIndependentTasks(tasks: AxiomSubTask[]): AxiomSubTask[][] 
   return batches;
 }
 
+/** Returns whether a callback still belongs to the task's active supervisor attempt. */
+export function isCurrentTaskAttempt(taskId: string, originatingAttempt: number | undefined, currentAttempts: ReadonlyMap<string, number>): boolean {
+  return originatingAttempt == null || (currentAttempts.get(taskId) ?? 0) === originatingAttempt;
+}
+
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
