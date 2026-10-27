@@ -68,7 +68,7 @@ function createProjectStore(userDataPath, workspaceRoot) {
     if (!isValidChange(change)) throw new TypeError("Change event requires a title, summary, and valid status.");
     return serializeWrite(async () => {
       const state = await read();
-      state.changes.push({
+      const event = {
       id: typeof change.id === "string" && change.id.length < 128 ? change.id : crypto.randomUUID(),
       title: change.title.trim().slice(0, 160),
       summary: change.summary.trim().slice(0, 2000),
@@ -80,7 +80,10 @@ function createProjectStore(userDataPath, workspaceRoot) {
         details: String(check.details || "").slice(0, 2000)
       })) : [],
       files: Array.isArray(change.files) ? change.files.filter(file => typeof file === "string").slice(0, 200).map(file => file.slice(0, 500)) : []
-    });
+      };
+      const existingIndex = state.changes.findIndex(existing => existing.id === event.id);
+      if (existingIndex >= 0) state.changes[existingIndex] = event;
+      else state.changes.push(event);
       state.changes = state.changes.slice(-MAX_EVENTS);
       return write(state);
     });
