@@ -4,12 +4,35 @@ const path = require("node:path");
 const WORKSPACE_MODES = Object.freeze(["persistent", "temporary-full", "temporary-selective"]);
 const TERMINAL_SUCCESS = new Set(["verified", "committed", "pushed"]);
 
+function validateRepositoryUrl(repositoryUrl) {
+  if (typeof repositoryUrl !== "string" || !repositoryUrl.trim() || /[\\s\\\\\\0]/.test(repositoryUrl)) {
+    throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
+  }
+  if (repositoryUrl.startsWith("git@")) {
+    if (!/^git@[A-Za-z0-9.-]+:[^?#\\s]+$/.test(repositoryUrl) || repositoryUrl.includes("..")) {
+      throw new TypeError("SSH repository URL must use git@host:path syntax without query parameters or fragments.");
+    }
+    return repositoryUrl;
+  }
+  let url;
+  try {
+    url = new URL(repositoryUrl);
+  } catch {
+    throw new TypeError("Repository URL must be a valid HTTPS or SSH remote.");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "ssh:") {
+    throw new TypeError("Repository URL must use HTTPS or SSH.");
+  }
+  if (!url.hostname || url.password || url.search || url.hash || (url.protocol === "https:" && url.username)) {
+    throw new TypeError("Repository URL must not contain embedded credentials, query parameters, or fragments.");
+  }
+  return repositoryUrl;
+}
+
 function validateRemoteWorkspaceRequest(request) {
   if (!request || typeof request !== "object") throw new TypeError("A remote workspace request is required.");
   if (!WORKSPACE_MODES.includes(request.mode)) throw new TypeError("Unsupported remote workspace mode.");
-  if (typeof request.repositoryUrl !== "string" || !/^https:\/\//i.test(request.repositoryUrl) && !/^ssh:\/\//i.test(request.repositoryUrl) && !/^git@[^:]+:.+/.test(request.repositoryUrl)) {
-    throw new TypeError("Repository URL must use HTTPS or SSH.");
-  }
+  validateRepositoryUrl(request.repositoryUrl);
   if (typeof request.branch !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(request.branch) || request.branch.includes("..") || request.branch.endsWith("/") || request.branch.endsWith(".lock")) {
     throw new TypeError("A valid target branch is required.");
   }

@@ -8,6 +8,17 @@ test("validates full and selective remote workspace requests", () => {
   assert.deepEqual(validateRemoteWorkspaceRequest({ mode: "temporary-selective", repositoryUrl: "git@github.com:acme/repo.git", branch: "main", paths: ["src/a.ts", "src/../README.md", "src/a.ts"] }).paths, ["src/a.ts", "README.md"]);
   assert.throws(() => validateRemoteWorkspaceRequest({ mode: "temporary-selective", repositoryUrl: "https://github.com/acme/repo.git", branch: "main", paths: [] }), /requires at least one/);
   assert.throws(() => validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl: "file:///etc/passwd", branch: "main" }), /HTTPS or SSH/);
+  for (const repositoryUrl of [
+    "https://user:token@github.com/acme/repo.git",
+    "https://github.com/acme/repo.git?token=secret",
+    "https://github.com/acme/repo.git#fragment",
+    "https://github.com/acme/repo.git\\n--upload-pack=evil",
+    "https://github.com/acme/repo.git\\\\n",
+    "git@github.com:acme/repo.git?token=secret",
+    "https://github.com\\\\acme\\\\repo.git"
+  ]) {
+    assert.throws(() => validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl, branch: "main" }), /Repository URL|SSH repository URL/);
+  }
 });
 
 test("rejects traversal and unsafe repository paths", () => {
