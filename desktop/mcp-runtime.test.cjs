@@ -29,6 +29,33 @@ test("reports connection and tool discovery from runtime endpoints", async () =>
   assert.equal(result.servers[1].status, "not_reported");
 });
 
+test("reports unhealthy runtime state without treating it as unknown", async () => {
+  const fetchImpl = async url => {
+    const path = new URL(url).pathname;
+    if (path === "/global/health") return { ok: true, json: async () => ({ healthy: false, version: "1.19.0" }) };
+    if (path === "/mcp") return { ok: true, json: async () => ({ data: [{ name: "context7", status: "connected" }] }) };
+    if (path === "/experimental/tool/ids") return { ok: true, json: async () => ({ toolIDs: ["context7_resolve-library-id"] }) };
+    return { ok: false, status: 404 };
+  };
+  const result = await inspectMcpRuntime({ baseUrl: "http://127.0.0.1:4096", configuredIds: ["context7"], fetchImpl });
+  assert.equal(result.runtimeReachable, true);
+  assert.equal(result.runtimeHealthy, false);
+  assert.match(result.healthError, /reports an unhealthy runtime/);
+});
+
+test("leaves runtime health unknown when a legacy endpoint omits the healthy flag", async () => {
+  const fetchImpl = async url => {
+    const path = new URL(url).pathname;
+    if (path === "/global/health") return { ok: true, json: async () => ({ version: "legacy" }) };
+    if (path === "/mcp") return { ok: true, json: async () => ({ data: [] }) };
+    if (path === "/experimental/tool/ids") return { ok: true, json: async () => ({ toolIDs: [] }) };
+    return { ok: false, status: 404 };
+  };
+  const result = await inspectMcpRuntime({ baseUrl: "http://127.0.0.1:4096", fetchImpl });
+  assert.equal(result.runtimeHealthy, null);
+  assert.equal(result.healthError, "");
+});
+
 test("worker probe requires a completed MCP tool invocation", async () => {
   let calls = 0;
   const fetchImpl = async (url, options) => {
