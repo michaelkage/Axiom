@@ -133,12 +133,14 @@ test("worker probe rejects runtime URLs with unsupported schemes or embedded cre
   assert.equal(calls, 0);
 });
 
-test("worker probe rejects a session response without a session ID", async () => {
-  const fetchImpl = async () => ({ ok: true, json: async () => ({ data: {} }) });
-  await assert.rejects(
-    runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
-    /no identifiable diagnostic session/
-  );
+test("worker probe rejects missing or non-string session IDs", async () => {
+  for (const payload of [{ data: {} }, { id: 42 }, { id: { value: "ses_test" } }, { data: { id: "   " } }]) {
+    const fetchImpl = async () => ({ ok: true, json: async () => payload });
+    await assert.rejects(
+      runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
+      /no identifiable diagnostic session/
+    );
+  }
 });
 
 test("worker probe reports runtime HTTP failures instead of success", async () => {
