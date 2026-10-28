@@ -9,6 +9,7 @@ test("normalizes Axiom runtime MCP status and tool IDs", () => {
   assert.deepEqual(normalizeToolIds({ toolIDs: ["context7_resolve-library-id"] }), ["context7_resolve-library-id"]);
   assert.deepEqual(normalizeToolIds({ toolIds: ["valid_tool", 42, null, {}, { id: 7 }, { name: "named_tool" }] }), ["valid_tool", "named_tool"]);
   assert.deepEqual(extractToolCalls({ parts: [{ type: "tool", tool: "context7_resolve-library-id", state: { status: "completed" } }] }), [{ name: "context7_resolve-library-id", state: "completed" }]);
+  assert.deepEqual(extractToolCalls({ parts: [null, 3, { type: "tool", tool: 12, name: "fallback_tool", state: {} }, { type: "tool-call", name: "second_tool", state: 7 }] }), [{ name: "fallback_tool", state: "unknown" }, { name: "second_tool", state: "unknown" }]);
 });
 
 test("reports connection and tool discovery from runtime endpoints", async () => {
