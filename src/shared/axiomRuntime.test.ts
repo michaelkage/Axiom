@@ -9,6 +9,7 @@ import {
   parseSubTasks,
   planSubTasksWithOmniRoute,
   isCurrentTaskAttempt,
+  isCurrentDispatchedTaskAttempt,
 } from "./axiomRuntime";
 
 describe("Axiom runtime helpers", () => {
@@ -20,6 +21,15 @@ describe("Axiom runtime helpers", () => {
     expect(isCurrentTaskAttempt("task-missing", 1, attempts)).toBe(false);
     expect(isCurrentTaskAttempt("task-a", undefined, attempts)).toBe(true);
   });
+  it("requires dispatched callbacks to carry the current attempt generation", () => {
+    const attempts = new Map([["task-a", 2], ["task-b", 1]]);
+    expect(isCurrentDispatchedTaskAttempt("task-a", undefined, attempts)).toBe(false);
+    expect(isCurrentDispatchedTaskAttempt("task-a", 1, attempts)).toBe(false);
+    expect(isCurrentDispatchedTaskAttempt("task-a", 2, attempts)).toBe(true);
+    expect(isCurrentDispatchedTaskAttempt("task-b", 1, attempts)).toBe(true);
+    expect(isCurrentDispatchedTaskAttempt("task-missing", 1, attempts)).toBe(false);
+  });
+
   it("rejects planner tasks without explicit acceptance criteria", () => {
     expect(() => parseSubTasks([
       { id: "missing-criteria", title: "Task", scope: "Do work", targetFiles: ["src/task.ts"], dependsOn: [] },
