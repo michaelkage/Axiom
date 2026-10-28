@@ -11,11 +11,15 @@ async function requestJson(baseUrl, route, fetchImpl = fetch) {
 
 function normalizeMcpList(payload) {
   const list = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.servers) ? payload.servers : [];
-  return list.map(item => ({
-    id: String(item.name || item.id || ""),
-    status: String(item.status?.status || item.status || "unknown").toLowerCase(),
-    error: typeof item.error === "string" && item.error ? "Axiom runtime reported an MCP server error; check authentication and runtime logs." : ""
-  })).filter(item => item.id);
+  return list.filter(item => item && typeof item === "object" && !Array.isArray(item)).map(item => {
+    const id = typeof item.name === "string" && item.name.trim() ? item.name.trim() : typeof item.id === "string" ? item.id.trim() : "";
+    const rawStatus = typeof item.status === "string" ? item.status : typeof item.status?.status === "string" ? item.status.status : "unknown";
+    return {
+      id,
+      status: rawStatus.toLowerCase(),
+      error: typeof item.error === "string" && item.error ? "Axiom runtime reported an MCP server error; check authentication and runtime logs." : ""
+    };
+  }).filter(item => item.id);
 }
 
 function normalizeToolIds(payload) {
