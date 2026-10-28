@@ -23,7 +23,7 @@ function normalizeToolIds(payload) {
     : Array.isArray(payload?.toolIDs) ? payload.toolIDs
     : Array.isArray(payload?.toolIds) ? payload.toolIds
     : Array.isArray(payload?.data) ? payload.data : [];
-  return values.map(item => typeof item === "string" ? item : item?.id || item?.name || "").filter(Boolean);
+  return values.map(item => typeof item === "string" ? item : typeof item?.id === "string" ? item.id : typeof item?.name === "string" ? item.name : "").filter(item => item.length > 0);
 }
 
 async function firstSuccessful(baseUrl, routes, fetchImpl) {
