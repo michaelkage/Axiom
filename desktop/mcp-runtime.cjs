@@ -45,7 +45,7 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
   try {
     const health = await firstSuccessful(baseUrl, ["global/health", "api/global/health"], fetchImpl);
     runtimeVersion = typeof health.value?.version === "string" ? health.value.version : null;
-    runtimeHealthy = health.value?.healthy === true;
+    runtimeHealthy = typeof health.value?.healthy === "boolean" ? health.value.healthy : null;
   } catch { /* Older runtime builds may not expose the health endpoint. */ }
   let mcpResult;
   try {
@@ -76,6 +76,7 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
     runtimeReachable: true,
     runtimeVersion,
     runtimeHealthy,
+    healthError: runtimeHealthy === false ? "The Axiom runtime health endpoint reports an unhealthy runtime. Check runtime logs and initialization." : "",
     servers: configured,
     toolIds,
     toolDiscoveryAvailable: !toolDiscoveryError,
