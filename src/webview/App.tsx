@@ -26,7 +26,7 @@ import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart 
 import type { FileDiff } from "../shared/messages";
 import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
-import { createIndependentTasks, isCurrentTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
+import { createIndependentTasks, isCurrentTaskAttempt, isCurrentDispatchedTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
 
 export interface QueuedMessage {
@@ -649,12 +649,12 @@ function App() {
               ...executionOptions,
               onOutcome: (record: TaskExecutionRecord) => {
                 const attempt = dispatchedAttempts.get(record.taskId);
-                if (attempt == null || !isCurrentTaskAttempt(record.taskId, attempt, attemptsByTask)) return;
+                if (!isCurrentDispatchedTaskAttempt(record.taskId, attempt, attemptsByTask)) return;
                 executionOptions.onOutcome(record, attempt);
               },
               onLog: (taskId: string, line: string) => {
                 const attempt = dispatchedAttempts.get(taskId);
-                if (attempt == null || !isCurrentTaskAttempt(taskId, attempt, attemptsByTask)) return;
+                if (!isCurrentDispatchedTaskAttempt(taskId, attempt, attemptsByTask)) return;
                 executionOptions.onLog(taskId, line, attempt);
               },
             };
