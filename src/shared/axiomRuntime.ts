@@ -95,6 +95,11 @@ export function isCurrentTaskAttempt(taskId: string, originatingAttempt: number 
   return originatingAttempt == null || (currentAttempts.get(taskId) ?? 0) === originatingAttempt;
 }
 
+/** Dispatch-scoped callbacks must carry an attempt and match the current generation. */
+export function isCurrentDispatchedTaskAttempt(taskId: string, originatingAttempt: number | undefined, currentAttempts: ReadonlyMap<string, number>): boolean {
+  return originatingAttempt != null && isCurrentTaskAttempt(taskId, originatingAttempt, currentAttempts);
+}
+
 export type TaskExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TaskExecutionRecord {
   taskId: string; title: string; status: TaskExecutionStatus;
