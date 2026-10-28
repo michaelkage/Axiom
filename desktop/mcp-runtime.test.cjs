@@ -5,6 +5,7 @@ const { inspectMcpRuntime, normalizeMcpList, normalizeToolIds, extractToolCalls,
 
 test("normalizes Axiom runtime MCP status and tool IDs", () => {
   assert.deepEqual(normalizeMcpList({ data: [{ name: "context7", status: { status: "connected" } }] }), [{ id: "context7", status: "connected", error: "" }]);
+  assert.deepEqual(normalizeMcpList({ servers: [null, 7, {}, { name: 42, id: 9, status: {} }, { name: "  github  ", status: { status: "CONNECTED" } }] }), [{ id: "github", status: "connected", error: "" }]);
   assert.deepEqual(normalizeToolIds({ toolIDs: ["context7_resolve-library-id"] }), ["context7_resolve-library-id"]);
   assert.deepEqual(normalizeToolIds({ toolIds: ["valid_tool", 42, null, {}, { id: 7 }, { name: "named_tool" }] }), ["valid_tool", "named_tool"]);
   assert.deepEqual(extractToolCalls({ parts: [{ type: "tool", tool: "context7_resolve-library-id", state: { status: "completed" } }] }), [{ name: "context7_resolve-library-id", state: "completed" }]);
