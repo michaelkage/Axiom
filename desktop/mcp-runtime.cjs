@@ -115,7 +115,10 @@ async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } 
   if (!messageResponse.ok) throw new Error("Axiom worker request failed (HTTP " + messageResponse.status + ").");
   const message = await messageResponse.json();
   const calls = extractToolCalls(message);
-  const matching = calls.find(call => call.name.startsWith(expectedPrefix));
+  const matchingCalls = calls.filter(call => call.name.startsWith(expectedPrefix));
+  const matching = matchingCalls.find(call => ["completed", "success", "succeeded"].includes(call.state))
+    || matchingCalls.find(call => ["error", "failed", "cancelled", "canceled"].includes(call.state))
+    || matchingCalls.at(-1);
   const completed = matching && ["completed", "success", "succeeded"].includes(matching.state);
   const failed = matching && ["error", "failed", "cancelled", "canceled"].includes(matching.state);
   return {
