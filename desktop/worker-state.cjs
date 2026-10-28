@@ -71,5 +71,5 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
   }
   return { list, record, recoverInterrupted };
 }
-function isValidTask(task) { return !!task && typeof task.taskId === "string" && task.taskId.length > 0 && task.taskId.length <= 128 && typeof task.title === "string" && task.title.length > 0 && ["queued","running","succeeded","failed","blocked","cancelled","timed_out"].includes(task.status); }
+function isValidTask(task) { return !!task && typeof task.taskId === "string" && task.taskId.length > 0 && task.taskId.length <= 128 && typeof task.title === "string" && task.title.length > 0 && (task.attempt == null || (Number.isInteger(task.attempt) && task.attempt > 0)) && ["queued","running","succeeded","failed","blocked","cancelled","timed_out"].includes(task.status); }
 module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS };
