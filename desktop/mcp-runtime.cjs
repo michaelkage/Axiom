@@ -86,11 +86,12 @@ async function inspectMcpRuntime({ baseUrl, configuredIds = [], fetchImpl = fetc
 
 function extractToolCalls(message) {
   const parts = Array.isArray(message?.parts) ? message.parts : Array.isArray(message?.data?.parts) ? message.data.parts : [];
-  return parts.filter(part => part && (part.type === "tool" || part.type === "tool-call" || part.tool))
-    .map(part => ({
-      name: String(part.tool || part.name || part.call?.name || ""),
-      state: String(part.state?.status || part.state || "unknown").toLowerCase()
-    }))
+  return parts.filter(part => part && typeof part === "object" && !Array.isArray(part) && (part.type === "tool" || part.type === "tool-call" || typeof part.tool === "string"))
+    .map(part => {
+      const name = typeof part.tool === "string" && part.tool.trim() ? part.tool.trim() : typeof part.name === "string" && part.name.trim() ? part.name.trim() : typeof part.call?.name === "string" ? part.call.name.trim() : "";
+      const rawState = typeof part.state === "string" ? part.state : typeof part.state?.status === "string" ? part.state.status : "unknown";
+      return { name, state: rawState.toLowerCase() };
+    })
     .filter(part => part.name);
 }
 
