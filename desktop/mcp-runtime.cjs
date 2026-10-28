@@ -96,7 +96,9 @@ function extractToolCalls(message) {
 }
 
 async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } = {}) {
-  if (!baseUrl || !integrationId) throw new Error("Runtime URL and integration ID are required.");
+  if (typeof baseUrl !== "string" || !baseUrl.trim() || typeof integrationId !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(integrationId)) throw new Error("A valid runtime URL and MCP integration ID are required.");
+  try { const parsedBase = new URL(baseUrl); if (!["http:", "https:"].includes(parsedBase.protocol) || parsedBase.username || parsedBase.password) throw new Error(); }
+  catch { throw new Error("The Axiom runtime URL must be a valid HTTP(S) URL without embedded credentials."); }
   const base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
   const sessionResponse = await fetchImpl(new URL("session", base), {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Axiom MCP tool verification" }), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
