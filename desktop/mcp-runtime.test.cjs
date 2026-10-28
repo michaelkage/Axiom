@@ -72,6 +72,24 @@ test("worker probe rejects calls to a different integration", async () => {
   assert.equal(result.toolName, null);
 });
 
+test("worker probe rejects malformed integration IDs before contacting the runtime", async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; throw new Error("should not be called"); };
+  for (const integrationId of ["", "   ", "../github", "context7/extra", "context7 name", 7, null]) {
+    await assert.rejects(runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId, fetchImpl }), /valid runtime URL and MCP integration ID/);
+  }
+  assert.equal(calls, 0);
+});
+
+test("worker probe rejects runtime URLs with unsupported schemes or embedded credentials", async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; throw new Error("should not be called"); };
+  for (const baseUrl of ["file:///tmp/runtime", "ftp://127.0.0.1:4096", "http://user:secret@127.0.0.1:4096"]) {
+    await assert.rejects(runWorkerToolProbe({ baseUrl, integrationId: "context7", fetchImpl }), /valid HTTP\(S\) URL without embedded credentials/);
+  }
+  assert.equal(calls, 0);
+});
+
 test("worker probe rejects a session response without a session ID", async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ data: {} }) });
   await assert.rejects(
