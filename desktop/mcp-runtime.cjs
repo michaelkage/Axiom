@@ -106,7 +106,11 @@ async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } 
   });
   if (!sessionResponse.ok) throw new Error("Axiom could not create a diagnostic worker session (HTTP " + sessionResponse.status + ").");
   const sessionPayload = await sessionResponse.json();
-  const sessionId = sessionPayload.id || sessionPayload.data?.id;
+  const sessionId = typeof sessionPayload?.id === "string" && sessionPayload.id.trim()
+    ? sessionPayload.id.trim()
+    : typeof sessionPayload?.data?.id === "string" && sessionPayload.data.id.trim()
+      ? sessionPayload.data.id.trim()
+      : null;
   if (!sessionId) throw new Error("Axiom runtime created no identifiable diagnostic session.");
   const expectedPrefix = integrationId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_";
   const prompt = "This is an Axiom MCP integration verification. Use exactly one available tool whose name starts with " + expectedPrefix + " to perform a harmless read-only lookup. Do not use shell, edit files, or perform writes. If no such tool is available, state that clearly. Return a concise result.";
