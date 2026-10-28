@@ -30,6 +30,9 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       // Retry attempts share a stable task ID. Reject delayed events from an older
       // attempt, but allow a newer attempt's running event to reopen a terminal task.
       if (index >= 0 && incomingAttempt < previousAttempt) return previous;
+      // A retry only becomes active when its running event arrives. Do not let an
+      // early terminal/queued event advance the generation and block that transition.
+      if (index >= 0 && previousIsTerminal && incomingAttempt > previousAttempt && task.status !== "running") return previous;
       const startsNewAttempt = previousIsTerminal && incomingAttempt > previousAttempt && task.status === "running";
       const next = startsNewAttempt ? {
         ...task,
