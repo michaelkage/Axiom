@@ -15,7 +15,7 @@ on:
       version:
         description: "Desktop release version (for example 0.4.4)"
         required: true
-        default: "0.4.11"
+        default: "0.4.12"
         type: string
 
 permissions:
@@ -179,7 +179,7 @@ jobs:
           tag_name: v${{ env.AXIOM_VERSION }}
           target_commitish: ${{ github.sha }}
           name: Axiom ${{ env.AXIOM_VERSION }}
-          body_path: RELEASE_NOTES_0.4.11.md
+          body_path: RELEASE_NOTES.md
           files: |
             desktop/release/Axiom-Setup-*-x64.exe
             desktop/release/Axiom-Setup-*-x64.exe.sha256
