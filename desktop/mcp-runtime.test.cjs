@@ -152,6 +152,30 @@ test("worker probe reports runtime HTTP failures instead of success", async () =
   };
   await assert.rejects(
     runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
-    /worker request failed \(HTTP 503\)/
+    error => {
+      assert.match(error.message, /worker request failed \(HTTP 503\)/);
+      assert.equal(error.sessionId, "ses_test");
+      return true;
+    }
+  );
+});
+
+test("worker probe preserves its diagnostic session ID when the request times out", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) return { ok: true, json: async () => ({ id: "ses_timeout" }) };
+    const error = new Error("The operation was aborted");
+    error.name = "TimeoutError";
+    throw error;
+  };
+  await assert.rejects(
+    runWorkerToolProbe({ baseUrl: "http://127.0.0.1:4096", integrationId: "context7", fetchImpl }),
+    error => {
+      assert.match(error.message, /timed out after 120 seconds/);
+      assert.match(error.message, /ses_timeout/);
+      assert.equal(error.sessionId, "ses_timeout");
+      return true;
+    }
   );
 });
