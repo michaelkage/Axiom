@@ -3,6 +3,9 @@ import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 
 export default defineConfig({
+  // The desktop app loads the built UI from file:// via Electron loadFile().
+  // Relative asset URLs are required there; absolute /assets URLs resolve to the drive root.
+  base: './',
   plugins: [solidPlugin()],
   server: {
     port: 5173,
