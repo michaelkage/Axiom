@@ -665,6 +665,7 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
     await taskStore.record({
       taskId, title: "MCP tool verification: " + entry.name, status: "failed",
       workerType: "mcp-diagnostic", integrationId: id,
+      sessionId: typeof error?.sessionId === "string" ? error.sessionId : undefined,
       error: diagnostic, finishedAt: Date.now(),
       logs: [diagnostic]
     });
