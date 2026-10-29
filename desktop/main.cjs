@@ -658,11 +658,17 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
     void appendRuntimeLog("MCP worker probe for " + id + " finished with status=" + result.status + (result.toolName ? " tool=" + result.toolName : "") + ".");
     return result;
   } catch (error) {
+    const detail = String(error instanceof Error ? error.message : error || "Unknown runtime error")
+      .replace(/[\\r\\n\\t]+/g, " ")
+      .slice(0, 500);
+    const diagnostic = "MCP worker probe failed: " + (detail || "Unknown runtime error.");
     await taskStore.record({
       taskId, title: "MCP tool verification: " + entry.name, status: "failed",
       workerType: "mcp-diagnostic", integrationId: id,
-      error: "MCP worker probe failed. Inspect connection diagnostics and runtime logs.", finishedAt: Date.now()
+      error: diagnostic, finishedAt: Date.now(),
+      logs: [diagnostic]
     });
+    await appendRuntimeLog("MCP worker probe for " + id + " failed: " + detail);
     sendHostMessage(event, { type: "worker-state-updated" });
     throw error;
   }
