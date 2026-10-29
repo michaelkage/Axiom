@@ -71,11 +71,6 @@ test("MCP worker diagnostic records a verified tool invocation and survives stor
       finishedAt: 200
     });
 
-    const saved = (await createWorkerStateStore(
-      path.dirname(path.dirname((await fs.realpath(path.join(os.tmpdir(), "unused")).catch(() => "")))),
-      "/not-used"
-    ).list()).find(item => item.taskId === task.taskId);
-    // Read through the original store's durable file to avoid relying on in-memory state.
     const records = await store.list();
     const persisted = records.find(item => item.taskId === task.taskId);
     assert.equal(result.invoked, true);
@@ -84,7 +79,6 @@ test("MCP worker diagnostic records a verified tool invocation and survives stor
     assert.equal(persisted.sessionId, "ses_diagnostic");
     assert.equal(persisted.toolName, "context7_resolve-library-id");
     assert.equal(persisted.error, undefined);
-    assert.equal(saved, undefined);
   });
 });
 
