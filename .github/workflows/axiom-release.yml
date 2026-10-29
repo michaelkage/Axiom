@@ -1,0 +1,95 @@
+name: Build and publish Axiom release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish (for example v0.4.12)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: axiom-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release:
+    name: Build Windows x64 installer and publish release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop packaging dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build standalone UI
+        run: pnpm run build
+
+      - name: Verify bundled runtime entrypoints
+        shell: pwsh
+        run: |
+          node --check desktop/main.cjs
+          node --check desktop/mcp-runtime.cjs
+          if (!(Test-Path "out/src/webview/standalone.html")) { throw "Standalone UI build output is missing." }
+          if (!(Test-Path "desktop/node_modules/opencode-ai")) { throw "Bundled Axiom runtime package is missing." }
+
+      - name: Run unit and desktop tests
+        run: |
+          pnpm exec vitest run
+          pnpm run test:desktop
+
+      - name: Build Windows x64 installer
+        run: pnpm run desktop:dist
+
+      - name: Verify installer artifact
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "desktop/release/Axiom-Setup-*-x64.exe" -File
+          if (!$installer) { throw "Windows x64 installer was not produced." }
+          Get-FileHash $installer.FullName -Algorithm SHA256 | Format-List
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          $tag = if ($env:INPUT_TAG) { $env:INPUT_TAG } else { $env:REF_NAME }
+          $notesPath = "RELEASE_NOTES.md"
+          if (!(Test-Path $notesPath)) { throw "RELEASE_NOTES.md is missing." }
+          $installer = Get-ChildItem "desktop/release/Axiom-Setup-*-x64.exe" -File | Select-Object -First 1
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $installer.FullName --clobber
+          } else {
+            gh release create $tag $installer.FullName --title "Axiom $tag" --notes-file $notesPath
+          }
