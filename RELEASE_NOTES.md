@@ -1,27 +1,25 @@
-# Axiom v0.4.12 — Release notes
+# Axiom v0.4.13 — Desktop rendering and startup diagnostics
 
-This release focuses on making Axiom's bundled desktop runtime easier to diagnose and the worker execution lifecycle more observable.
+This release addresses a likely cause of the black desktop window and strengthens verification so a successful Electron document load is no longer mistaken for a working Axiom interface.
 
-## Improvements
+## Fixes and improvements
 
-- Preserve the runtime session ID when an MCP worker request fails, including HTTP errors and message-request timeouts.
-- Persist the diagnostic session ID in failed worker task history so troubleshooting can resume from the relevant runtime session.
-- Keep actionable worker failure messages in task diagnostics and logs instead of reducing failures to a generic status.
-- Expand desktop integration coverage for worker failure, retry, stale attempt events, interrupted-task recovery, and MCP diagnostic success/failure persistence.
-- Add coverage for MCP request timeouts and retained diagnostic session identifiers.
-- Add a Windows x64 release workflow that builds the standalone UI, checks the bundled runtime entrypoints, runs unit and desktop tests, packages the installer, and publishes it to GitHub Releases.
+- Configure Vite to emit relative asset paths so the standalone UI can load from Electron's packaged `file://` page.
+- Check whether the Axiom renderer actually mounted its root UI after the document loads.
+- Record an explicit `Axiom UI mounted.` diagnostic, or a mount failure, in the desktop runtime log.
+- Require the packaged Windows installer smoke test to verify that the UI mounted, in addition to checking runtime and renderer startup.
 
-## Important verification note
+## Verification notes
 
-The MCP worker diagnostic integration tests use controlled runtime responses. They improve coverage of persistence and error handling, but do not by themselves prove that a real external MCP server was called successfully in a packaged desktop installation.
+The relative asset-path change addresses a plausible cause of the reported black screen. The Windows release workflow now checks for a populated UI root instead of relying only on Electron's `did-finish-load` event. This is a stronger automated check, but it does not replace confirming the full interactive workspace on a user's machine.
 
-The release workflow must complete successfully before the installer should be considered verified. The Windows x64 installer is the supported release artifact for this version.
+MCP diagnostic integration tests use controlled runtime responses and do not by themselves prove that a real external MCP server was called successfully in a packaged installation.
 
 ## Install
 
-Download `Axiom-Setup-0.4.12-x64.exe` from the GitHub Releases page once the release workflow has published it.
+Download `Axiom-Setup-0.4.13-x64.exe` from the GitHub Releases page after the release workflow completes successfully.
 
 ## Known limitations
 
-- This release does not claim end-to-end proof of a live MCP server invocation against every provider.
 - The installer workflow currently targets Windows x64.
+- Full live external MCP-provider verification remains separate from the desktop startup smoke test.
