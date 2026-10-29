@@ -19,7 +19,7 @@ jobs:
   build-and-unit-test:
     name: Build and unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Build standalone UI
         run: pnpm run build
 
@@ -55,3 +58,6 @@ jobs:
 
       - name: Run desktop host tests
         run: pnpm run test:desktop
+
+      - name: Run Playwright end-to-end tests
+        run: pnpm run test:e2e
