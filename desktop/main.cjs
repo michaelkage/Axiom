@@ -315,7 +315,19 @@ async function createWindow() {
     }
   });
 
-  mainWindow.webContents.once("did-finish-load", () => { void appendRuntimeLog("Axiom renderer loaded."); });
+  mainWindow.webContents.once("did-finish-load", () => {
+    void appendRuntimeLog("Axiom renderer loaded.");
+    // A loaded HTML document can still be a black window if the bundled UI assets
+    // failed to load or the Solid application never mounted. Verify the root is populated.
+    void mainWindow?.webContents.executeJavaScript(
+      "({ rootFound: !!document.getElementById('root'), mounted: !!document.getElementById('root')?.children.length, title: document.title })"
+    ).then((state) => {
+      if (state?.mounted) {
+        return appendRuntimeLog("Axiom UI mounted.");
+      }
+      return appendRuntimeLog("Axiom UI mount failed: " + JSON.stringify(state));
+    }).catch((error) => appendRuntimeLog("Axiom UI mount check failed: " + String(error)));
+  });
   mainWindow.webContents.on("render-process-gone", (_event, details) => { void appendRuntimeLog("Renderer process exited: " + JSON.stringify(details)); });
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => { mainWindow = null; });
