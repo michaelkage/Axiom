@@ -59,5 +59,9 @@ jobs:
       - name: Run desktop host tests
         run: pnpm run test:desktop
 
+      - name: Install bundled runtime for end-to-end tests
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
       - name: Run Playwright end-to-end tests
-        run: pnpm run test:e2e
+        run: PATH="$PWD/desktop/node_modules/.bin:$PATH" pnpm run test:e2e
