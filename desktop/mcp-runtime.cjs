@@ -114,11 +114,25 @@ async function runWorkerToolProbe({ baseUrl, integrationId, fetchImpl = fetch } 
   if (!sessionId) throw new Error("Axiom runtime created no identifiable diagnostic session.");
   const expectedPrefix = integrationId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_";
   const prompt = "This is an Axiom MCP integration verification. Use exactly one available tool whose name starts with " + expectedPrefix + " to perform a harmless read-only lookup. Do not use shell, edit files, or perform writes. If no such tool is available, state that clearly. Return a concise result.";
-  const messageResponse = await fetchImpl(new URL("session/" + encodeURIComponent(sessionId) + "/message", base), {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parts: [{ type: "text", text: prompt }] }), signal: AbortSignal.timeout(120000)
-  });
-  if (!messageResponse.ok) throw new Error("Axiom worker request failed (HTTP " + messageResponse.status + ").");
-  const message = await messageResponse.json();
+  let message;
+  try {
+    const messageResponse = await fetchImpl(new URL("session/" + encodeURIComponent(sessionId) + "/message", base), {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parts: [{ type: "text", text: prompt }] }), signal: AbortSignal.timeout(120000)
+    });
+    if (!messageResponse.ok) {
+      const error = new Error("Axiom worker request failed (HTTP " + messageResponse.status + ").");
+      error.sessionId = sessionId;
+      throw error;
+    }
+    message = await messageResponse.json();
+  } catch (cause) {
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    if (!error.sessionId) error.sessionId = sessionId;
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      error.message = "Axiom worker request timed out after 120 seconds. Diagnostic session: " + sessionId + ".";
+    }
+    throw error;
+  }
   const calls = extractToolCalls(message);
   const matchingCalls = calls.filter(call => call.name.startsWith(expectedPrefix));
   const matching = matchingCalls.find(call => ["completed", "success", "succeeded"].includes(call.state))
