@@ -1,6 +1,6 @@
 {
   "name": "axiom-desktop",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "private": true,
   "description": "Axiom standalone desktop application",
   "homepage": "https://github.com/michaelkage/Axiom",
