@@ -309,6 +309,24 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
       // Wait for the app to be ready (message log container)
       await page.waitForSelector('[role="log"]', { timeout: 10000 });
 
+      // Axiom deliberately presents a plan before sending a prompt. E2E tests
+      // exercise the accepted-plan execution path, so automatically accept that
+      // explicit confirmation rather than leaving every send test at the plan gate.
+      await page.evaluate(() => {
+        const acceptPlan = () => {
+          const button = Array.from(document.querySelectorAll<HTMLButtonElement>(
+            "button.workflow-plan__primary"
+          )).find(candidate => candidate.textContent?.includes("Run this plan"));
+          if (button && !button.dataset.e2eAccepted) {
+            button.dataset.e2eAccepted = "true";
+            button.click();
+          }
+        };
+        acceptPlan();
+        const observer = new MutationObserver(acceptPlan);
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+
       return page;
     };
 
