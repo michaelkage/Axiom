@@ -2,6 +2,7 @@ import { test as base, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { createServer, type Server } from "http";
 
 interface OpenCodeConfig {
   serverUrl: string;
@@ -21,6 +22,7 @@ interface LogEntry {
 interface OpenCodeServer {
   url: string;
   process: ChildProcess;
+  mockProvider: Server;
   logs: string[];
   getLogs: () => string;
   searchLogs: (pattern: string | RegExp) => boolean;
@@ -107,7 +109,72 @@ async function waitForServerReady(url: string, timeout = 10000): Promise<void> {
   throw new Error(`Server at ${url} did not become ready within ${timeout}ms`);
 }
 
+async function startMockProvider(): Promise<{ server: Server; url: string }> {
+  const server = createServer(async (request, response) => {
+    if (request.method !== "POST" || !request.url?.endsWith("/chat/completions")) {
+      response.writeHead(404).end();
+      return;
+    }
+    let body = "";
+    for await (const chunk of request) body += chunk.toString();
+    let streaming = false;
+    try {
+      streaming = Boolean(JSON.parse(body).stream);
+    } catch {
+      response.writeHead(400).end();
+      return;
+    }
+    const content = "Axiom test response";
+    if (!streaming) {
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
+        id: "chatcmpl-axiom-e2e",
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: "mock-model",
+        choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+      }));
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    const chunk = (delta: Record<string, unknown>, finish_reason: string | null = null) =>
+      "data: " + JSON.stringify({ id: "chatcmpl-axiom-e2e", object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: "mock-model", choices: [{ index: 0, delta, finish_reason }] }) + "\n\n";
+    response.write(chunk({ role: "assistant" }));
+    response.write(chunk({ content }));
+    response.write(chunk({}, "stop"));
+    response.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+  return { server, url: "http://127.0.0.1:" + address.port + "/v1" };
+}
+
 async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServer> {
+  const mock = await startMockProvider();
+  const testConfig = {
+    model: "axiom-e2e/mock-model",
+    provider: {
+      "axiom-e2e": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Axiom E2E Mock",
+        options: { baseURL: mock.url, apiKey: "test" },
+        models: {
+          "mock-model": {
+            name: "Axiom E2E Mock",
+            limit: { context: 32768, output: 4096 },
+          },
+        },
+      },
+    },
+  };
+  fs.writeFileSync(path.join(workspaceRoot, "opencode.json"), JSON.stringify(testConfig, null, 2));
   return new Promise((resolve, reject) => {
     console.log(`[fixture] Spawning opencode serve in ${workspaceRoot}`);
     
@@ -183,6 +250,7 @@ async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServe
         resolve({ 
           url: serverUrl, 
           process: serverProcess,
+          mockProvider: mock.server,
           logs,
           getLogs: () => logs.join(""),
           searchLogs: (pattern: string | RegExp) => {
@@ -254,6 +322,7 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
       // Cleanup: kill the server after tests
       console.log(`[fixture] Stopping OpenCode server`);
       server.process.kill("SIGTERM");
+      server.mockProvider.close();
     },
     { scope: "worker" },
   ],
