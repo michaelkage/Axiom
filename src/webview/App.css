@@ -2464,3 +2464,6 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
  .welcome-suggestions { grid-template-columns:1fr; }
  .welcome-screen h1 { font-size:34px; }
 }
+
+/* Session entries are semantic buttons, styled to retain the full-row list affordance. */
+.session-dropdown .session-item { width:100%; font:inherit; text-align:left; }
