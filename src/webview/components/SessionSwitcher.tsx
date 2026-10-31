@@ -84,24 +84,26 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
                   const isBusy = () => status()?.type === "busy";
                   
                   return (
-                    <div
+                    <button
+                      type="button"
                       class={`session-item ${
                         session.id === props.currentSessionId ? "current" : ""
                       }`}
+                      aria-current={session.id === props.currentSessionId ? "true" : undefined}
                       onClick={() => handleSessionClick(session.id)}
                     >
-                      <div class="session-item-title">
+                      <span class="session-item-title">
                         <Show when={isBusy()}>
                           <span class="loading-indicator session-status-indicator">
                             {spinnerFrames[spinnerFrame()]}
                           </span>
                         </Show>
                         {session.title}
-                      </div>
-                      <div class="session-item-time">
+                      </span>
+                      <span class="session-item-time">
                         {formatRelativeTime(session.time.updated)}
-                      </div>
-                    </div>
+                      </span>
+                    </button>
                   );
                 }}
               </For>
