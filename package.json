@@ -36,7 +36,7 @@
     "@tiptap/extension-mention": "^2.27.2",
     "@tiptap/extension-paragraph": "^2.27.2",
     "@tiptap/extension-text": "^2.27.2",
-    "@tiptap/suggestion": "^1.2.1",
+    "@tiptap/suggestion": "^2.27.2",
     "marked": "^17.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
