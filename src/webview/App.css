@@ -2466,4 +2466,4 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
 }
 
 /* Session entries are semantic buttons, styled to retain the full-row list affordance. */
-.session-dropdown .session-item { width:100%; font:inherit; text-align:left; }
+.session-dropdown .session-item { width:100%; border:0; border-bottom:1px solid var(--border-color-muted); border-radius:0; font:inherit; text-align:left; }
