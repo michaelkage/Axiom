@@ -130,8 +130,9 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     response?: { status?: number };
     error?: unknown;
   } | undefined;
-  if (sessionListResponse?.error || (sessionListResponse?.response?.status ?? 0) >= 400) {
-    const status = sessionListResponse.response?.status;
+  const sessionListStatus = sessionListResponse?.response?.status;
+  if (sessionListResponse?.error || (sessionListStatus ?? 0) >= 400) {
+    const status = sessionListStatus;
     throw new Error(
       status ? `Failed to load sessions (HTTP ${status})` : "Failed to load sessions",
     );
