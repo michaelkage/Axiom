@@ -17,7 +17,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   const [refreshFailed, setRefreshFailed] = createSignal(false);
   const [spinnerFrame, setSpinnerFrame] = createSignal(0);
 
-  const spinnerFrames = ["\\\\", "|", "/", "-"];
+  const spinnerFrames = ["\\", "|", "/", "-"];
 
   const spinnerInterval = setInterval(() => {
     setSpinnerFrame((prev) => (prev + 1) % spinnerFrames.length);
