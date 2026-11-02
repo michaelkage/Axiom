@@ -126,6 +126,17 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     )
     .map(toAgent);
 
+  const sessionListResponse = sessionsRes as unknown as {
+    response?: { status?: number };
+    error?: unknown;
+  } | undefined;
+  if (sessionListResponse?.error || (sessionListResponse?.response?.status ?? 0) >= 400) {
+    const status = sessionListResponse.response?.status;
+    throw new Error(
+      status ? `Failed to load sessions (HTTP ${status})` : "Failed to load sessions",
+    );
+  }
+
   const sessions = (sessionsRes?.data ?? [])
     .filter((s): s is SDKSession => !!s?.id && !s.parentID)
     .map(toSession)
