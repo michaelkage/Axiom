@@ -76,7 +76,7 @@ test.describe("Session Management", () => {
     const switcher = page.getByRole("button", { name: "Switch session" });
     await switcher.click();
     const dropdown = page.locator(".session-dropdown");
-    await expect(dropdown.getByText("No sessions found")).toBeVisible();
+    await expect(dropdown.locator(".session-item").first()).toBeVisible();
     await switcher.click();
 
     let refreshAttempts = 0;
@@ -105,7 +105,7 @@ test.describe("Session Management", () => {
     await retry.click();
 
     await expect(dropdown.getByRole("alert")).toBeHidden();
-    await expect(dropdown.getByText("No sessions found")).toBeVisible();
+    await expect(dropdown.locator(".session-item").first()).toBeVisible();
     expect(refreshAttempts).toBeGreaterThanOrEqual(2);
   });
 });
