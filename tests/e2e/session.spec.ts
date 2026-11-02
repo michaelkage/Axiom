@@ -67,4 +67,38 @@ test.describe("Session Management", () => {
     // Verify that at least one session list API call was made after clicking
     expect(sessionRequests.length).toBeGreaterThan(0);
   });
+
+  test("shows refresh failure and retries loading sessions", async ({ openWebview }) => {
+    const page = await openWebview();
+    let refreshAttempts = 0;
+
+    await page.route("**/session", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+
+      refreshAttempts++;
+      if (refreshAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary session-list failure" }),
+        });
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Switch session" }).click();
+    const dropdown = page.locator(".session-dropdown");
+    await expect(dropdown.getByRole("alert")).toContainText("Couldn't load sessions.");
+    const retry = dropdown.getByRole("button", { name: "Retry" });
+    await retry.click();
+
+    await expect(dropdown.getByRole("alert")).toBeHidden();
+    await expect(dropdown.getByText("No sessions found")).toBeVisible();
+    expect(refreshAttempts).toBeGreaterThanOrEqual(2);
+  });
 });
