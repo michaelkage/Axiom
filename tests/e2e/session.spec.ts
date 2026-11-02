@@ -80,8 +80,13 @@ test.describe("Session Management", () => {
     await switcher.click();
 
     let refreshAttempts = 0;
-    await page.route("**/session**", async (route) => {
-      if (route.request().method() !== "GET") {
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+
+      // Only fail the collection endpoint; `/session/status` and
+      // `/session/:id` are separate requests used during bootstrap.
+      if (request.method() !== "GET" || !url.pathname.endsWith("/session")) {
         await route.continue();
         return;
       }
