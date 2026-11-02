@@ -31,3 +31,14 @@ test("packaged renderer entry and local assets exist", () => {
     );
   }
 });
+
+
+test("desktop host records renderer startup diagnostics", () => {
+  const mainProcess = fs.readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  assert.match(mainProcess, /webContents\.on\(["']did-fail-load["']/,
+    "renderer navigation failures must be written to the runtime log");
+  assert.match(mainProcess, /webContents\.on\(["']console-message["']/,
+    "renderer console errors must be written to the runtime log");
+  assert.match(mainProcess, /Axiom UI mount failed/,
+    "a loaded but unmounted renderer must be distinguishable from a successful startup");
+});
