@@ -70,8 +70,16 @@ test.describe("Session Management", () => {
 
   test("shows refresh failure and retries loading sessions", async ({ openWebview }) => {
     const page = await openWebview();
-    let refreshAttempts = 0;
 
+    // Let the initial app bootstrap finish before installing the failure route.
+    // Otherwise opening the dropdown can reuse an in-flight bootstrap request.
+    const switcher = page.getByRole("button", { name: "Switch session" });
+    await switcher.click();
+    const dropdown = page.locator(".session-dropdown");
+    await expect(dropdown.getByText("No sessions found")).toBeVisible();
+    await switcher.click();
+
+    let refreshAttempts = 0;
     await page.route("**/session**", async (route) => {
       if (route.request().method() !== "GET") {
         await route.continue();
@@ -91,8 +99,7 @@ test.describe("Session Management", () => {
       await route.continue();
     });
 
-    await page.getByRole("button", { name: "Switch session" }).click();
-    const dropdown = page.locator(".session-dropdown");
+    await switcher.click();
     await expect(dropdown.getByRole("alert")).toContainText("Couldn't load sessions.");
     const retry = dropdown.getByRole("button", { name: "Retry" });
     await retry.click();
