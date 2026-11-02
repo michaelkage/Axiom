@@ -72,7 +72,7 @@ test.describe("Session Management", () => {
     const page = await openWebview();
     let refreshAttempts = 0;
 
-    await page.route("**/session", async (route) => {
+    await page.route("**/session**", async (route) => {
       if (route.request().method() !== "GET") {
         await route.continue();
         return;
