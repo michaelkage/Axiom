@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const MAX_TASKS = 500;
 const MAX_LOG_LINES = 200;
 const MAX_LOG_LINE_LENGTH = 4000;
+const MAX_LOG_TOTAL_LENGTH = 32000;
 const MAX_TITLE_LENGTH = 500;
 const MAX_DIAGNOSTIC_LENGTH = 4096;
 const MAX_ERROR_LENGTH = 8192;
@@ -16,7 +17,19 @@ function normalizeTask(task) {
   }
   if (typeof normalized.error === "string") normalized.error = normalized.error.slice(0, MAX_ERROR_LENGTH);
   if (normalized.result !== undefined) normalized.result = normalizeResult(normalized.result);
-  if (Array.isArray(normalized.logs)) normalized.logs = normalized.logs.slice(-MAX_LOG_LINES).map(line => line.slice(0, MAX_LOG_LINE_LENGTH));
+  if (Array.isArray(normalized.logs)) {
+    const recent = normalized.logs.slice(-MAX_LOG_LINES).map(line => line.slice(0, MAX_LOG_LINE_LENGTH));
+    const bounded = [];
+    let total = 0;
+    for (let index = recent.length - 1; index >= 0; index--) {
+      const remaining = MAX_LOG_TOTAL_LENGTH - total;
+      if (remaining <= 0) break;
+      const line = recent[index].slice(-remaining);
+      bounded.unshift(line);
+      total += line.length;
+    }
+    normalized.logs = bounded;
+  }
   return normalized;
 }
 function normalizeResult(result) {
@@ -112,4 +125,4 @@ function isValidTask(task) {
   if (task.updatedAt != null && (typeof task.updatedAt !== "string" || Number.isNaN(Date.parse(task.updatedAt)))) return false;
   return true;
 }
-module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH, MAX_RESULT_LENGTH };
+module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH, MAX_RESULT_LENGTH };
