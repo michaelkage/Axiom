@@ -9,7 +9,7 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
   let queue = Promise.resolve();
   async function list() {
     try { const data = JSON.parse(await fs.readFile(file, "utf8")); return Array.isArray(data.tasks) ? data.tasks.filter(isValidTask).slice(-MAX_TASKS) : []; }
-    catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
+    catch (error) { if (error.code === "ENOENT") return []; if (error instanceof SyntaxError) throw new Error("Worker state file is invalid JSON; refusing to overwrite persisted task history."); throw error; }
   }
   async function write(tasks) {
     await fs.mkdir(dir, { recursive: true });
