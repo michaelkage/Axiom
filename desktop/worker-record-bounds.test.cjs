@@ -87,7 +87,7 @@ test("worker results are bounded and non-serializable values are represented saf
     });
     assert.equal(large.result.truncated, true);
     assert.equal(large.result.preview.length, MAX_RESULT_LENGTH);
-    assert.match(large.result.preview, /^{"truncated":true,"preview":/);
+    assert.match(large.result.preview, /^\{"payload":"/);
     assert.ok(large.result.preview.includes("payload"));
     assert.ok(large.result.preview.includes("R".repeat(20)));
 
