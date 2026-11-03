@@ -44,7 +44,8 @@ test("worker logs stay within a total character budget while retaining the newes
     const record = await store.record({ taskId: "bounded-logs", title: "Bounded logs", status: "running", logs });
     assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
     assert.match(record.logs.at(-1), /^entry-19-/);
-    assert.equal(record.logs[0].length, MAX_LOG_TOTAL_LENGTH - 10 * logs[19].length);\n    assert.match(record.logs[1], /^entry-10-/);
+    assert.equal(record.logs[0].length, MAX_LOG_TOTAL_LENGTH - 10 * logs[19].length);
+    assert.match(record.logs[1], /^entry-10-/);
     assert.deepEqual((await store.list())[0].logs, record.logs);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
