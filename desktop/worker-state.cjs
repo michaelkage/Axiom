@@ -10,8 +10,14 @@ const MAX_TITLE_LENGTH = 500;
 const MAX_DIAGNOSTIC_LENGTH = 4096;
 const MAX_ERROR_LENGTH = 8192;
 const MAX_RESULT_LENGTH = 16000;
+const TASK_FIELDS = ["taskId", "title", "status", "attempt", "sessionId", "worktreePath", "workerType", "integrationId", "toolName", "error", "logs", "startedAt", "finishedAt", "updatedAt", "result"];
 function normalizeTask(task) {
-  const normalized = { ...task, title: task.title.slice(0, MAX_TITLE_LENGTH) };
+  // Persist only the documented task schema; unknown fields must not bypass bounds.
+  const normalized = {};
+  for (const field of TASK_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(task, field)) normalized[field] = task[field];
+  }
+  normalized.title = task.title.slice(0, MAX_TITLE_LENGTH);
   for (const field of ["sessionId", "worktreePath", "workerType", "integrationId", "toolName"]) {
     if (typeof normalized[field] === "string") normalized[field] = normalized[field].slice(0, MAX_DIAGNOSTIC_LENGTH);
   }
