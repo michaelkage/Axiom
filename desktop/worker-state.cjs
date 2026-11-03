@@ -3,6 +3,20 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const MAX_TASKS = 500;
+const MAX_LOG_LINES = 200;
+const MAX_LOG_LINE_LENGTH = 4000;
+const MAX_TITLE_LENGTH = 500;
+const MAX_DIAGNOSTIC_LENGTH = 4096;
+const MAX_ERROR_LENGTH = 8192;
+function normalizeTask(task) {
+  const normalized = { ...task, title: task.title.slice(0, MAX_TITLE_LENGTH) };
+  for (const field of ["sessionId", "worktreePath", "workerType", "integrationId", "toolName"]) {
+    if (typeof normalized[field] === "string") normalized[field] = normalized[field].slice(0, MAX_DIAGNOSTIC_LENGTH);
+  }
+  if (typeof normalized.error === "string") normalized.error = normalized.error.slice(0, MAX_ERROR_LENGTH);
+  if (Array.isArray(normalized.logs)) normalized.logs = normalized.logs.slice(-MAX_LOG_LINES).map(line => line.slice(0, MAX_LOG_LINE_LENGTH));
+  return normalized;
+}
 function createWorkerStateStore(userDataPath, workspaceRoot) {
   const resolvedRoot = path.resolve(workspaceRoot);
   const key = crypto.createHash("sha256").update(resolvedRoot).digest("hex");
@@ -25,12 +39,14 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
   async function write(tasks) {
     await fs.mkdir(dir, { recursive: true });
     const temp = file + "." + process.pid + "." + crypto.randomUUID() + ".tmp";
-    try { await fs.writeFile(temp, JSON.stringify({ schemaVersion: 1, workspaceRoot: resolvedRoot, updatedAt: new Date().toISOString(), tasks: tasks.slice(-MAX_TASKS) }, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" }); await fs.rename(temp, file); }
+    const boundedTasks = tasks.map(normalizeTask).slice(-MAX_TASKS);
+    try { await fs.writeFile(temp, JSON.stringify({ schemaVersion: 1, workspaceRoot: resolvedRoot, updatedAt: new Date().toISOString(), tasks: boundedTasks }, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" }); await fs.rename(temp, file); }
     finally { try { await fs.unlink(temp); } catch {} }
   }
   function serialize(operation) { const result = queue.then(operation); queue = result.catch(() => undefined); return result; }
   async function record(task) {
     if (!isValidTask(task)) throw new TypeError("Worker task record requires a stable taskId, title, and valid lifecycle status.");
+    task = normalizeTask(task);
     return serialize(async () => {
       const tasks = await list(), index = tasks.findIndex(item => item.taskId === task.taskId);
       const previous = index >= 0 ? tasks[index] : {};
@@ -55,7 +71,7 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       };
       if (index >= 0) tasks.splice(index, 1);
       tasks.push(next);
-      await write(tasks); return next;
+      await write(tasks); return normalizeTask(next);
     });
   }
   async function recoverInterrupted() {
@@ -65,7 +81,7 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
         if (task.status === "running") { task.status = "failed"; task.error = "Axiom restarted before this worker reached a terminal state. Inspect the saved session/worktree before retrying."; task.finishedAt = now; task.updatedAt = new Date(now).toISOString(); changed = true; }
         else if (task.status === "queued") { task.status = "cancelled"; task.error = "Axiom restarted before this queued task began."; task.finishedAt = now; task.updatedAt = new Date(now).toISOString(); changed = true; }
       }
-      if (changed) await write(tasks); return tasks;
+      if (changed) await write(tasks); return tasks.map(normalizeTask);
     });
   }
   return { list, record, recoverInterrupted };
@@ -86,4 +102,4 @@ function isValidTask(task) {
   if (task.updatedAt != null && (typeof task.updatedAt !== "string" || Number.isNaN(Date.parse(task.updatedAt)))) return false;
   return true;
 }
-module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS };
+module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH };
