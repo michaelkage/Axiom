@@ -72,3 +72,40 @@ test("worker records discard unrecognized fields before persistence", async () =
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("worker results are bounded and non-serializable values are represented safely", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-result-bounds-"));
+  try {
+    const store = createWorkerStateStore(root, path.join(root, "workspace"));
+    const oversized = { payload: "R".repeat(MAX_RESULT_LENGTH + 100) };
+    const large = await store.record({
+      taskId: "large-result",
+      title: "Large result",
+      status: "succeeded",
+      result: oversized
+    });
+    assert.equal(large.result.truncated, true);
+    assert.equal(large.result.preview.length, MAX_RESULT_LENGTH);
+    assert.match(large.result.preview, /^{"payload":"R/);
+
+    const circular = { label: "circular" };
+    circular.self = circular;
+    const unavailable = await store.record({
+      taskId: "circular-result",
+      title: "Circular result",
+      status: "failed",
+      result: circular
+    });
+    assert.deepEqual(unavailable.result, {
+      unavailable: true,
+      reason: "Worker result was not JSON-serializable."
+    });
+
+    const listed = await store.list();
+    assert.deepEqual(listed.find(task => task.taskId === "large-result").result, large.result);
+    assert.deepEqual(listed.find(task => task.taskId === "circular-result").result, unavailable.result);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
