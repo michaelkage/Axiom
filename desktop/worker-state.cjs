@@ -4,17 +4,28 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const MAX_TASKS = 500;
 function createWorkerStateStore(userDataPath, workspaceRoot) {
-  const key = crypto.createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex");
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const key = crypto.createHash("sha256").update(resolvedRoot).digest("hex");
   const dir = path.join(userDataPath, "worker-state"), file = path.join(dir, key + ".json");
   let queue = Promise.resolve();
   async function list() {
-    try { const data = JSON.parse(await fs.readFile(file, "utf8")); return Array.isArray(data.tasks) ? data.tasks.filter(isValidTask).slice(-MAX_TASKS) : []; }
-    catch (error) { if (error.code === "ENOENT") return []; if (error instanceof SyntaxError) throw new Error("Worker state file is invalid JSON; refusing to overwrite persisted task history."); throw error; }
+    let data;
+    try { data = JSON.parse(await fs.readFile(file, "utf8")); }
+    catch (error) {
+      if (error.code === "ENOENT") return [];
+      if (error instanceof SyntaxError) throw new Error("Worker state file is invalid JSON; refusing to overwrite persisted task history.");
+      throw error;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data) || data.schemaVersion !== 1 ||
+        data.workspaceRoot !== resolvedRoot || !Array.isArray(data.tasks) || !data.tasks.every(isValidTask)) {
+      throw new Error("Worker state file has an invalid schema or task record; refusing to overwrite persisted task history.");
+    }
+    return data.tasks.slice(-MAX_TASKS);
   }
   async function write(tasks) {
     await fs.mkdir(dir, { recursive: true });
     const temp = file + "." + process.pid + "." + crypto.randomUUID() + ".tmp";
-    try { await fs.writeFile(temp, JSON.stringify({ schemaVersion: 1, workspaceRoot: path.resolve(workspaceRoot), updatedAt: new Date().toISOString(), tasks: tasks.slice(-MAX_TASKS) }, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" }); await fs.rename(temp, file); }
+    try { await fs.writeFile(temp, JSON.stringify({ schemaVersion: 1, workspaceRoot: resolvedRoot, updatedAt: new Date().toISOString(), tasks: tasks.slice(-MAX_TASKS) }, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" }); await fs.rename(temp, file); }
     finally { try { await fs.unlink(temp); } catch {} }
   }
   function serialize(operation) { const result = queue.then(operation); queue = result.catch(() => undefined); return result; }
@@ -27,29 +38,16 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       const previousIsTerminal = terminalStatuses.has(previous.status);
       const incomingAttempt = Number.isInteger(task.attempt) && task.attempt > 0 ? task.attempt : 1;
       const previousAttempt = Number.isInteger(previous.attempt) && previous.attempt > 0 ? previous.attempt : 1;
-      // Retry attempts share a stable task ID. Reject delayed events from an older
-      // attempt, but allow a newer attempt's running event to reopen a terminal task.
       if (index >= 0 && incomingAttempt < previousAttempt) return previous;
-      // A retry only becomes active when its running event arrives. Do not let an
-      // early terminal/queued event advance the generation and block that transition.
       if (index >= 0 && previousIsTerminal && incomingAttempt > previousAttempt && task.status !== "running") return previous;
       const startsNewAttempt = previousIsTerminal && incomingAttempt > previousAttempt && task.status === "running";
       const next = startsNewAttempt ? {
-        ...task,
-        attempt: incomingAttempt,
-        logs: task.logs ?? [],
-        error: task.error,
-        result: task.result,
-        finishedAt: task.finishedAt,
-        updatedAt: new Date().toISOString()
+        ...task, attempt: incomingAttempt, logs: task.logs ?? [], error: task.error,
+        result: task.result, finishedAt: task.finishedAt, updatedAt: new Date().toISOString()
       } : {
-        ...previous,
-        ...task,
-        attempt: Math.max(previousAttempt, incomingAttempt),
+        ...previous, ...task, attempt: Math.max(previousAttempt, incomingAttempt),
         ...(previousIsTerminal ? {
-          status: previous.status,
-          error: previous.error,
-          result: previous.result,
+          status: previous.status, error: previous.error, result: previous.result,
           finishedAt: previous.finishedAt,
           logs: task.status === previous.status && incomingAttempt === previousAttempt ? (task.logs ?? previous.logs) : (previous.logs ?? task.logs)
         } : {}),
