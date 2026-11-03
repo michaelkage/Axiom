@@ -24,4 +24,16 @@ test.describe("Prompt Sending", () => {
     const submitButton = page.getByRole("button", { name: "Submit" });
     await expect(submitButton).toBeEnabled();
   });
+  test("welcome suggestion populates the composer without sending", async ({ openWebview }) => {
+    const page = await openWebview();
+
+    const suggestion = page.getByRole("button", { name: /Launch a landing page/ });
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+
+    const editor = page.getByRole("textbox", { name: "Message input" });
+    await expect(editor).toContainText("Build a polished, responsive landing page");
+    await expect(page.getByRole("article", { name: "user message" })).toHaveCount(0);
+  });
+
 });
