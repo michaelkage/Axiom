@@ -23,7 +23,8 @@ test("worker records persist bounded titles, diagnostics, errors, and recent log
     assert.equal(record.sessionId.length, MAX_DIAGNOSTIC_LENGTH);
     assert.equal(record.error.length, MAX_ERROR_LENGTH);
     assert.ok(record.logs.length <= MAX_LOG_LINES);
-    assert.ok(record.logs.every(line => line.length === MAX_LOG_LINE_LENGTH));\n    assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
+    assert.ok(record.logs.every(line => line.length === MAX_LOG_LINE_LENGTH));
+    assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
     assert.match(record.logs[0], /^line-212-/);
     const persisted = (await store.list())[0];
     assert.deepEqual(persisted, record);
