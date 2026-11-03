@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH } = require("./worker-state.cjs");
+const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH } = require("./worker-state.cjs");
 
 test("worker records persist bounded titles, diagnostics, errors, and recent logs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-bounds-"));
@@ -30,6 +30,21 @@ test("worker records persist bounded titles, diagnostics, errors, and recent log
     const files = await fs.readdir(path.join(root, "worker-state"));
     const state = JSON.parse(await fs.readFile(path.join(root, "worker-state", files[0]), "utf8"));
     assert.equal(state.tasks[0].logs.length, MAX_LOG_LINES);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("worker logs stay within a total character budget while retaining the newest tail", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-log-total-"));
+  try {
+    const store = createWorkerStateStore(root, path.join(root, "workspace"));
+    const logs = Array.from({ length: 20 }, (_, i) => `entry-${i}-` + "X".repeat(3000));
+    const record = await store.record({ taskId: "bounded-logs", title: "Bounded logs", status: "running", logs });
+    assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
+    assert.match(record.logs.at(-1), /^entry-19-/);
+    assert.match(record.logs[0], /^entry-/);
+    assert.deepEqual((await store.list())[0].logs, record.logs);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
