@@ -22,7 +22,7 @@ test("worker records persist bounded titles, diagnostics, errors, and recent log
     assert.equal(record.title.length, MAX_TITLE_LENGTH);
     assert.equal(record.sessionId.length, MAX_DIAGNOSTIC_LENGTH);
     assert.equal(record.error.length, MAX_ERROR_LENGTH);
-    assert.ok(record.logs.length <= MAX_LOG_LINES);
+    assert.ok(record.logs.length <= Math.min(MAX_LOG_LINES, Math.floor(MAX_LOG_TOTAL_LENGTH / MAX_LOG_LINE_LENGTH)));
     assert.ok(record.logs.every(line => line.length === MAX_LOG_LINE_LENGTH));
     assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
     assert.match(record.logs[0], /^line-212-/);
@@ -30,7 +30,7 @@ test("worker records persist bounded titles, diagnostics, errors, and recent log
     assert.deepEqual(persisted, record);
     const files = await fs.readdir(path.join(root, "worker-state"));
     const state = JSON.parse(await fs.readFile(path.join(root, "worker-state", files[0]), "utf8"));
-    assert.equal(state.tasks[0].logs.length, MAX_LOG_LINES);
+    assert.equal(state.tasks[0].logs.length, record.logs.length);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -44,7 +44,7 @@ test("worker logs stay within a total character budget while retaining the newes
     const record = await store.record({ taskId: "bounded-logs", title: "Bounded logs", status: "running", logs });
     assert.ok(record.logs.reduce((sum, line) => sum + line.length, 0) <= MAX_LOG_TOTAL_LENGTH);
     assert.match(record.logs.at(-1), /^entry-19-/);
-    assert.match(record.logs[0], /^entry-/);
+    assert.match(record.logs[0], /^entry-10-/);
     assert.deepEqual((await store.list())[0].logs, record.logs);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
