@@ -50,3 +50,24 @@ test("worker logs stay within a total character budget while retaining the newes
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("worker records discard unrecognized fields before persistence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-extra-fields-"));
+  try {
+    const store = createWorkerStateStore(root, path.join(root, "workspace"));
+    const record = await store.record({
+      taskId: "known-fields-only",
+      title: "Known fields",
+      status: "running",
+      arbitraryPayload: "X".repeat(100000)
+    });
+    assert.equal(Object.hasOwn(record, "arbitraryPayload"), false);
+    const listed = (await store.list())[0];
+    assert.equal(Object.hasOwn(listed, "arbitraryPayload"), false);
+    const files = await fs.readdir(path.join(root, "worker-state"));
+    const persisted = JSON.parse(await fs.readFile(path.join(root, "worker-state", files[0]), "utf8"));
+    assert.equal(Object.hasOwn(persisted.tasks[0], "arbitraryPayload"), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
