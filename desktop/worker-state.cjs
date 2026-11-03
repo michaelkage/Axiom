@@ -8,14 +8,24 @@ const MAX_LOG_LINE_LENGTH = 4000;
 const MAX_TITLE_LENGTH = 500;
 const MAX_DIAGNOSTIC_LENGTH = 4096;
 const MAX_ERROR_LENGTH = 8192;
+const MAX_RESULT_LENGTH = 16000;
 function normalizeTask(task) {
   const normalized = { ...task, title: task.title.slice(0, MAX_TITLE_LENGTH) };
   for (const field of ["sessionId", "worktreePath", "workerType", "integrationId", "toolName"]) {
     if (typeof normalized[field] === "string") normalized[field] = normalized[field].slice(0, MAX_DIAGNOSTIC_LENGTH);
   }
   if (typeof normalized.error === "string") normalized.error = normalized.error.slice(0, MAX_ERROR_LENGTH);
+  if (normalized.result !== undefined) normalized.result = normalizeResult(normalized.result);
   if (Array.isArray(normalized.logs)) normalized.logs = normalized.logs.slice(-MAX_LOG_LINES).map(line => line.slice(0, MAX_LOG_LINE_LENGTH));
   return normalized;
+}
+function normalizeResult(result) {
+  let serialized;
+  try { serialized = JSON.stringify(result); }
+  catch { return { unavailable: true, reason: "Worker result was not JSON-serializable." }; }
+  if (serialized === undefined) return { unavailable: true, reason: "Worker result was not JSON-serializable." };
+  if (serialized.length <= MAX_RESULT_LENGTH) return result;
+  return { truncated: true, preview: serialized.slice(0, MAX_RESULT_LENGTH) };
 }
 function createWorkerStateStore(userDataPath, workspaceRoot) {
   const resolvedRoot = path.resolve(workspaceRoot);
@@ -34,7 +44,7 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
         data.workspaceRoot !== resolvedRoot || !Array.isArray(data.tasks) || !data.tasks.every(isValidTask) || new Set(data.tasks.map(task => task.taskId)).size !== data.tasks.length) {
       throw new Error("Worker state file has an invalid schema or task record; refusing to overwrite persisted task history.");
     }
-    return data.tasks.slice(-MAX_TASKS);
+    return data.tasks.slice(-MAX_TASKS).map(normalizeTask);
   }
   async function write(tasks) {
     await fs.mkdir(dir, { recursive: true });
@@ -102,4 +112,4 @@ function isValidTask(task) {
   if (task.updatedAt != null && (typeof task.updatedAt !== "string" || Number.isNaN(Date.parse(task.updatedAt)))) return false;
   return true;
 }
-module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH };
+module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH, MAX_RESULT_LENGTH };
