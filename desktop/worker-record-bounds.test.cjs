@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH } = require("./worker-state.cjs");
+const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH, MAX_RESULT_LENGTH } = require("./worker-state.cjs");
 
 test("worker records persist bounded titles, diagnostics, errors, and recent logs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-bounds-"));
