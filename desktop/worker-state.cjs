@@ -70,5 +70,20 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
   }
   return { list, record, recoverInterrupted };
 }
-function isValidTask(task) { return !!task && typeof task.taskId === "string" && task.taskId.length > 0 && task.taskId.length <= 128 && typeof task.title === "string" && task.title.length > 0 && (task.attempt == null || (Number.isInteger(task.attempt) && task.attempt > 0)) && ["queued","running","succeeded","failed","blocked","cancelled","timed_out"].includes(task.status); }
+function isValidTask(task) {
+  if (!task || typeof task !== "object" || Array.isArray(task)) return false;
+  if (typeof task.taskId !== "string" || !task.taskId.trim() || task.taskId.length > 128) return false;
+  if (typeof task.title !== "string" || !task.title.trim()) return false;
+  if (task.attempt != null && (!Number.isInteger(task.attempt) || task.attempt <= 0)) return false;
+  if (!["queued","running","succeeded","failed","blocked","cancelled","timed_out"].includes(task.status)) return false;
+  for (const field of ["sessionId", "worktreePath", "workerType", "integrationId", "toolName", "error"]) {
+    if (task[field] != null && typeof task[field] !== "string") return false;
+  }
+  if (task.logs != null && (!Array.isArray(task.logs) || !task.logs.every(line => typeof line === "string"))) return false;
+  for (const field of ["startedAt", "finishedAt"]) {
+    if (task[field] != null && (typeof task[field] !== "number" || !Number.isFinite(task[field]))) return false;
+  }
+  if (task.updatedAt != null && (typeof task.updatedAt !== "string" || Number.isNaN(Date.parse(task.updatedAt)))) return false;
+  return true;
+}
 module.exports = { createWorkerStateStore, isValidTask, MAX_TASKS };
