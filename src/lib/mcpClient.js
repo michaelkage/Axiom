@@ -46,29 +46,33 @@ export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' }
     return result;
   };
 
-  const initialized = await call('initialize', {
-    protocolVersion: DEFAULT_PROTOCOL_VERSION,
-    capabilities: {},
-    clientInfo: { name: 'Axiom', version: '1.0.0' }
-  }, 1);
-  const negotiatedVersion = initialized?.protocolVersion || DEFAULT_PROTOCOL_VERSION;
-  headers['MCP-Protocol-Version'] = negotiatedVersion;
-  await call('notifications/initialized', {});
-  const result = await call('tools/list', {});
-  return {
-    tools: result?.tools || [],
-    call,
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      const sessionId = headers['Mcp-Session-Id'];
-      if (sessionId) {
-        try {
-          await fetchImpl(endpoint, { method: 'DELETE', headers: { ...headers } });
-        } catch { /* Closing a remote session is best-effort. */ }
-      }
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    if (headers['Mcp-Session-Id']) {
+      try {
+        await fetchImpl(endpoint, { method: 'DELETE', headers: { ...headers } });
+      } catch { /* Closing a remote session is best-effort. */ }
     }
   };
+
+  try {
+    const initialized = await call('initialize', {
+      protocolVersion: DEFAULT_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: 'Axiom', version: '1.0.0' }
+    }, 1);
+    const negotiatedVersion = initialized?.protocolVersion || DEFAULT_PROTOCOL_VERSION;
+    headers['MCP-Protocol-Version'] = negotiatedVersion;
+    await call('notifications/initialized', {});
+    const result = await call('tools/list', {});
+    return { tools: result?.tools || [], call, close };
+  } catch (error) {
+    // Initialization can allocate a remote session before discovery fails.
+    // Release that session rather than leaking it on the server.
+    await close();
+    throw error;
+  }
 }
 
 export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 12000 } = {}) {
