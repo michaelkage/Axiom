@@ -65,11 +65,12 @@ export function validateToolInput(schema, value, path = 'input') {
 
   const inferredObject = declaredTypes.length === 0 &&
     (schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined);
-  const isObject = declaredTypes.includes('object') || inferredObject;
-  const isArray = declaredTypes.includes('array') || (declaredTypes.length === 0 && Array.isArray(value));
-  const isString = declaredTypes.includes('string') || (declaredTypes.length === 0 && typeof value === 'string');
-  const isNumber = declaredTypes.includes('number') || declaredTypes.includes('integer') ||
-    (declaredTypes.length === 0 && typeof value === 'number');
+  const isObject = value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    (declaredTypes.includes('object') || inferredObject);
+  const isArray = Array.isArray(value) && (declaredTypes.includes('array') || declaredTypes.length === 0);
+  const isString = typeof value === 'string' && (declaredTypes.includes('string') || declaredTypes.length === 0);
+  const isNumber = typeof value === 'number' && Number.isFinite(value) &&
+    (declaredTypes.includes('number') || declaredTypes.includes('integer') || declaredTypes.length === 0);
 
   if (schema.enum && !schema.enum.some(item => Object.is(item, value))) {
     throw new TypeError(path + ' must be one of: ' + schema.enum.join(', '));
@@ -102,7 +103,9 @@ export function validateToolInput(schema, value, path = 'input') {
 
   if (isNumber) {
     if (typeof value !== 'number' || !Number.isFinite(value)) throw new TypeError(path + ' must be a finite number');
-    if (schema.type === 'integer' && !Number.isInteger(value)) throw new TypeError(path + ' must be integer');
+    if (declaredTypes.includes('integer') && !declaredTypes.includes('number') && !Number.isInteger(value)) {
+      throw new TypeError(path + ' must be integer');
+    }
     if (schema.minimum !== undefined && value < schema.minimum) throw new TypeError(path + ' is below the minimum');
     if (schema.maximum !== undefined && value > schema.maximum) throw new TypeError(path + ' exceeds the maximum');
   }
