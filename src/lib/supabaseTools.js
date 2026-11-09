@@ -7,7 +7,7 @@ export function registerSupabaseTools({ url, key }) {
   const unregister = [];
   unregister.push(registerTool({
     name: 'supabase_list_tables',
-    description: 'Inspect tables exposed through the Supabase REST OpenAPI document.',
+    description: 'List public tables through a project-defined, permission-controlled exec_sql RPC.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   }, async () => {
     const { data, error } = await client.rpc('exec_sql', { query: "select table_schema, table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name" });
