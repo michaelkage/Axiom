@@ -1,31 +1,83 @@
-const PROTOCOL_VERSION = '2025-03-26';
+const DEFAULT_PROTOCOL_VERSION = '2025-03-26';
+
+function parseJsonRpcResponse(text, contentType) {
+  if (!text.trim()) return null;
+  let payload = text.trim();
+  if (contentType?.includes('text/event-stream') || payload.startsWith('event:') || payload.startsWith('data:')) {
+    const events = payload.split(/\r?\n\r?\n/);
+    const data = [];
+    for (const event of events) {
+      const lines = event.split(/\r?\n/).filter(line => line.startsWith('data:'));
+      if (lines.length) data.push(lines.map(line => line.slice(5).trimStart()).join('\n'));
+    }
+    payload = data.find(Boolean) || '';
+  }
+  if (!payload) return null;
+  const message = JSON.parse(payload);
+  if (message.error) throw new Error(message.error.message || 'MCP request failed');
+  return message.result ?? null;
+}
+
 export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' } = {}) {
-  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(token ? { Authorization: 'Bearer ' + token } : {}) };
-  const call = async (method, params = {}, id = Date.now()) => {
-    const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', ...(method.startsWith('notifications/') ? {} : { id }), method, params }) });
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...(token ? { Authorization: 'Bearer ' + token } : {})
+  };
+  let nextId = 2;
+  let closed = false;
+  const call = async (method, params = {}, id) => {
+    if (closed) throw new Error('MCP connection is closed.');
+    const notification = method.startsWith('notifications/');
+    const requestId = notification ? undefined : (id ?? nextId++);
+    const response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ jsonrpc: '2.0', ...(notification ? {} : { id: requestId }), method, params })
+    });
     if (!response.ok) throw new Error('MCP HTTP ' + response.status);
     const sessionId = response.headers.get('mcp-session-id');
     if (sessionId) headers['Mcp-Session-Id'] = sessionId;
-    const text = await response.text();
-    const dataLine = text.split(/\r?\n/).find(line => line.startsWith('data:'));
-    const payload = text.trim().startsWith('data:') ? dataLine?.slice(5).trim() : text;
-    if (!payload) throw new Error('MCP server returned no JSON-RPC response.');
-    const message = JSON.parse(payload);
-    if (message.error) throw new Error(message.error.message || 'MCP request failed');
-    return message.result;
+    const contentType = response.headers.get('content-type') || '';
+    const body = await response.text();
+    if (notification || response.status === 202) return null;
+    const result = parseJsonRpcResponse(body, contentType);
+    if (result === null) throw new Error('MCP server returned no JSON-RPC response.');
+    return result;
   };
-  await call('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'Axiom', version: '1.0.0' } }, 1);
-  await call('notifications/initialized', {}).catch(() => null);
-  headers['MCP-Protocol-Version'] = PROTOCOL_VERSION;
-  const result = await call('tools/list', {}, 3);
-  return { tools: result?.tools || [], call };
+
+  const initialized = await call('initialize', {
+    protocolVersion: DEFAULT_PROTOCOL_VERSION,
+    capabilities: {},
+    clientInfo: { name: 'Axiom', version: '1.0.0' }
+  }, 1);
+  const negotiatedVersion = initialized?.protocolVersion || DEFAULT_PROTOCOL_VERSION;
+  headers['MCP-Protocol-Version'] = negotiatedVersion;
+  await call('notifications/initialized', {});
+  const result = await call('tools/list', {});
+  return {
+    tools: result?.tools || [],
+    call,
+    close: async () => {
+      if (closed) return;
+      closed = true;
+      const sessionId = headers['Mcp-Session-Id'];
+      if (sessionId) {
+        try {
+          await fetchImpl(endpoint, { method: 'DELETE', headers: { ...headers } });
+        } catch { /* Closing a remote session is best-effort. */ }
+      }
+    }
+  };
 }
+
 export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 12000 } = {}) {
   if (typeof EventSource === 'undefined') throw new Error('EventSource is not supported in this browser.');
   const source = new EventSource(endpoint);
   const pending = new Map();
   let messageEndpoint = '';
   let nextId = 10;
+  let closed = false;
   let endpointResolve, endpointReject;
   const endpointReady = new Promise((resolve, reject) => { endpointResolve = resolve; endpointReject = reject; });
   const endpointTimer = setTimeout(() => endpointReject(new Error('MCP SSE endpoint event timed out.')), timeoutMs);
@@ -42,6 +94,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
       if (message.id === undefined || !pending.has(message.id)) return;
       const waiter = pending.get(message.id);
       pending.delete(message.id);
+      clearTimeout(waiter.timer);
       if (message.error) waiter.reject(new Error(message.error.message || 'MCP request failed'));
       else waiter.resolve(message.result);
     } catch { /* Ignore non-JSON server events. */ }
@@ -49,60 +102,96 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
   source.onerror = () => {
     if (source.readyState === EventSource.CLOSED) {
       endpointReject(new Error('MCP SSE connection closed.'));
-      for (const waiter of pending.values()) waiter.reject(new Error('MCP SSE connection closed.'));
+      for (const waiter of pending.values()) {
+        clearTimeout(waiter.timer);
+        waiter.reject(new Error('MCP SSE connection closed.'));
+      }
       pending.clear();
     }
   };
   const post = async (message, waitForResult) => {
+    if (closed) throw new Error('MCP connection is closed.');
     const target = await endpointReady;
     let responsePromise;
     if (waitForResult) {
       responsePromise = new Promise((resolve, reject) => {
-        pending.set(message.id, { resolve, reject });
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           if (pending.has(message.id)) {
             pending.delete(message.id);
             reject(new Error('MCP request timed out: ' + message.method));
           }
         }, timeoutMs);
+        pending.set(message.id, { resolve, reject, timer });
       });
     }
-    const response = await fetchImpl(target, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': PROTOCOL_VERSION },
-      body: JSON.stringify(message)
-    });
-    if (!response.ok) {
-      pending.delete(message.id);
-      throw new Error('MCP SSE message POST returned HTTP ' + response.status);
+    try {
+      const response = await fetchImpl(target, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': DEFAULT_PROTOCOL_VERSION },
+        body: JSON.stringify(message)
+      });
+      if (!response.ok) throw new Error('MCP SSE message POST returned HTTP ' + response.status);
+      if (!waitForResult) return null;
+      const body = await response.text();
+      if (body.trim()) {
+        try {
+          const payload = JSON.parse(body);
+          if (payload.id !== undefined && pending.has(payload.id)) {
+            const waiter = pending.get(payload.id);
+            pending.delete(payload.id);
+            clearTimeout(waiter.timer);
+            if (payload.error) waiter.reject(new Error(payload.error.message || 'MCP request failed'));
+            else waiter.resolve(payload.result);
+          }
+        } catch { /* The server may deliver the JSON-RPC reply over SSE instead. */ }
+      }
+      return await responsePromise;
+    } catch (error) {
+      const waiter = pending.get(message.id);
+      if (waiter) {
+        clearTimeout(waiter.timer);
+        pending.delete(message.id);
+        waiter.reject(error);
+      }
+      throw error;
     }
-    if (!waitForResult) return null;
-    const body = await response.text();
-    if (body.trim()) {
-      try {
-        const payload = JSON.parse(body);
-        if (payload.id !== undefined && pending.has(payload.id)) {
-          const waiter = pending.get(payload.id);
-          pending.delete(payload.id);
-          if (payload.error) waiter.reject(new Error(payload.error.message || 'MCP request failed'));
-          else waiter.resolve(payload.result);
-        }
-      } catch { /* The server may deliver the JSON-RPC reply over SSE instead. */ }
-    }
-    return responsePromise;
   };
   const call = async (method, params = {}) => {
     const id = nextId++;
     return await post({ jsonrpc: '2.0', id, method, params }, true);
   };
   try {
-    await call('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'Axiom', version: '1.0.0' } });
+    await call('initialize', {
+      protocolVersion: DEFAULT_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: 'Axiom', version: '1.0.0' }
+    });
     await post({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }, false);
     const result = await call('tools/list', {});
-    return { tools: result?.tools || [], call, close: () => source.close() };
+    return {
+      tools: result?.tools || [],
+      call,
+      close: () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(endpointTimer);
+        source.close();
+        for (const waiter of pending.values()) {
+          clearTimeout(waiter.timer);
+          waiter.reject(new Error('MCP connection closed.'));
+        }
+        pending.clear();
+      }
+    };
   } catch (error) {
+    closed = true;
+    clearTimeout(endpointTimer);
     source.close();
+    for (const waiter of pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
+    pending.clear();
     throw error;
   }
 }
-
