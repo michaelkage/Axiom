@@ -27,8 +27,9 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Browser MCP requires server CORS support. Streamable HTTP and legacy SSE are implemented; legacy EventSource cannot attach custom authorization headers, so a same-origin authenticated proxy is recommended for protected production servers.
 - Browser-to-Ollama requests require CORS permission. Android localhost routing depends on where Ollama is hosted. HTTPS pages may block plain HTTP connections depending on browser security policy.
 
-## Build
+## Test and build
 ```bash
 npm install
+npm test
 npm run build
 ```
