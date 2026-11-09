@@ -140,3 +140,44 @@ test('uses the default timeout for tools and rejects invalid timeout configurati
   assert.throws(() => registerTool({ name: 'test_invalid_timeout', timeoutMs: 0 }, async () => null), /timeoutMs/);
   assert.throws(() => registerTool({ name: 'test_long_timeout', timeoutMs: 120001 }, async () => null), /timeoutMs/);
 });
+
+
+test('propagates caller cancellation to a running tool and rejects promptly', async () => {
+  let receivedSignal;
+  const unregister = registerTool({
+    name: 'test_parent_cancellation',
+    timeoutMs: 1000,
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  }, async (_input, { signal }) => {
+    receivedSignal = signal;
+    return await new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  });
+  const controller = new AbortController();
+  try {
+    const pending = executeTool('test_parent_cancellation', {}, { signal: controller.signal });
+    await new Promise(resolve => setImmediate(resolve));
+    controller.abort(new Error('caller cancelled'));
+    await assert.rejects(pending, /caller cancelled/);
+    assert.equal(receivedSignal.aborted, true);
+  } finally {
+    unregister();
+  }
+});
+
+test('does not start a tool when its caller signal is already aborted', async () => {
+  let called = false;
+  const unregister = registerTool({
+    name: 'test_pre_aborted',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  }, async () => { called = true; });
+  const controller = new AbortController();
+  controller.abort(new Error('already cancelled'));
+  try {
+    await assert.rejects(executeTool('test_pre_aborted', {}, { signal: controller.signal }), /already cancelled/);
+    assert.equal(called, false);
+  } finally {
+    unregister();
+  }
+});
