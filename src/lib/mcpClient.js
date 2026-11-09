@@ -2,7 +2,7 @@ const PROTOCOL_VERSION = '2025-03-26';
 export async function connectMcpHttp(endpoint, { fetchImpl = fetch } = {}) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
   const call = async (method, params = {}, id = Date.now()) => {
-    const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }) });
+    const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', ...(method.startsWith('notifications/') ? {} : { id }), method, params }) });
     if (!response.ok) throw new Error('MCP HTTP ' + response.status);
     const sessionId = response.headers.get('mcp-session-id');
     if (sessionId) headers['Mcp-Session-Id'] = sessionId;
@@ -15,7 +15,7 @@ export async function connectMcpHttp(endpoint, { fetchImpl = fetch } = {}) {
     return message.result;
   };
   await call('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'Axiom', version: '1.0.0' } }, 1);
-  await call('notifications/initialized', {}, 2).catch(() => null);
+  await call('notifications/initialized', {}).catch(() => null);
   const result = await call('tools/list', {}, 3);
   return { tools: result?.tools || [], call };
 }
