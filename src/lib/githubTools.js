@@ -14,7 +14,7 @@ export function registerGitHubTools({ token, repository }) {
   }, async ({ path, ref }) => {
     const response = await octokit.repos.getContent({ owner, repo, path, ...(ref ? { ref } : {}) });
     if (Array.isArray(response.data) || response.data.type !== 'file') throw new Error('The requested path is not a file.');
-    return { path, sha: response.data.sha, content: new TextDecoder().decode(Uint8Array.from(atob(response.data.content.replace(/\\s/g, '')), c => c.charCodeAt(0))) };
+    return { path, sha: response.data.sha, content: new TextDecoder().decode(Uint8Array.from(atob(response.data.content.replace(/\s/g, '')), c => c.charCodeAt(0))) };
   }));
   unregister.push(registerTool({
     name: 'github_update_file',
