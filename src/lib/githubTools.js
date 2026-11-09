@@ -7,6 +7,7 @@ export function registerGitHubTools({ token, repository }) {
   const octokit = new Octokit({ auth: token });
   const [owner, repo] = repository.split('/');
   const unregister = [];
+  try {
   unregister.push(registerTool({
     name: 'github_get_file',
     description: 'Read a text file from the configured GitHub repository.',
@@ -34,5 +35,9 @@ export function registerGitHubTools({ token, repository }) {
     const response = await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: btoa(Array.from(new TextEncoder().encode(content), byte => String.fromCharCode(byte)).join('')), ...(branch ? { branch } : {}) });
     return { path, commitSha: response.data.commit.sha, contentSha: response.data.content?.sha };
   }));
+  } catch (error) {
+    unregister.forEach(fn => fn());
+    throw error;
+  }
   return () => unregister.forEach(fn => fn());
 }
