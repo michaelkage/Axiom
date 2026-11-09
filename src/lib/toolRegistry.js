@@ -24,7 +24,7 @@ export function registerTool(definition, handler) {
     description: '',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     ...definition,
-    timeoutMs: 30000,
+    timeoutMs: definition.timeoutMs ?? 30000,
     handler
   };
   if (!Number.isInteger(entry.timeoutMs) || entry.timeoutMs < 1 || entry.timeoutMs > 120000) {
