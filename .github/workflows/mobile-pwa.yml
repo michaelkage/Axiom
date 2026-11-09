@@ -4,6 +4,7 @@ on:
     branches: [axiom/mobile-pwa]
   pull_request:
     branches: [axiom/mobile-pwa]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
