@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executeTool, listTools, registerTool, validateToolInput } from '../src/lib/toolRegistry.js';
+import { executeTool, listTools, registerTool, serializeToolResult, validateToolInput } from '../src/lib/toolRegistry.js';
 
 test('registers, validates, executes, and unregisters an async tool', async () => {
   const unregister = registerTool({
@@ -47,4 +47,20 @@ test('validates nested arrays and numeric bounds', () => {
   assert.throws(() => validateToolInput(schema, { ports: [] }), /too few items/);
   assert.throws(() => validateToolInput(schema, { ports: [70000] }), /exceeds the maximum/);
   assert.throws(() => validateToolInput(schema, { ports: [80, '443'] }), /must be integer/);
+});
+
+
+test('serializes undefined tool results as JSON null', () => {
+  assert.equal(serializeToolResult(undefined), 'null');
+});
+
+test('serializes normal tool results as JSON', () => {
+  assert.equal(serializeToolResult({ ok: true, count: 2 }), '{"ok":true,"count":2}');
+});
+
+test('rejects circular and BigInt tool results with a useful error', () => {
+  const circular = {};
+  circular.self = circular;
+  assert.throws(() => serializeToolResult(circular), /not JSON-serializable/);
+  assert.throws(() => serializeToolResult(1n), /not JSON-serializable/);
 });
