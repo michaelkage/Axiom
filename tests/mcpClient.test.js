@@ -5,6 +5,7 @@ import { connectMcpHttp } from '../src/lib/mcpClient.js';
 test('initializes Streamable HTTP MCP session and discovers tools', async () => {
   const requests = [];
   const fetchImpl = async (_url, init) => {
+    if (init.method === 'DELETE') return new Response(null, { status: 200 });
     const request = JSON.parse(init.body);
     requests.push({ request, headers: { ...init.headers } });
     if (request.method === 'initialize') {
@@ -21,9 +22,9 @@ test('initializes Streamable HTTP MCP session and discovers tools', async () => 
       });
     }
     if (request.method === 'tools/call') {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: 'pong' }] } }), {
+      return new Response('event: message\\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: 'pong' }] } }) + '\\n\\n', {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'text/event-stream' }
       });
     }
     throw new Error('Unexpected MCP method: ' + request.method);
@@ -36,4 +37,6 @@ test('initializes Streamable HTTP MCP session and discovers tools', async () => 
   assert.equal(requests[2].headers['MCP-Protocol-Version'], '2025-03-26');
   const result = await connection.call('tools/call', { name: 'ping', arguments: {} });
   assert.equal(result.content[0].text, 'pong');
+  assert.notEqual(requests[2].request.id, requests[3].request.id);
+  await connection.close();
 });
