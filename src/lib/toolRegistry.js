@@ -24,8 +24,12 @@ export function registerTool(definition, handler) {
     description: '',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     ...definition,
+    timeoutMs: 30000,
     handler
   };
+  if (!Number.isInteger(entry.timeoutMs) || entry.timeoutMs < 1 || entry.timeoutMs > 120000) {
+    throw new TypeError('Tool timeoutMs must be an integer between 1 and 120000.');
+  }
   tools.set(entry.name, entry);
   emit({ type: 'tool.registered', name: entry.name });
   let registered = true;
@@ -144,14 +148,30 @@ export async function executeTool(name, input, context = {}) {
   if (!tool) throw new Error('Unknown tool: ' + name);
   validateToolInput(tool.inputSchema, input);
   const startedAt = Date.now();
-  emit({ type: 'tool.started', name, input, startedAt });
+  const controller = new AbortController();
+  let timeout;
+  emit({ type: 'tool.started', name, input, startedAt, timeoutMs: tool.timeoutMs });
+  const executionContext = { ...context, signal: controller.signal };
+  const timedOut = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      const error = new Error('Tool timed out after ' + tool.timeoutMs + 'ms: ' + name);
+      error.name = 'ToolTimeoutError';
+      controller.abort(error);
+      emit({ type: 'tool.timed_out', name, durationMs: Date.now() - startedAt, timeoutMs: tool.timeoutMs });
+      reject(error);
+    }, tool.timeoutMs);
+  });
   try {
-    const result = await tool.handler(input, context);
+    const result = await Promise.race([Promise.resolve().then(() => tool.handler(input, executionContext)), timedOut]);
     emit({ type: 'tool.completed', name, durationMs: Date.now() - startedAt });
     return result;
   } catch (error) {
-    emit({ type: 'tool.failed', name, durationMs: Date.now() - startedAt, error: error.message });
+    if (error?.name !== 'ToolTimeoutError') {
+      emit({ type: 'tool.failed', name, durationMs: Date.now() - startedAt, error: error.message });
+    }
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 export function toOllamaTools() {
