@@ -128,3 +128,56 @@ test('legacy SSE transport rejects cleanly when the server closes before publish
     else globalThis.EventSource = previousEventSource;
   }
 });
+
+
+test('legacy SSE transport correlates asynchronous tool responses delivered over the event stream', async () => {
+  const previousEventSource = globalThis.EventSource;
+  let stream;
+  class MockEventSource {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      stream = this;
+      queueMicrotask(() => this.emit('endpoint', { data: '/rpc' }));
+    }
+    addEventListener(name, callback) {
+      const callbacks = this.listeners.get(name) || [];
+      callbacks.push(callback);
+      this.listeners.set(name, callbacks);
+    }
+    emit(name, event) {
+      for (const callback of this.listeners.get(name) || []) callback(event);
+    }
+    close() { this.readyState = MockEventSource.CLOSED; }
+  }
+  globalThis.EventSource = MockEventSource;
+  const fetchImpl = async (_url, init) => {
+    const request = JSON.parse(init.body);
+    if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    const result = request.method === 'initialize'
+      ? { protocolVersion: '2025-06-18' }
+      : request.method === 'tools/list'
+        ? { tools: [{ name: 'async_ping', inputSchema: { type: 'object', properties: {} } }] }
+        : undefined;
+    if (result) return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { status: 200 });
+    if (request.method === 'tools/call') {
+      queueMicrotask(() => stream.emit('message', {
+        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: 'async pong' }] } })
+      }));
+      return new Response(null, { status: 202 });
+    }
+    throw new Error('Unexpected method: ' + request.method);
+  };
+
+  try {
+    const connection = await connectMcpSse('https://mcp.example.test/sse', { fetchImpl, timeoutMs: 100 });
+    const result = await connection.call('tools/call', { name: 'async_ping', arguments: {} });
+    assert.equal(result.content[0].text, 'async pong');
+    connection.close();
+    await assert.rejects(connection.call('tools/call', {}), /connection is closed/i);
+  } finally {
+    if (previousEventSource === undefined) delete globalThis.EventSource;
+    else globalThis.EventSource = previousEventSource;
+  }
+});
