@@ -14,14 +14,14 @@ export function registerGitHubTools({ token, repository }) {
   }, async ({ path, ref }) => {
     const response = await octokit.repos.getContent({ owner, repo, path, ...(ref ? { ref } : {}) });
     if (Array.isArray(response.data) || response.data.type !== 'file') throw new Error('The requested path is not a file.');
-    return { path, sha: response.data.sha, content: Buffer.from(response.data.content, 'base64').toString('utf8') };
+    return { path, sha: response.data.sha, content: new TextDecoder().decode(Uint8Array.from(atob(response.data.content.replace(/\\s/g, '')), c => c.charCodeAt(0))) };
   }));
   unregister.push(registerTool({
     name: 'github_update_file',
     description: 'Commit a complete replacement for an existing file. Requires the current blob SHA.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' }, sha: { type: 'string', minLength: 1 }, message: { type: 'string', minLength: 1 }, branch: { type: 'string' } }, required: ['path', 'content', 'sha', 'message'], additionalProperties: false }
   }, async ({ path, content, sha, message, branch }) => {
-    const response = await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: Buffer.from(content).toString('base64'), sha, ...(branch ? { branch } : {}) });
+    const response = await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: btoa(Array.from(new TextEncoder().encode(content), byte => String.fromCharCode(byte)).join('')), sha, ...(branch ? { branch } : {}) });
     return { path, commitSha: response.data.commit.sha, contentSha: response.data.content?.sha };
   }));
   return () => unregister.forEach(fn => fn());
