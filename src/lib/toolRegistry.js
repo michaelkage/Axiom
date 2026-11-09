@@ -37,43 +37,83 @@ export function registerTool(definition, handler) {
   };
 }
 export function validateToolInput(schema, value, path = 'input') {
-  if (!schema || schema.type === 'object') {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(path + ' must be an object');
-    for (const key of schema?.required || []) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    throw new TypeError(path + ' has an invalid schema');
+  }
+
+  const declaredTypes = schema.type === undefined
+    ? []
+    : (Array.isArray(schema.type) ? schema.type : [schema.type]);
+  const supportedTypes = new Set(['object', 'string', 'number', 'integer', 'boolean', 'array', 'null']);
+  for (const type of declaredTypes) {
+    if (!supportedTypes.has(type)) throw new TypeError(path + ' uses unsupported schema type: ' + type);
+  }
+
+  const matchesType = type => type === 'object'
+    ? value !== null && typeof value === 'object' && !Array.isArray(value)
+    : type === 'string' ? typeof value === 'string'
+    : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
+    : type === 'integer' ? Number.isInteger(value)
+    : type === 'boolean' ? typeof value === 'boolean'
+    : type === 'array' ? Array.isArray(value)
+    : type === 'null' ? value === null
+    : false;
+
+  if (declaredTypes.length && !declaredTypes.some(matchesType)) {
+    throw new TypeError(path + ' must be ' + declaredTypes.join(' or '));
+  }
+
+  const inferredObject = declaredTypes.length === 0 &&
+    (schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined);
+  const isObject = declaredTypes.includes('object') || inferredObject;
+  const isArray = declaredTypes.includes('array') || (declaredTypes.length === 0 && Array.isArray(value));
+  const isString = declaredTypes.includes('string') || (declaredTypes.length === 0 && typeof value === 'string');
+  const isNumber = declaredTypes.includes('number') || declaredTypes.includes('integer') ||
+    (declaredTypes.length === 0 && typeof value === 'number');
+
+  if (schema.enum && !schema.enum.some(item => Object.is(item, value))) {
+    throw new TypeError(path + ' must be one of: ' + schema.enum.join(', '));
+  }
+
+  if (isObject) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new TypeError(path + ' must be an object');
+    }
+    for (const key of schema.required || []) {
       if (!Object.prototype.hasOwnProperty.call(value, key)) throw new TypeError(path + '.' + key + ' is required');
     }
-    for (const [key, child] of Object.entries(schema?.properties || {})) {
+    for (const [key, child] of Object.entries(schema.properties || {})) {
       if (Object.prototype.hasOwnProperty.call(value, key)) validateToolInput(child, value[key], path + '.' + key);
     }
-    if (schema?.additionalProperties === false) {
+    if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
-        if (!Object.prototype.hasOwnProperty.call(schema.properties || {}, key)) throw new TypeError(path + '.' + key + ' is not allowed');
+        if (!Object.prototype.hasOwnProperty.call(schema.properties || {}, key)) {
+          throw new TypeError(path + '.' + key + ' is not allowed');
+        }
       }
     }
-    return true;
   }
-  const valid = schema.type === 'string' ? typeof value === 'string'
-    : schema.type === 'number' ? typeof value === 'number' && Number.isFinite(value)
-    : schema.type === 'integer' ? Number.isInteger(value)
-    : schema.type === 'boolean' ? typeof value === 'boolean'
-    : schema.type === 'array' ? Array.isArray(value)
-    : schema.type === 'null' ? value === null : true;
-  if (!valid) throw new TypeError(path + ' must be ' + schema.type);
-  if (schema.enum && !schema.enum.includes(value)) throw new TypeError(path + ' must be one of: ' + schema.enum.join(', '));
-  if (schema.type === 'string') {
+
+  if (isString) {
     if (schema.minLength !== undefined && value.length < schema.minLength) throw new TypeError(path + ' is too short');
     if (schema.maxLength !== undefined && value.length > schema.maxLength) throw new TypeError(path + ' is too long');
     if (schema.pattern && !(new RegExp(schema.pattern).test(value))) throw new TypeError(path + ' has an invalid format');
   }
-  if (schema.type === 'number' || schema.type === 'integer') {
+
+  if (isNumber) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new TypeError(path + ' must be a finite number');
+    if (schema.type === 'integer' && !Number.isInteger(value)) throw new TypeError(path + ' must be integer');
     if (schema.minimum !== undefined && value < schema.minimum) throw new TypeError(path + ' is below the minimum');
     if (schema.maximum !== undefined && value > schema.maximum) throw new TypeError(path + ' exceeds the maximum');
   }
-  if (schema.type === 'array') {
+
+  if (isArray) {
+    if (!Array.isArray(value)) throw new TypeError(path + ' must be an array');
     if (schema.minItems !== undefined && value.length < schema.minItems) throw new TypeError(path + ' has too few items');
     if (schema.maxItems !== undefined && value.length > schema.maxItems) throw new TypeError(path + ' has too many items');
     if (schema.items) value.forEach((item, index) => validateToolInput(schema.items, item, path + '[' + index + ']'));
   }
+
   return true;
 }
 export async function executeTool(name, input, context = {}) {
