@@ -1,7 +1,7 @@
 const DEFAULT_PROTOCOL_VERSION = '2025-03-26';
 
 function parseJsonRpcResponse(text, contentType) {
-  if (!text.trim()) return null;
+  if (!text.trim()) return undefined;
   let payload = text.trim();
   if (contentType?.includes('text/event-stream') || payload.startsWith('event:') || payload.startsWith('data:')) {
     const events = payload.split(/\r?\n\r?\n/);
@@ -12,10 +12,13 @@ function parseJsonRpcResponse(text, contentType) {
     }
     payload = data.find(Boolean) || '';
   }
-  if (!payload) return null;
+  if (!payload) return undefined;
   const message = JSON.parse(payload);
   if (message.error) throw new Error(message.error.message || 'MCP request failed');
-  return message.result ?? null;
+  if (!Object.prototype.hasOwnProperty.call(message, 'result')) {
+    throw new Error('MCP JSON-RPC response is missing its result.');
+  }
+  return message.result;
 }
 
 export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' } = {}) {
@@ -42,7 +45,7 @@ export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' }
     const body = await response.text();
     if (notification || response.status === 202) return null;
     const result = parseJsonRpcResponse(body, contentType);
-    if (result === null) throw new Error('MCP server returned no JSON-RPC response.');
+    if (result === undefined) throw new Error('MCP server returned no JSON-RPC response.');
     return result;
   };
 
