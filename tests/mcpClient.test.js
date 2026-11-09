@@ -181,3 +181,42 @@ test('legacy SSE transport correlates asynchronous tool responses delivered over
     else globalThis.EventSource = previousEventSource;
   }
 });
+
+
+test('releases an allocated Streamable HTTP session when tool discovery fails', async () => {
+  let deleteCalled = false;
+  const fetchImpl = async (_url, init) => {
+    if (init.method === 'DELETE') {
+      deleteCalled = true;
+      assert.equal(init.headers['Mcp-Session-Id'], 'allocated-session');
+      return new Response(null, { status: 200 });
+    }
+    const request = JSON.parse(init.body);
+    if (request.method === 'initialize') {
+      return new Response(JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: { protocolVersion: '2025-03-26' }
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'mcp-session-id': 'allocated-session'
+        }
+      });
+    }
+    if (request.method === 'notifications/initialized') {
+      return new Response(null, { status: 202 });
+    }
+    if (request.method === 'tools/list') {
+      return new Response('discovery unavailable', { status: 503 });
+    }
+    throw new Error('Unexpected MCP method: ' + request.method);
+  };
+
+  await assert.rejects(
+    connectMcpHttp('https://mcp.example.test/mcp', { fetchImpl }),
+    /MCP HTTP 503/
+  );
+  assert.equal(deleteCalled, true);
+});
