@@ -27,6 +27,7 @@ export default function App(){
  const [notice,setNotice]=useState('');
  const bottomRef=useRef(null);
  const integrationCleanup=useRef({});
+ const integrationCleanup=useRef({});
  const currentChat=state.chats[0]||null;
  const registeredTools=listTools();
  const messages=currentChat?.messages||[];
