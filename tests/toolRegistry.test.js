@@ -105,3 +105,38 @@ test('rejects invalid or excessively long regular-expression schemas', () => {
   assert.throws(() => validateToolInput({ type: 'string', pattern: '[' }, 'value'), /invalid pattern schema/);
   assert.throws(() => validateToolInput({ type: 'string', pattern: 'a'.repeat(513) }, 'value'), /invalid pattern schema/);
 });
+
+
+test('aborts a tool and rejects when its execution timeout expires', async () => {
+  let receivedSignal;
+  const unregister = registerTool({
+    name: 'test_timeout',
+    timeoutMs: 10,
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  }, async (_input, { signal }) => {
+    receivedSignal = signal;
+    return await new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  });
+  try {
+    await assert.rejects(executeTool('test_timeout', {}), /Tool timed out after 10ms/);
+    assert.equal(receivedSignal.aborted, true);
+  } finally {
+    unregister();
+  }
+});
+
+test('uses the default timeout for tools and rejects invalid timeout configuration', () => {
+  const unregister = registerTool({
+    name: 'test_default_timeout',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  }, async () => 'ok');
+  try {
+    assert.equal(listTools().find(tool => tool.name === 'test_default_timeout').timeoutMs, 30000);
+  } finally {
+    unregister();
+  }
+  assert.throws(() => registerTool({ name: 'test_invalid_timeout', timeoutMs: 0 }, async () => null), /timeoutMs/);
+  assert.throws(() => registerTool({ name: 'test_long_timeout', timeoutMs: 120001 }, async () => null), /timeoutMs/);
+});
