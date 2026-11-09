@@ -1,6 +1,6 @@
 const PROTOCOL_VERSION = '2025-03-26';
-export async function connectMcpHttp(endpoint, { fetchImpl = fetch } = {}) {
-  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' } = {}) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(token ? { Authorization: 'Bearer ' + token } : {}) };
   const call = async (method, params = {}, id = Date.now()) => {
     const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', ...(method.startsWith('notifications/') ? {} : { id }), method, params }) });
     if (!response.ok) throw new Error('MCP HTTP ' + response.status);
