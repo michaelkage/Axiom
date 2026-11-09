@@ -47,7 +47,7 @@ export default function App(){
  useEffect(()=>{
   for(const item of state.tools.filter(t=>t.enabled)){
    try{const settings=state.settings||{};integrationCleanup.current[item.id]=item.id==='github'?registerGitHubTools({token:settings.githubToken,repository:settings.githubRepo}):registerSupabaseTools({url:settings.supabaseUrl,key:settings.supabaseKey});}
-   catch(error){log('error',item.id+' integration restore failed',error.message);}
+   catch(error){log('error',item.id+' integration restore failed',error.message);setState(current=>({...current,tools:current.tools.map(tool=>tool.id===item.id?{...tool,enabled:false}:tool)}));}
   }
  },[]);
 
@@ -127,8 +127,12 @@ export default function App(){
  function newChat(){setState(s=>({...s,chats:[{id:uid(),title:'New conversation',messages:[]},...s.chats]}));setTab('chat');}
  function addServer(){
   if(!serverUrl.trim())return;
-  const item={id:uid(),name:serverName.trim()||new URL(serverUrl).host,url:serverUrl.trim(),transport:serverTransport,status:'unverified',tools:[]};
-  update({servers:[item,...state.servers]}); log('info','MCP endpoint added',item.url); setServerName('');setServerUrl('');
+  try{
+   const parsed=new URL(serverUrl.trim());
+   if(!['http:','https:'].includes(parsed.protocol))throw new Error('Use an HTTP or HTTPS MCP endpoint.');
+   const item={id:uid(),name:serverName.trim()||parsed.host,url:parsed.toString(),transport:serverTransport,status:'unverified',tools:[]};
+   update({servers:[item,...state.servers]});log('info','MCP endpoint added',item.url);setServerName('');setServerUrl('');
+  }catch(error){setNotice(error.message==='Invalid URL'?'Enter a valid MCP endpoint URL.':error.message);}
  }
  async function discoverServer(id){
   const server=state.servers.find(s=>s.id===id); if(!server)return;
