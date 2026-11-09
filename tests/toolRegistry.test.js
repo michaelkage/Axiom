@@ -33,3 +33,18 @@ test('rejects missing required fields and unexpected properties', () => {
   assert.throws(() => validateToolInput(schema, { value: 1, extra: true }), /is not allowed/);
   assert.throws(() => validateToolInput(schema, { value: 'wrong' }), /must be integer/);
 });
+
+test('validates nested arrays and numeric bounds', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      ports: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'integer', minimum: 1, maximum: 65535 } }
+    },
+    required: ['ports'],
+    additionalProperties: false
+  };
+  assert.equal(validateToolInput(schema, { ports: [80, 443] }), true);
+  assert.throws(() => validateToolInput(schema, { ports: [] }), /too few items/);
+  assert.throws(() => validateToolInput(schema, { ports: [70000] }), /exceeds the maximum/);
+  assert.throws(() => validateToolInput(schema, { ports: [80, '443'] }), /must be integer/);
+});
