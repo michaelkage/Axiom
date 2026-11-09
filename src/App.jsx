@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { connectMcpHttp } from './lib/mcpClient.js';
 import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
 
 const STORE = 'axiom.mobile.v1';
@@ -66,13 +67,11 @@ export default function App(){
   const server=state.servers.find(s=>s.id===id); if(!server)return;
   log('request','MCP tools/list',server.url);
   try{
-   const res=await fetch(server.url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:uid(),method:'tools/list',params:{}})});
-   const raw=await res.text(); let parsed;
-   try{parsed=JSON.parse(raw);}catch{const line=raw.split('\n').find(x=>x.startsWith('data:'));parsed=line?JSON.parse(line.slice(5)):null;}
-   const tools=parsed?.result?.tools||[];
-   update({servers:state.servers.map(s=>s.id===id?{...s,status:res.ok?'connected':'error',tools}:s)});
-   log(res.ok?'success':'error','MCP discovery',tools.length+' tools found');
-  }catch(e){update({servers:state.servers.map(s=>s.id===id?{...s,status:'error'}:s)});log('error','MCP discovery failed',e.message+' — endpoint may require an MCP session handshake or proxy due to browser CORS.');}
+   const connection=await connectMcpHttp(server.url);
+   const tools=connection.tools;
+   update({servers:state.servers.map(s=>s.id===id?{...s,status:'connected',tools}:s)});
+   log('success','MCP discovery',tools.length+' tools found');
+  }catch(e){update({servers:state.servers.map(s=>s.id===id?{...s,status:'error'}:s)});log('error','MCP discovery failed',e.message+' — browser CORS and server transport support may require a local proxy.');}
  }
  const nav=[{id:'chat',label:'Chat',icon:MessageSquare},{id:'tools',label:'Tools',icon:Wrench},{id:'mcp',label:'MCP',icon:NetworkIcon},{id:'logs',label:'Logs',icon:Activity}];
  return <div className="min-h-screen text-slate-100 flex flex-col max-w-3xl mx-auto relative">
