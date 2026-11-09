@@ -77,7 +77,7 @@ export default function App(){
       buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';
       for(const line of lines){if(!line.trim())continue;const chunk=JSON.parse(line),part=chunk.message||{};
        if(part.thinking)thinking+=part.thinking;
-       if(part.content){turnContent+=part.content;answer+=(answer?'':'')+part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
+       if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
        if(part.tool_calls?.length)calls.push(...part.tool_calls);
       }
      }
