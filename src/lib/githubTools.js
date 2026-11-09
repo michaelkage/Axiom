@@ -18,6 +18,7 @@ export function registerGitHubTools({ token, repository }) {
   }));
   unregister.push(registerTool({
     name: 'github_update_file',
+    requiresApproval: true,
     description: 'Commit a complete replacement for an existing file. Requires the current blob SHA.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' }, sha: { type: 'string', minLength: 1 }, message: { type: 'string', minLength: 1 }, branch: { type: 'string' } }, required: ['path', 'content', 'sha', 'message'], additionalProperties: false }
   }, async ({ path, content, sha, message, branch }) => {
@@ -26,6 +27,7 @@ export function registerGitHubTools({ token, repository }) {
   }));
   unregister.push(registerTool({
     name: 'github_create_file',
+    requiresApproval: true,
     description: 'Create a new text file in the configured GitHub repository and commit it.',
     inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' }, message: { type: 'string', minLength: 1 }, branch: { type: 'string' } }, required: ['path', 'content', 'message'], additionalProperties: false }
   }, async ({ path, content, message, branch }) => {
