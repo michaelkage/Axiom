@@ -89,6 +89,12 @@ export default function App(){
       const name=call.function?.name;let args=call.function?.arguments||{};
       if(typeof args==='string'){try{args=JSON.parse(args);}catch{throw new Error('Tool arguments for '+name+' were not valid JSON');}}
       log('request','Tool: '+name,JSON.stringify(args,null,2));
+      const toolMeta=listTools().find(tool=>tool.name===name);
+      if(toolMeta?.requiresApproval&&!window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?')){
+       conversation.push({role:'tool',tool_name:name,content:JSON.stringify({cancelled:true,message:'User declined this action.'})});
+       log('info','Tool action declined: '+name);
+       continue;
+      }
       try{const result=await executeTool(name,args);conversation.push({role:'tool',tool_name:name,content:JSON.stringify(result)});log('success','Tool completed: '+name,JSON.stringify(result,null,2));}
       catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
@@ -133,7 +139,7 @@ export default function App(){
    const tools=connection.tools;
    const cleanups=tools.map(tool=>{
     const safeName='mcp_'+id.replace(/[^a-zA-Z0-9_]/g,'_')+'_'+tool.name.replace(/[^a-zA-Z0-9_]/g,'_');
-    return registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}}},async args=>{
+    return registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:!(tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint===false)},async args=>{
      const result=await connection.call('tools/call',{name:tool.name,arguments:args});
      if(result?.isError)throw new Error((result.content||[]).map(x=>x.text||'').join('\\n')||'MCP tool returned an error');
      return result;
