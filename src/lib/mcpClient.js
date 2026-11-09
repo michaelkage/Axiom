@@ -29,14 +29,15 @@ export async function connectMcpHttp(endpoint, { fetchImpl = fetch, token = '' }
   };
   let nextId = 2;
   let closed = false;
-  const call = async (method, params = {}, id) => {
+  const call = async (method, params = {}, id, { signal } = {}) => {
     if (closed) throw new Error('MCP connection is closed.');
     const notification = method.startsWith('notifications/');
     const requestId = notification ? undefined : (id ?? nextId++);
     const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ jsonrpc: '2.0', ...(notification ? {} : { id: requestId }), method, params })
+      body: JSON.stringify({ jsonrpc: '2.0', ...(notification ? {} : { id: requestId }), method, params }),
+      signal
     });
     if (!response.ok) throw new Error('MCP HTTP ' + response.status);
     const sessionId = response.headers.get('mcp-session-id');
@@ -102,6 +103,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
       if (message.id === undefined || !pending.has(message.id)) return;
       const waiter = pending.get(message.id);
       pending.delete(message.id);
+      waiter.signal?.removeEventListener('abort', waiter.onAbort);
       clearTimeout(waiter.timer);
       if (message.error) waiter.reject(new Error(message.error.message || 'MCP request failed'));
       else waiter.resolve(message.result);
@@ -111,14 +113,16 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
     if (source.readyState === EventSource.CLOSED) {
       endpointReject(new Error('MCP SSE connection closed.'));
       for (const waiter of pending.values()) {
+        waiter.signal?.removeEventListener('abort', waiter.onAbort);
         clearTimeout(waiter.timer);
         waiter.reject(new Error('MCP SSE connection closed.'));
       }
       pending.clear();
     }
   };
-  const post = async (message, waitForResult) => {
+  const post = async (message, waitForResult, signal) => {
     if (closed) throw new Error('MCP connection is closed.');
+    if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');
     const target = await endpointReady;
     let responsePromise;
     if (waitForResult) {
@@ -129,14 +133,22 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
             reject(new Error('MCP request timed out: ' + message.method));
           }
         }, timeoutMs);
-        pending.set(message.id, { resolve, reject, timer });
+        const onAbort = () => {
+          if (!pending.has(message.id)) return;
+          pending.delete(message.id);
+          clearTimeout(timer);
+          reject(signal.reason || new DOMException('The operation was aborted.', 'AbortError'));
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+        pending.set(message.id, { resolve, reject, timer, signal, onAbort });
       });
     }
     try {
       const response = await fetchImpl(target, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': protocolVersion },
-        body: JSON.stringify(message)
+        body: JSON.stringify(message),
+        signal
       });
       if (!response.ok) throw new Error('MCP SSE message POST returned HTTP ' + response.status);
       if (!waitForResult) return null;
@@ -147,6 +159,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
           if (payload.id !== undefined && pending.has(payload.id)) {
             const waiter = pending.get(payload.id);
             pending.delete(payload.id);
+            waiter.signal?.removeEventListener('abort', waiter.onAbort);
             clearTimeout(waiter.timer);
             if (payload.error) waiter.reject(new Error(payload.error.message || 'MCP request failed'));
             else waiter.resolve(payload.result);
@@ -157,6 +170,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
     } catch (error) {
       const waiter = pending.get(message.id);
       if (waiter) {
+        waiter.signal?.removeEventListener('abort', waiter.onAbort);
         clearTimeout(waiter.timer);
         pending.delete(message.id);
         waiter.reject(error);
@@ -164,9 +178,9 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
       throw error;
     }
   };
-  const call = async (method, params = {}) => {
+  const call = async (method, params = {}, { signal } = {}) => {
     const id = nextId++;
-    return await post({ jsonrpc: '2.0', id, method, params }, true);
+    return await post({ jsonrpc: '2.0', id, method, params }, true, signal);
   };
   try {
     const initialized = await call('initialize', {
@@ -186,6 +200,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
         clearTimeout(endpointTimer);
         source.close();
         for (const waiter of pending.values()) {
+          waiter.signal?.removeEventListener('abort', waiter.onAbort);
           clearTimeout(waiter.timer);
           waiter.reject(new Error('MCP connection closed.'));
         }
@@ -197,6 +212,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
     clearTimeout(endpointTimer);
     source.close();
     for (const waiter of pending.values()) {
+      waiter.signal?.removeEventListener('abort', waiter.onAbort);
       clearTimeout(waiter.timer);
       waiter.reject(error);
     }
