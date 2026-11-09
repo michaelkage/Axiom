@@ -24,5 +24,13 @@ export function registerGitHubTools({ token, repository }) {
     const response = await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: btoa(Array.from(new TextEncoder().encode(content), byte => String.fromCharCode(byte)).join('')), sha, ...(branch ? { branch } : {}) });
     return { path, commitSha: response.data.commit.sha, contentSha: response.data.content?.sha };
   }));
+  unregister.push(registerTool({
+    name: 'github_create_file',
+    description: 'Create a new text file in the configured GitHub repository and commit it.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, content: { type: 'string' }, message: { type: 'string', minLength: 1 }, branch: { type: 'string' } }, required: ['path', 'content', 'message'], additionalProperties: false }
+  }, async ({ path, content, message, branch }) => {
+    const response = await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: btoa(Array.from(new TextEncoder().encode(content), byte => String.fromCharCode(byte)).join('')), ...(branch ? { branch } : {}) });
+    return { path, commitSha: response.data.commit.sha, contentSha: response.data.content?.sha };
+  }));
   return () => unregister.forEach(fn => fn());
 }
