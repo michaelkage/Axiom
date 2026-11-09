@@ -22,7 +22,7 @@ test('initializes Streamable HTTP MCP session and discovers tools', async () => 
       });
     }
     if (request.method === 'tools/call') {
-      return new Response('event: message\\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: 'pong' }] } }) + '\\n\\n', {
+      return new Response('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: 'pong' }] } }) + '\n\n', {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' }
       });
