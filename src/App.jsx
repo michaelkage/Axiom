@@ -145,14 +145,21 @@ export default function App(){
    const connection=server.transport==='sse'?await connectMcpSse(server.url):await connectMcpHttp(server.url,{token:server.authToken||''});
    mcpCleanup.current[id]?.();
    const tools=connection.tools;
-   const cleanups=tools.map(tool=>{
-    const safeName='mcp_'+id.replace(/[^a-zA-Z0-9_]/g,'_')+'_'+tool.name.replace(/[^a-zA-Z0-9_]/g,'_');
-    return registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:!(tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint===false)},async args=>{
-     const result=await connection.call('tools/call',{name:tool.name,arguments:args});
-     if(result?.isError)throw new Error((result.content||[]).map(x=>x.text||'').join('\\n')||'MCP tool returned an error');
-     return result;
-    });
-   });
+   const cleanups=[];
+   try {
+    for(const tool of tools){
+     const safeName='mcp_'+id.replace(/[^a-zA-Z0-9_]/g,'_')+'_'+tool.name.replace(/[^a-zA-Z0-9_]/g,'_');
+     cleanups.push(registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:!(tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint===false)},async args=>{
+      const result=await connection.call('tools/call',{name:tool.name,arguments:args});
+      if(result?.isError)throw new Error((result.content||[]).map(x=>x.text||'').join('\\n')||'MCP tool returned an error');
+      return result;
+     }));
+    }
+   } catch(error) {
+    cleanups.forEach(cleanup=>cleanup());
+    connection.close?.();
+    throw error;
+   }
    mcpCleanup.current[id]=()=>{cleanups.forEach(fn=>fn());connection.close?.();};
    update({servers:state.servers.map(s=>s.id===id?{...s,status:'connected',tools}:s)});
    log('success','MCP discovery',tools.length+' tools registered with Ollama');
