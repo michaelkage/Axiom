@@ -112,7 +112,7 @@ export default function App(){
     });
    }
    log('success','Generation complete',state.model);
-  }catch(e){patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'**Connection error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}
+  }catch(e){patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}
   finally{setBusy(false);}
  }
  function toggleIntegration(id){
