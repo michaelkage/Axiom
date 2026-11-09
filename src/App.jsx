@@ -9,7 +9,7 @@ const STORE = 'axiom.mobile.v1';
 const defaults = { baseUrl:'http://localhost:11434', model:'qwen2.5:1.5b', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:''} };
 const uid = () => Math.random().toString(36).slice(2,10);
 const stamp = () => new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-function loadState(){ try { return {...defaults,...JSON.parse(localStorage.getItem(STORE)||'{}')}; } catch { return defaults; } }
+function loadState(){ try { const saved=JSON.parse(localStorage.getItem(STORE)||'{}'); return {...defaults,...saved,settings:{...defaults.settings,...(saved.settings||{})}}; } catch { return defaults; } }
 function Icon({name,...props}) { const map={github:Github,database:Database}; const C=map[name]||Wrench; return <C {...props}/>; }
 
 export default function App(){
@@ -43,6 +43,13 @@ export default function App(){
   catch(e){setConnection('offline');log('error','Ollama connection failed',e.message);setNotice('Could not reach Ollama. Check the URL and network access.');}
  }
  useEffect(()=>{checkOllama();},[]);
+ useEffect(()=>{
+  for(const item of state.tools.filter(t=>t.enabled)){
+   try{const settings=state.settings||{};integrationCleanup.current[item.id]=item.id==='github'?registerGitHubTools({token:settings.githubToken,repository:settings.githubRepo}):registerSupabaseTools({url:settings.supabaseUrl,key:settings.supabaseKey});}
+   catch(error){log('error',item.id+' integration restore failed',error.message);}
+  }
+ },[]);
+
  async function sendMessage(){
   const prompt=draft.trim(); if(!prompt||busy)return;
   setDraft(''); setBusy(true);
@@ -126,6 +133,7 @@ export default function App(){
    log('success','MCP discovery',tools.length+' tools registered with Ollama');
   }catch(e){update({servers:state.servers.map(s=>s.id===id?{...s,status:'error'}:s)});log('error','MCP discovery failed',e.message+' — browser CORS and server transport support may require a local proxy.');}
  }
+ useEffect(()=>{for(const server of state.servers.filter(s=>s.status==='connected'))discoverServer(server.id);},[]);
  const nav=[{id:'chat',label:'Chat',icon:MessageSquare},{id:'tools',label:'Tools',icon:Wrench},{id:'mcp',label:'MCP',icon:NetworkIcon},{id:'logs',label:'Logs',icon:Activity}];
  return <div className="min-h-screen text-slate-100 flex flex-col max-w-3xl mx-auto relative">
   <header className="safe-top sticky top-0 z-30 glass border-b border-white/[.07]">
