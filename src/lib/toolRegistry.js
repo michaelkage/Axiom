@@ -152,6 +152,20 @@ export async function executeTool(name, input, context = {}) {
   let timeout;
   emit({ type: 'tool.started', name, input, startedAt, timeoutMs: tool.timeoutMs });
   const executionContext = { ...context, signal: controller.signal };
+  const parentSignal = context?.signal;
+  let onParentAbort;
+  const cancelled = parentSignal?.addEventListener
+    ? new Promise((_, reject) => {
+      onParentAbort = () => {
+        const reason = parentSignal.reason || new Error('Tool execution cancelled: ' + name);
+        controller.abort(reason);
+        emit({ type: 'tool.cancelled', name, durationMs: Date.now() - startedAt });
+        reject(reason);
+      };
+      if (parentSignal.aborted) onParentAbort();
+      else parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    })
+    : new Promise(() => {});
   const timedOut = new Promise((_, reject) => {
     timeout = setTimeout(() => {
       const error = new Error('Tool timed out after ' + tool.timeoutMs + 'ms: ' + name);
@@ -162,16 +176,24 @@ export async function executeTool(name, input, context = {}) {
     }, tool.timeoutMs);
   });
   try {
-    const result = await Promise.race([Promise.resolve().then(() => tool.handler(input, executionContext)), timedOut]);
+    const result = await Promise.race([
+      Promise.resolve().then(() => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        return tool.handler(input, executionContext);
+      }),
+      timedOut,
+      cancelled
+    ]);
     emit({ type: 'tool.completed', name, durationMs: Date.now() - startedAt });
     return result;
   } catch (error) {
-    if (error?.name !== 'ToolTimeoutError') {
+    if (error?.name !== 'ToolTimeoutError' && !controller.signal.aborted) {
       emit({ type: 'tool.failed', name, durationMs: Date.now() - startedAt, error: error.message });
     }
     throw error;
   } finally {
     clearTimeout(timeout);
+    parentSignal?.removeEventListener?.('abort', onParentAbort);
   }
 }
 export function toOllamaTools() {
