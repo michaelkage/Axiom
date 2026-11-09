@@ -27,21 +27,29 @@ self.addEventListener('fetch', event => {
   if (!isNavigation && !isStaticAsset) return;
 
   if (isNavigation) {
-    event.respondWith(fetch(request).then(response => {
-      if (response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE).then(cache => cache.put('/index.html', copy));
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const cache = await caches.open(CACHE);
+          await cache.put('/index.html', response.clone());
+        }
+        return response;
+      } catch {
+        return (await caches.match('/index.html')) || Response.error();
       }
-      return response;
-    }).catch(() => caches.match('/index.html')));
+    })());
     return;
   }
 
-  event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
     if (response.ok) {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put(request, copy));
+      const cache = await caches.open(CACHE);
+      await cache.put(request, response.clone());
     }
     return response;
-  })));
+  })());
 });
