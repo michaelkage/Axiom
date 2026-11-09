@@ -220,3 +220,25 @@ test('releases an allocated Streamable HTTP session when tool discovery fails', 
   );
   assert.equal(deleteCalled, true);
 });
+
+
+test('accepts a valid JSON-RPC response whose result is null', async () => {
+  const fetchImpl = async (_url, init) => {
+    if (init.method === 'DELETE') return new Response(null, { status: 200 });
+    const request = JSON.parse(init.body);
+    if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    const result = request.method === 'initialize'
+      ? { protocolVersion: '2025-03-26' }
+      : request.method === 'tools/list'
+        ? { tools: [] }
+        : null;
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  const connection = await connectMcpHttp('https://mcp.example.test/mcp', { fetchImpl });
+  assert.equal(await connection.call('tools/call', { name: 'nullable_result', arguments: {} }), null);
+  await connection.close();
+});
