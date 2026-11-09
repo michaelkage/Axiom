@@ -97,3 +97,18 @@ export function toOllamaTools() {
     function: { name: tool.name, description: tool.description, parameters: tool.inputSchema }
   }));
 }
+
+/**
+ * Convert tool output to the JSON string required by Ollama's tool message.
+ * Undefined is represented as JSON null; unsupported/circular values fail
+ * clearly so the caller can return a tool error instead of malformed context.
+ */
+export function serializeToolResult(result) {
+  let serialized;
+  try {
+    serialized = JSON.stringify(result);
+  } catch (error) {
+    throw new TypeError('Tool result is not JSON-serializable: ' + error.message);
+  }
+  return serialized === undefined ? 'null' : serialized;
+}
