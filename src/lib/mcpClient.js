@@ -77,6 +77,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
   const pending = new Map();
   let messageEndpoint = '';
   let nextId = 10;
+  let protocolVersion = DEFAULT_PROTOCOL_VERSION;
   let closed = false;
   let endpointResolve, endpointReject;
   const endpointReady = new Promise((resolve, reject) => { endpointResolve = resolve; endpointReject = reject; });
@@ -127,7 +128,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
     try {
       const response = await fetchImpl(target, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': DEFAULT_PROTOCOL_VERSION },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': protocolVersion },
         body: JSON.stringify(message)
       });
       if (!response.ok) throw new Error('MCP SSE message POST returned HTTP ' + response.status);
@@ -161,11 +162,12 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
     return await post({ jsonrpc: '2.0', id, method, params }, true);
   };
   try {
-    await call('initialize', {
+    const initialized = await call('initialize', {
       protocolVersion: DEFAULT_PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: 'Axiom', version: '1.0.0' }
     });
+    protocolVersion = initialized?.protocolVersion || DEFAULT_PROTOCOL_VERSION;
     await post({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }, false);
     const result = await call('tools/list', {});
     return {
