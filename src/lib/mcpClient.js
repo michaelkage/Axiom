@@ -176,6 +176,8 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
         pending.delete(message.id);
         waiter.reject(error);
       }
+      // Consume the pending response rejection when fetch itself is aborted.
+      if (responsePromise) await responsePromise.catch(() => {});
       throw error;
     }
   };
