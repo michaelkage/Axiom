@@ -36,10 +36,22 @@ export function registerTool(definition, handler) {
     emit({ type: 'tool.unregistered', name: entry.name });
   };
 }
-export function validateToolInput(schema, value, path = 'input') {
+export function validateToolInput(schema, value, path = 'input', depth = 0) {
+  if (depth > 64) throw new TypeError(path + ' exceeds the maximum schema/input nesting depth');
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     throw new TypeError(path + ' has an invalid schema');
   }
+
+  if (schema.properties !== undefined && (!schema.properties || typeof schema.properties !== 'object' || Array.isArray(schema.properties))) {
+    throw new TypeError(path + ' has invalid properties schema');
+  }
+  if (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.some(key => typeof key !== 'string'))) {
+    throw new TypeError(path + ' has invalid required schema');
+  }
+  if (schema.items !== undefined && (!schema.items || typeof schema.items !== 'object' || Array.isArray(schema.items))) {
+    throw new TypeError(path + ' has invalid items schema');
+  }
+  if (schema.enum !== undefined && !Array.isArray(schema.enum)) throw new TypeError(path + ' has invalid enum schema');
 
   const declaredTypes = schema.type === undefined
     ? []
@@ -84,7 +96,7 @@ export function validateToolInput(schema, value, path = 'input') {
       if (!Object.prototype.hasOwnProperty.call(value, key)) throw new TypeError(path + '.' + key + ' is required');
     }
     for (const [key, child] of Object.entries(schema.properties || {})) {
-      if (Object.prototype.hasOwnProperty.call(value, key)) validateToolInput(child, value[key], path + '.' + key);
+      if (Object.prototype.hasOwnProperty.call(value, key)) validateToolInput(child, value[key], path + '.' + key, depth + 1);
     }
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
@@ -98,7 +110,15 @@ export function validateToolInput(schema, value, path = 'input') {
   if (isString) {
     if (schema.minLength !== undefined && value.length < schema.minLength) throw new TypeError(path + ' is too short');
     if (schema.maxLength !== undefined && value.length > schema.maxLength) throw new TypeError(path + ' is too long');
-    if (schema.pattern && !(new RegExp(schema.pattern).test(value))) throw new TypeError(path + ' has an invalid format');
+    if (schema.pattern !== undefined) {
+      if (typeof schema.pattern !== 'string' || schema.pattern.length > 512) {
+        throw new TypeError(path + ' has an invalid pattern schema');
+      }
+      let pattern;
+      try { pattern = new RegExp(schema.pattern); }
+      catch { throw new TypeError(path + ' has an invalid pattern schema'); }
+      if (!pattern.test(value)) throw new TypeError(path + ' has an invalid format');
+    }
   }
 
   if (isNumber) {
@@ -114,7 +134,7 @@ export function validateToolInput(schema, value, path = 'input') {
     if (!Array.isArray(value)) throw new TypeError(path + ' must be an array');
     if (schema.minItems !== undefined && value.length < schema.minItems) throw new TypeError(path + ' has too few items');
     if (schema.maxItems !== undefined && value.length > schema.maxItems) throw new TypeError(path + ' has too many items');
-    if (schema.items) value.forEach((item, index) => validateToolInput(schema.items, item, path + '[' + index + ']'));
+    if (schema.items) value.forEach((item, index) => validateToolInput(schema.items, item, path + '[' + index + ']', depth + 1));
   }
 
   return true;
