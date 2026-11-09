@@ -32,7 +32,6 @@ export default function App(){
  const integrationCleanup=useRef({});
  const mcpCleanup=useRef({});
  const mcpRestoreStarted=useRef(false);
- const integrationCleanup=useRef({});
  const currentChat=state.chats[0]||null;
  const registeredTools=listTools();
  const messages=currentChat?.messages||[];
