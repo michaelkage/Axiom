@@ -130,6 +130,7 @@ export async function connectMcpSse(endpoint, { fetchImpl = fetch, timeoutMs = 1
         const timer = setTimeout(() => {
           if (pending.has(message.id)) {
             pending.delete(message.id);
+            signal?.removeEventListener('abort', onAbort);
             reject(new Error('MCP request timed out: ' + message.method));
           }
         }, timeoutMs);
