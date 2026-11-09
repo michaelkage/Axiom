@@ -29,6 +29,6 @@ Axiom is restarting as an Android-first PWA in the existing repository. This bra
 
 ## Remaining delivery work
 - Add an authenticated local gateway for secret isolation and reliable cross-origin MCP.
-- Pin and lock the full dependency graph.
+- Generate and commit the npm lockfile for the pinned direct dependencies.
 - Run CI build and automated tests, then install and verify on Android Chrome.
 - Improve Markdown rendering, conversation management, and explicit tool approval UX.
