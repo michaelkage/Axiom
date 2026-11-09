@@ -21,7 +21,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Collapsible execution traces and installable PWA shell
 
 ## Security and transport notes
-- LocalStorage is not encrypted. The PWA stores configured tokens on this device because this is a local-first prototype; never enter production, organization-wide, service-role, or Supabase secret keys. Use least-privilege GitHub tokens and Supabase publishable keys. GitHub writes, SQL execution, and MCP tools without an explicit read-only annotation require user approval.
+- LocalStorage is not encrypted. The PWA stores configured tokens on this device because this is a local-first prototype; never enter production, organization-wide, service-role, or Supabase secret keys. Use least-privilege GitHub tokens and Supabase publishable keys. GitHub writes, SQL execution, and all remote MCP tools require user approval. MCP annotations are supplied by remote servers and are treated as advisory, not as a trusted security boundary.
 - Supabase's REST OpenAPI schema is no longer available to anon/publishable-key requests. Table and column discovery therefore uses a project-owned `exec_sql` RPC; the app does not create that function or grant it permissions. Only connect a narrowly permissioned RPC that you have reviewed. Do not implement it as a broadly executable SECURITY DEFINER function.
 - Supabase SQL execution is only available if you deliberately provide a permission-controlled `exec_sql` RPC. No generic privileged SQL endpoint is bundled.
 - Browser MCP requires server CORS support. Streamable HTTP and legacy SSE are implemented; legacy EventSource cannot attach custom authorization headers, so a same-origin authenticated proxy is recommended for protected production servers.
