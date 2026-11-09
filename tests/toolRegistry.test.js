@@ -86,3 +86,22 @@ test('supports JSON Schema union types and validates the matching branch', () =>
   assert.equal(validateToolInput(mixed, { name: 'Axiom' }), true);
   assert.throws(() => validateToolInput(mixed, {}), /name is required/);
 });
+
+
+test('bounds schema nesting and rejects malformed schema keywords', () => {
+  let nested = { type: 'string' };
+  for (let index = 0; index < 66; index++) nested = { type: 'array', items: nested };
+  let value = 'ok';
+  for (let index = 0; index < 66; index++) value = [value];
+  assert.throws(() => validateToolInput(nested, value), /maximum schema\/input nesting depth/);
+
+  assert.throws(() => validateToolInput({ type: 'object', properties: [] }, {}), /invalid properties schema/);
+  assert.throws(() => validateToolInput({ type: 'object', required: 'name' }, {}), /invalid required schema/);
+  assert.throws(() => validateToolInput({ type: 'array', items: null }, []), /invalid items schema/);
+  assert.throws(() => validateToolInput({ type: 'string', enum: 'yes' }, 'yes'), /invalid enum schema/);
+});
+
+test('rejects invalid or excessively long regular-expression schemas', () => {
+  assert.throws(() => validateToolInput({ type: 'string', pattern: '[' }, 'value'), /invalid pattern schema/);
+  assert.throws(() => validateToolInput({ type: 'string', pattern: 'a'.repeat(513) }, 'value'), /invalid pattern schema/);
+});
