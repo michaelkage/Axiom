@@ -242,3 +242,83 @@ test('accepts a valid JSON-RPC response whose result is null', async () => {
   assert.equal(await connection.call('tools/call', { name: 'nullable_result', arguments: {} }), null);
   await connection.close();
 });
+
+
+test('forwards an AbortSignal to Streamable HTTP tool requests', async () => {
+  let toolSignal;
+  const fetchImpl = async (_url, init) => {
+    if (init.method === 'DELETE') return new Response(null, { status: 200 });
+    const request = JSON.parse(init.body);
+    if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    const result = request.method === 'initialize'
+      ? { protocolVersion: '2025-03-26' }
+      : request.method === 'tools/list'
+        ? { tools: [] }
+        : { content: [{ type: 'text', text: 'ok' }] };
+    if (request.method === 'tools/call') toolSignal = init.signal;
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+  const connection = await connectMcpHttp('https://mcp.example.test/mcp', { fetchImpl });
+  const controller = new AbortController();
+  await connection.call('tools/call', { name: 'ping', arguments: {} }, undefined, { signal: controller.signal });
+  assert.equal(toolSignal, controller.signal);
+  await connection.close();
+});
+
+test('aborts a pending legacy SSE tool response and removes its waiter', async () => {
+  const previousEventSource = globalThis.EventSource;
+  let stream;
+  let postStarted;
+  const started = new Promise(resolve => { postStarted = resolve; });
+  class MockEventSource {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      stream = this;
+      queueMicrotask(() => this.emit('endpoint', { data: '/rpc' }));
+    }
+    addEventListener(name, callback) {
+      const callbacks = this.listeners.get(name) || [];
+      callbacks.push(callback);
+      this.listeners.set(name, callbacks);
+    }
+    emit(name, event) {
+      for (const callback of this.listeners.get(name) || []) callback(event);
+    }
+    close() { this.readyState = MockEventSource.CLOSED; }
+  }
+  globalThis.EventSource = MockEventSource;
+  const fetchImpl = async (_url, init) => {
+    const request = JSON.parse(init.body);
+    if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    const result = request.method === 'initialize'
+      ? { protocolVersion: '2025-06-18' }
+      : request.method === 'tools/list'
+        ? { tools: [] }
+        : undefined;
+    if (result) return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { status: 200 });
+    if (request.method === 'tools/call') {
+      assert.ok(init.signal instanceof AbortSignal);
+      postStarted();
+      return new Response(null, { status: 202 });
+    }
+    throw new Error('Unexpected method: ' + request.method);
+  };
+  try {
+    const connection = await connectMcpSse('https://mcp.example.test/sse', { fetchImpl, timeoutMs: 1000 });
+    const controller = new AbortController();
+    const pendingCall = connection.call('tools/call', { name: 'slow_tool', arguments: {} }, { signal: controller.signal });
+    await started;
+    controller.abort(new Error('cancelled by test'));
+    await assert.rejects(pendingCall, /cancelled by test/);
+    assert.equal(connection.tools.length, 0);
+    connection.close();
+  } finally {
+    if (previousEventSource === undefined) delete globalThis.EventSource;
+    else globalThis.EventSource = previousEventSource;
+  }
+});
