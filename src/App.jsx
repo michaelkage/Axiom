@@ -151,7 +151,7 @@ export default function App(){
    try {
     for(const tool of tools){
      const safeName='mcp_'+id.replace(/[^a-zA-Z0-9_]/g,'_')+'_'+tool.name.replace(/[^a-zA-Z0-9_]/g,'_');
-     cleanups.push(registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:!(tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint===false)},async args=>{
+     cleanups.push(registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:true},async args=>{
       const result=await connection.call('tools/call',{name:tool.name,arguments:args});
       if(result?.isError)throw new Error((result.content||[]).map(x=>x.text||'').join('\\n')||'MCP tool returned an error');
       return result;
