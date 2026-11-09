@@ -64,3 +64,25 @@ test('rejects circular and BigInt tool results with a useful error', () => {
   assert.throws(() => serializeToolResult(circular), /not JSON-serializable/);
   assert.throws(() => serializeToolResult(1n), /not JSON-serializable/);
 });
+
+
+test('rejects unsupported schema types instead of silently accepting values', () => {
+  assert.throws(
+    () => validateToolInput({ type: 'date' }, '2026-11-09'),
+    /unsupported schema type: date/
+  );
+  assert.throws(() => validateToolInput(null, {}), /invalid schema/);
+});
+
+test('supports JSON Schema union types and validates the matching branch', () => {
+  const nullableString = { type: ['string', 'null'], minLength: 2 };
+  assert.equal(validateToolInput(nullableString, null), true);
+  assert.equal(validateToolInput(nullableString, 'ok'), true);
+  assert.throws(() => validateToolInput(nullableString, 'x'), /too short/);
+  assert.throws(() => validateToolInput(nullableString, 3), /must be string or null/);
+
+  const mixed = { type: ['object', 'string'], properties: { name: { type: 'string' } }, required: ['name'] };
+  assert.equal(validateToolInput(mixed, 'plain text'), true);
+  assert.equal(validateToolInput(mixed, { name: 'Axiom' }), true);
+  assert.throws(() => validateToolInput(mixed, {}), /name is required/);
+});
