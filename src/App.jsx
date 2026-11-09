@@ -66,20 +66,30 @@ export default function App(){
    if(availableTools.length){
     let conversation=[...priorMessages,userMsg].map(m=>({role:m.role,content:m.content}));
     for(let turn=0;turn<5;turn++){
-     const payload={model:state.model,messages:conversation,tools:availableTools,stream:false};
-     log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn},null,2));
+     const payload={model:state.model,messages:conversation,tools:availableTools,stream:true};
+     log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn,stream:true},null,2));
      const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
      if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-     const data=await response.json(),message=data.message||{};
-     if(message.content){answer+=(answer?'\n\n':'')+message.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
-     conversation.push(message);
-     const calls=message.tool_calls||[];
+     if(!response.body)throw new Error('Streaming response body unavailable');
+     const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',turnContent='',thinking='';const calls=[];
+     while(true){
+      const {done,value}=await reader.read();if(done)break;
+      buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';
+      for(const line of lines){if(!line.trim())continue;const chunk=JSON.parse(line),part=chunk.message||{};
+       if(part.thinking)thinking+=part.thinking;
+       if(part.content){turnContent+=part.content;answer+=(answer?'':'')+part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
+       if(part.tool_calls?.length)calls.push(...part.tool_calls);
+      }
+     }
+     if(buffer.trim()){const chunk=JSON.parse(buffer),part=chunk.message||{};if(part.thinking)thinking+=part.thinking;if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}if(part.tool_calls?.length)calls.push(...part.tool_calls);}
+     conversation.push({role:'assistant',thinking,content:turnContent,tool_calls:calls});
      if(!calls.length)break;
      for(const call of calls){
-      const name=call.function?.name,args=call.function?.arguments||{};
+      const name=call.function?.name;let args=call.function?.arguments||{};
+      if(typeof args==='string'){try{args=JSON.parse(args);}catch{throw new Error('Tool arguments for '+name+' were not valid JSON');}}
       log('request','Tool: '+name,JSON.stringify(args,null,2));
-      try{const result=await executeTool(name,args);conversation.push({role:'tool',content:JSON.stringify(result),name});log('success','Tool completed: '+name,JSON.stringify(result,null,2));}
-      catch(error){conversation.push({role:'tool',content:JSON.stringify({error:error.message}),name});log('error','Tool failed: '+name,error.message);}
+      try{const result=await executeTool(name,args);conversation.push({role:'tool',tool_name:name,content:JSON.stringify(result)});log('success','Tool completed: '+name,JSON.stringify(result,null,2));}
+      catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
     }
    }else{
