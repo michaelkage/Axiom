@@ -37,6 +37,7 @@ export function registerSupabaseTools({ url, key }) {
   }));
   unregister.push(registerTool({
     name: 'supabase_execute_sql',
+    requiresApproval: true,
     description: 'Execute SQL through a project-defined, permission-controlled RPC named exec_sql. This RPC must be created by the project owner.',
     inputSchema: { type: 'object', properties: { query: { type: 'string', minLength: 1 } }, required: ['query'], additionalProperties: false }
   }, async ({ query }) => {
