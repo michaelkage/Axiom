@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
+import { consumeNdjsonStream } from './lib/ndjson.js';
 import { executeTool, listTools, registerTool, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
@@ -70,25 +71,21 @@ export default function App(){
    const availableTools=toOllamaTools();
    if(availableTools.length){
     let conversation=[...priorMessages,userMsg].map(m=>({role:m.role,content:m.content}));
+    let completedToolLoop=false;
     for(let turn=0;turn<5;turn++){
      const payload={model:state.model,messages:conversation,tools:availableTools,stream:true};
      log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn,stream:true},null,2));
      const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
      if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-     if(!response.body)throw new Error('Streaming response body unavailable');
-     const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',turnContent='',thinking='';const calls=[];
-     while(true){
-      const {done,value}=await reader.read();if(done)break;
-      buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';
-      for(const line of lines){if(!line.trim())continue;const chunk=JSON.parse(line),part=chunk.message||{};
-       if(part.thinking)thinking+=part.thinking;
-       if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
-       if(part.tool_calls?.length)calls.push(...part.tool_calls);
-      }
-     }
-     if(buffer.trim()){const chunk=JSON.parse(buffer),part=chunk.message||{};if(part.thinking)thinking+=part.thinking;if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}if(part.tool_calls?.length)calls.push(...part.tool_calls);}
+     let turnContent='',thinking='';const calls=[];
+     await consumeNdjsonStream(response,chunk=>{
+      const part=chunk.message||{};
+      if(part.thinking)thinking+=part.thinking;
+      if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
+      if(part.tool_calls?.length)calls.push(...part.tool_calls);
+     });
      conversation.push({role:'assistant',thinking,content:turnContent,tool_calls:calls});
-     if(!calls.length)break;
+     if(!calls.length){completedToolLoop=true;break;}
      for(const call of calls){
       const name=call.function?.name;let args=call.function?.arguments||{};
       if(typeof args==='string'){try{args=JSON.parse(args);}catch{throw new Error('Tool arguments for '+name+' were not valid JSON');}}
@@ -103,15 +100,16 @@ export default function App(){
       catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
     }
+    if(!completedToolLoop)throw new Error('Tool execution reached the five-turn safety limit before the model finished. Review the tool results and send a follow-up if needed.');
    }else{
     const payload={model:state.model,prompt,stream:true};
     log('request','Ollama /api/generate',JSON.stringify(payload,null,2));
     const response=await fetch(base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-    if(!response.body)throw new Error('Streaming response body unavailable');
-    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
-    while(true){const {done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';for(const line of lines){if(!line.trim())continue;const part=JSON.parse(line);answer+=part.response||'';patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}}
-    if(buffer.trim()){const part=JSON.parse(buffer);answer+=part.response||'';patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
+    await consumeNdjsonStream(response,part=>{
+     answer+=part.response||'';
+     patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));
+    });
    }
    log('success','Generation complete',state.model);
   }catch(e){patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'**Connection error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}
