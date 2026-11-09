@@ -10,18 +10,25 @@ Axiom is restarting as an Android-first PWA in the existing repository. This bra
 - Touch-first bottom navigation
 - Installable PWA manifest and service worker
 
-## Runtime modules (planned)
-1. Local model adapter: Ollama tags discovery and streaming generate API.
-2. Tool registry: typed async handlers and JSON Schema validation.
-3. Provider adapters: GitHub via Octokit and Supabase via supabase-js.
-4. MCP transport adapter: Streamable HTTP first, legacy SSE where supported; server capability and session negotiation.
-5. Event bus: structured request, tool, result, and error events.
+## Implemented runtime
+1. Local model adapter: Ollama model discovery, streamed `/api/generate`, and streamed `/api/chat` tool-calling loops.
+2. Tool registry: async handlers, JSON-schema-shaped input validation, tool discovery, and execution lifecycle events.
+3. GitHub adapter: Octokit-based file reads, file creation, and file updates/commits.
+4. Supabase adapter: table listing/column inspection through an explicitly project-configured `exec_sql` RPC, row selection through the Data API, and optional SQL RPC calls.
+5. MCP transports: Streamable HTTP session initialization and legacy SSE event transport; discovered tool schemas are injected into Ollama chat.
+6. Event log: request, approval, execution, result, and error records.
+7. Persistence: chats, endpoint registrations, preferences, and credentials are stored in LocalStorage.
 
 ## Security boundaries
-A browser PWA cannot safely protect privileged API tokens in LocalStorage. Local persistence is acceptable only as an explicit convenience for user-controlled, low-risk credentials. Production-grade integrations should use a local companion service or a narrowly scoped server-side proxy, avoid logging secrets, and require confirmation for destructive actions. Never expose Supabase service-role keys in a browser client.
+- LocalStorage is not encrypted. This branch stores credentials locally as requested for the prototype, but production and high-privilege secrets must stay in a trusted backend.
+- Never expose Supabase service-role or secret keys in browser code. Use publishable keys and least-privilege database grants/RLS.
+- Supabase SQL and schema introspection require a project-owned, permission-controlled RPC. The app does not create or authorize that function. Do not expose an unrestricted SQL executor or a broadly executable SECURITY DEFINER function.
+- GitHub write operations, SQL execution, and MCP tools without explicit read-only annotations require user approval.
+- Browser MCP connections require CORS. Legacy EventSource transport cannot attach custom authorization headers; use a same-origin authenticated proxy for protected servers.
+- Browser-to-Ollama requests require CORS permission and correct Android localhost routing.
 
-## Delivery sequence
-- M0: React PWA shell, responsive navigation, persistence, Ollama streaming, basic logs.
-- M1: Tool registry contract and GitHub/Supabase adapters.
-- M2: MCP Streamable HTTP/SSE transport and schema discovery.
-- M3: Authenticated local gateway/proxy, safe credential storage, real tool execution, tests and Android install verification.
+## Remaining delivery work
+- Add an authenticated local gateway for secret isolation and reliable cross-origin MCP.
+- Pin and lock the full dependency graph.
+- Run CI build and automated tests, then install and verify on Android Chrome.
+- Improve Markdown rendering, conversation management, and explicit tool approval UX.
