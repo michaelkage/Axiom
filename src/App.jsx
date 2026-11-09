@@ -29,6 +29,7 @@ export default function App(){
  const bottomRef=useRef(null);
  const integrationCleanup=useRef({});
  const mcpCleanup=useRef({});
+ const mcpRestoreStarted=useRef(false);
  const integrationCleanup=useRef({});
  const currentChat=state.chats[0]||null;
  const registeredTools=listTools();
@@ -46,6 +47,7 @@ export default function App(){
  useEffect(()=>{checkOllama();},[]);
  useEffect(()=>{
   for(const item of state.tools.filter(t=>t.enabled)){
+   if(integrationCleanup.current[item.id])continue;
    try{const settings=state.settings||{};integrationCleanup.current[item.id]=item.id==='github'?registerGitHubTools({token:settings.githubToken,repository:settings.githubRepo}):registerSupabaseTools({url:settings.supabaseUrl,key:settings.supabaseKey});}
    catch(error){log('error',item.id+' integration restore failed',error.message);setState(current=>({...current,tools:current.tools.map(tool=>tool.id===item.id?{...tool,enabled:false}:tool)}));}
   }
@@ -154,7 +156,7 @@ export default function App(){
    log('success','MCP discovery',tools.length+' tools registered with Ollama');
   }catch(e){update({servers:state.servers.map(s=>s.id===id?{...s,status:'error'}:s)});log('error','MCP discovery failed',e.message+' — browser CORS and server transport support may require a local proxy.');}
  }
- useEffect(()=>{for(const server of state.servers.filter(s=>s.status==='connected'))discoverServer(server.id);},[]);
+ useEffect(()=>{if(mcpRestoreStarted.current)return;mcpRestoreStarted.current=true;for(const server of state.servers.filter(s=>s.status==='connected'))discoverServer(server.id);},[]);
  const nav=[{id:'chat',label:'Chat',icon:MessageSquare},{id:'tools',label:'Tools',icon:Wrench},{id:'mcp',label:'MCP',icon:NetworkIcon},{id:'logs',label:'Logs',icon:Activity}];
  return <div className="min-h-screen text-slate-100 flex flex-col max-w-3xl mx-auto relative">
   <header className="safe-top sticky top-0 z-30 glass border-b border-white/[.07]">
