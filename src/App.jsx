@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
 import { consumeNdjsonStream } from './lib/ndjson.js';
-import { executeTool, listTools, registerTool, toOllamaTools } from './lib/toolRegistry.js';
+import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
 import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
@@ -96,7 +96,7 @@ export default function App(){
        log('info','Tool action declined: '+name);
        continue;
       }
-      try{const result=await executeTool(name,args);conversation.push({role:'tool',tool_name:name,content:JSON.stringify(result)});log('success','Tool completed: '+name,JSON.stringify(result,null,2));}
+      try{const result=await executeTool(name,args);const serialized=serializeToolResult(result);conversation.push({role:'tool',tool_name:name,content:serialized});log('success','Tool completed: '+name,serialized);}
       catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
     }
