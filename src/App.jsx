@@ -52,24 +52,23 @@ export default function App(){
   const base=state.baseUrl.replace(/\/$/,'');
   const assistantId=uid();
   patchChat(old=>[...old,{id:assistantId,role:'assistant',content:'',time:stamp()}]);
-  const availableTools=toOllamaTools();
-  const history=[...priorMessages,userMsg].map(m=>({role:m.role,content:m.content}));
   let answer='';
   try{
+   const availableTools=toOllamaTools();
    if(availableTools.length){
-    let conversation=history.map(m=>({role:m.role,content:m.content}));
+    let conversation=[...priorMessages,userMsg].map(m=>({role:m.role,content:m.content}));
     for(let turn=0;turn<5;turn++){
      const payload={model:state.model,messages:conversation,tools:availableTools,stream:false};
      log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn},null,2));
      const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
      if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-     const data=await response.json(), message=data.message||{};
+     const data=await response.json(),message=data.message||{};
      if(message.content){answer+=(answer?'\n\n':'')+message.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
      conversation.push(message);
      const calls=message.tool_calls||[];
      if(!calls.length)break;
      for(const call of calls){
-      const name=call.function?.name, args=call.function?.arguments||{};
+      const name=call.function?.name,args=call.function?.arguments||{};
       log('request','Tool: '+name,JSON.stringify(args,null,2));
       try{const result=await executeTool(name,args);conversation.push({role:'tool',content:JSON.stringify(result),name});log('success','Tool completed: '+name,JSON.stringify(result,null,2));}
       catch(error){conversation.push({role:'tool',content:JSON.stringify({error:error.message}),name});log('error','Tool failed: '+name,error.message);}
