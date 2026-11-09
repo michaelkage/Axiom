@@ -5,6 +5,7 @@ export function registerSupabaseTools({ url, key }) {
   if (!url || !key) throw new Error('A Supabase project URL and API key are required.');
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const unregister = [];
+  try {
   unregister.push(registerTool({
     name: 'supabase_list_tables',
     description: 'List public tables through a project-defined, permission-controlled exec_sql RPC.',
@@ -45,5 +46,9 @@ export function registerSupabaseTools({ url, key }) {
     if (error) throw new Error('SQL RPC unavailable or rejected: ' + error.message);
     return data;
   }));
+  } catch (error) {
+    unregister.forEach(fn => fn());
+    throw error;
+  }
   return () => unregister.forEach(fn => fn());
 }
