@@ -16,6 +16,7 @@ export async function connectMcpHttp(endpoint, { fetchImpl = fetch } = {}) {
   };
   await call('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'Axiom', version: '1.0.0' } }, 1);
   await call('notifications/initialized', {}).catch(() => null);
+  headers['MCP-Protocol-Version'] = PROTOCOL_VERSION;
   const result = await call('tools/list', {}, 3);
   return { tools: result?.tools || [], call };
 }
