@@ -10,12 +10,9 @@ export function registerSupabaseTools({ url, key }) {
     description: 'Inspect tables exposed through the Supabase REST OpenAPI document.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   }, async () => {
-    const response = await fetch(url.replace(/\/$/, '') + '/rest/v1/', { headers: { apikey: key, Authorization: 'Bearer ' + key } });
-    if (!response.ok) throw new Error('Supabase schema request failed: HTTP ' + response.status);
-    const spec = await response.json();
-    return Object.entries(spec.paths || {}).filter(([path]) => path !== '/').map(([path, methods]) => ({
-      table: path.replace(/^\//, ''), methods: Object.keys(methods || {})
-    }));
+    const { data, error } = await client.rpc('exec_sql', { query: "select table_schema, table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name" });
+    if (error) throw new Error('Table discovery requires a project-owned, permission-controlled exec_sql RPC: ' + error.message);
+    return data;
   }));
   unregister.push(registerTool({
     name: 'supabase_select_rows',
@@ -25,6 +22,17 @@ export function registerSupabaseTools({ url, key }) {
     if (!/^[a-zA-Z0-9_]+$/.test(table)) throw new Error('Invalid table name.');
     const { data, error } = await client.from(table).select('*').limit(Math.min(Math.max(limit, 1), 100));
     if (error) throw error;
+    return data;
+  }));
+  unregister.push(registerTool({
+    name: 'supabase_describe_table',
+    description: 'Inspect column names and data types for a public table through the configured permission-controlled exec_sql RPC.',
+    inputSchema: { type: 'object', properties: { table: { type: 'string', minLength: 1 } }, required: ['table'], additionalProperties: false }
+  }, async ({ table }) => {
+    if (!/^[a-zA-Z0-9_]+$/.test(table)) throw new Error('Invalid table name.');
+    const query = "select column_name, data_type, is_nullable, ordinal_position from information_schema.columns where table_schema = 'public' and table_name = '" + table + "' order by ordinal_position";
+    const { data, error } = await client.rpc('exec_sql', { query });
+    if (error) throw new Error('Schema inspection requires a project-owned, permission-controlled exec_sql RPC: ' + error.message);
     return data;
   }));
   unregister.push(registerTool({
