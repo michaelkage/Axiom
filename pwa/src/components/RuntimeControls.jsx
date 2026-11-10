@@ -5,7 +5,7 @@ import {
   startBackgroundService, stopBackgroundService, storeGatewayPairingToken
 } from '../lib/axiomRuntime.js';
 
-export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice }) {
+export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, terminalRows = 24, terminalCols = 80, onTerminalConfigChange = () => {} }) {
   const native = isNativeAndroid();
   const [info, setInfo] = useState(null);
   const [pairingToken, setPairingToken] = useState('');
@@ -69,6 +69,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice }
     </div>
     <div className="flex items-center justify-between rounded-xl bg-black/25 p-3 mb-2"><div className="min-w-0"><div className="text-sm">Background runtime</div><div className="text-[10px] text-slate-500">Persistent notification while active</div></div><button type="button" role="switch" aria-checked={!!info?.serviceRequested} onClick={() => service(!info?.serviceRequested)} className={'w-11 h-6 rounded-full p-1 '+(info?.serviceRequested?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white '+(info?.serviceRequested?'translate-x-5':'')}/></button></div>
     <div className="flex items-center justify-between rounded-xl bg-black/25 p-3 mb-4"><div className="min-w-0"><div className="text-sm flex items-center gap-2"><Zap size={14}/> Keep CPU awake</div><div className="text-[10px] text-slate-500">Partial wake lock, only when explicitly enabled</div></div><button type="button" role="switch" aria-checked={!!info?.keepAwake} onClick={() => awake(!info?.keepAwake)} className={'w-11 h-6 rounded-full p-1 '+(info?.keepAwake?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white '+(info?.keepAwake?'translate-x-5':'')}/></button></div>
+    <div className="rounded-xl bg-black/25 p-3 mb-4"><div className="text-sm font-semibold mb-2">Terminal defaults</div><div className="grid grid-cols-2 gap-3"><label className="text-[11px] text-slate-500">Rows<input type="number" min="2" max="200" value={terminalRows} onChange={e => onTerminalConfigChange({ terminalRows: Math.max(2, Math.min(200, Number(e.target.value) || 24)) })} className="w-full mt-1 p-2 rounded-lg bg-black/30 border border-white/10 text-sm text-slate-100"/></label><label className="text-[11px] text-slate-500">Columns<input type="number" min="24" max="400" value={terminalCols} onChange={e => onTerminalConfigChange({ terminalCols: Math.max(24, Math.min(400, Number(e.target.value) || 80)) })} className="w-full mt-1 p-2 rounded-lg bg-black/30 border border-white/10 text-sm text-slate-100"/></label></div><p className="text-[10px] text-slate-600 mt-2">Columns auto-fit the available terminal width when the panel is resized.</p></div>
     <div className="rounded-xl border border-lime-300/15 bg-lime-300/[.035] p-3">
       <div className="text-sm font-semibold flex items-center gap-2"><LockKeyhole size={15}/> Secure gateway pairing</div>
       <p className="text-[11px] text-slate-500 mt-1 mb-3">Enter the gateway's existing AXIOM_GATEWAY_TOKEN once. Android encrypts it with Android Keystore, then registers a 12-hour session token. The pairing token never enters browser storage.</p>

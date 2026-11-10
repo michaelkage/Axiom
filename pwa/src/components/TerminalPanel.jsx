@@ -7,7 +7,7 @@ import {
 
 const MAX_SCROLLBACK = 160000;
 const cleanAnsi = value => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-export default function TerminalPanel({ onNotice }) {
+export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCols = 80 }) {
   const native = isNativeAndroid();
   const [runtime, setRuntime] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
@@ -20,8 +20,9 @@ export default function TerminalPanel({ onNotice }) {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [status, setStatus] = useState('stopped');
   const [error, setError] = useState('');
-  const [cols, setCols] = useState(80);
-  const [rows, setRows] = useState(24);
+  const [cols, setCols] = useState(terminalCols);
+  const [rows, setRows] = useState(terminalRows);
+  useEffect(() => { setRows(Math.max(2, Math.min(200, terminalRows))); setCols(Math.max(24, Math.min(400, terminalCols))); }, [terminalRows, terminalCols]);
   const outputRef = useRef(null);
   const inputRef = useRef(null);
   const pendingChunksRef = useRef(new Map());

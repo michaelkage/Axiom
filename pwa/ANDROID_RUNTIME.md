@@ -5,7 +5,7 @@ The Capacitor APK includes an Android-only native runtime. Browser/PWA mode deli
 ## PTY and workspace model
 
 - The native plugin uses Android Bionic forkpty() (API 23+) and launches /system/bin/sh -i.
-- PTY input/output, terminal resize (TIOCSWINSZ), Ctrl+C, Ctrl+D, Ctrl+L, and process teardown are bridged through Capacitor.
+- PTY input/output, terminal resize (TIOCSWINSZ), Ctrl+C, Ctrl+D, Ctrl+L, and process teardown are bridged through Capacitor. Default row/column dimensions are configurable in Settings; the UI auto-fits columns to its available width.
 - Workspaces live under the app-private filesDir/workspaces directory. The active workspace is persisted in native preferences and becomes the shell's initial working directory.
 - Workspace names are validated and canonicalized. A terminal cannot select an arbitrary filesystem path or escape the private workspace root.
 - This is an Android system shell, not Termux. Only commands shipped by Android or included in the app sandbox are available. It does not bundle package managers, Git, Python, Node, Bash, or a full-screen VT emulator. The terminal view is intentionally line-oriented; interactive shell line editing and signal handling work through the PTY, but full-screen applications such as vim/top are not supported by its current renderer.
