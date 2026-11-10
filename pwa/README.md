@@ -4,7 +4,7 @@ A touch-first Progressive Web App built with React, Vite, Tailwind CSS, and Luci
 
 ## Run locally
 ```bash
-npm install
+npm ci
 npm run dev -- --host 0.0.0.0
 ```
 Open the Vite network URL from Android. Ollama must be reachable from the browser at the configured base URL (default `http://localhost:11434`) and allow the PWA origin through CORS.
@@ -36,7 +36,7 @@ See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, st
 See [gateway/README.md](./gateway/README.md) for setup, environment variables, and network hardening. Start it separately with `npm run gateway`. Configure the gateway URL and its bearer token in the PWA Settings.
 
 ```bash
-npm install
+npm ci
 npm test
 npm run build
 ```
