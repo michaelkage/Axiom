@@ -15,7 +15,7 @@ test('chat runtime receives tool execution, cancellation and streamed UI callbac
   assert.match(app, /signal,\s*executeTool,\s*serializeToolResult/);
   assert.match(app, /onText:value=>\{answer=value;patchChat/);
   assert.match(app, /onEvent:event=>/);
-  assert.match(app, /confirmTool:async\(name,args\)=>window\.confirm/);
+  assert.match(app, /Permission required/);\n  assert.match(app, /Approve tool execution/);\n  assert.match(app, /Allow once/);\n  assert.match(app, /confirmTool:\(name,args/);
 });
 
 test('partial output and cancellation are retained against the originating chat', () => {
