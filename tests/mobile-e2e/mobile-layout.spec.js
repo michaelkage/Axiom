@@ -67,7 +67,7 @@ test("cancels an in-flight mobile chat request from the stop control", async ({ 
       await route.fulfill({
         status: 200,
         contentType: "application/x-ndjson",
-        body: JSON.stringify({ message: { role: "assistant", content: "This should not arrive" }, done: true }) + "\\n",
+        body: JSON.stringify({ message: { role: "assistant", content: "This should not arrive" }, done: true }) + "\n",
       });
     } catch {
       // The browser may already have aborted the request after Stop was pressed.
@@ -103,7 +103,7 @@ test("keeps streamed output attached to its originating chat when history change
     await route.fulfill({
       status: 200,
       contentType: "application/x-ndjson",
-      body: JSON.stringify({ message: { role: "assistant", content: "Reply belongs to running chat" }, done: true }) + "\\n",
+      body: JSON.stringify({ message: { role: "assistant", content: "Reply belongs to running chat" }, done: true }) + "\n",
     });
   });
 
@@ -129,7 +129,7 @@ test("keeps generation cancellation available after navigating away from chat", 
       await route.fulfill({
         status: 200,
         contentType: "application/x-ndjson",
-        body: JSON.stringify({ message: { role: "assistant", content: "Late response must stay cancelled" }, done: true }) + "\\n",
+        body: JSON.stringify({ message: { role: "assistant", content: "Late response must stay cancelled" }, done: true }) + "\n",
       });
     } catch {
       // Stop may abort the browser request before the mock response is fulfilled.
