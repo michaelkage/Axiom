@@ -61,7 +61,6 @@ export default function App(){
   const controller=activeRunRef.current;
   if(!controller||controller.signal.aborted)return;
   controller.abort(new DOMException('Stopped by user','AbortError'));
-  log('info','Generation stopped','The active request and cooperative tool operations were cancelled.');
  }
  async function sendMessage(){
   const prompt=draft.trim(); if(!prompt||busy)return;
@@ -107,7 +106,7 @@ export default function App(){
        continue;
       }
       try{const result=await executeTool(name,args,{signal});const serialized=serializeToolResult(result);conversation.push({role:'tool',tool_name:name,content:serialized});log('success','Tool completed: '+name,serialized);}
-      catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
+      catch(error){if(signal.aborted)throw error;conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
     }
     if(!completedToolLoop)throw new Error('Tool execution reached the five-turn safety limit before the model finished. Review the tool results and send a follow-up if needed.');
