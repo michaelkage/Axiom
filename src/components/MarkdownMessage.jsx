@@ -33,7 +33,7 @@ export default function MarkdownMessage({ content = '' }) {
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    blocks.push(<p key={'p-' + index++} className="whitespace-pre-wrap break-words">{paragraph.join('\n').trim()}</p>);
+    blocks.push(<p key={'p-' + index++} className="whitespace-pre-wrap break-words">{renderInline(paragraph.join('\n').trim(), 'p' + index)}</p>);
     paragraph = [];
   };
 
