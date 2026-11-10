@@ -1,0 +1,39 @@
+name: Mobile PWA release
+on:
+  push:
+    tags:
+      - "mobile-v*"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Mobile browser tests
+        run: npm run test:e2e:mobile
+      - name: Package release bundle
+        run: |
+          tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md package.json package-lock.json 2>/dev/null || tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md package.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axiom-mobile-${{ github.ref_name }}
+          path: pwa/axiom-mobile-${{ github.ref_name }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
