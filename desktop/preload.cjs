@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     list: () => ipcRenderer.invoke("axiom:remote-workspace-list"),
     create: request => ipcRenderer.invoke("axiom:remote-workspace-create", request),
     commitAndPush: request => ipcRenderer.invoke("axiom:remote-workspace-commit-push", request),
+    reconcile: id => ipcRenderer.invoke("axiom:remote-workspace-reconcile", id),
+    pushRecovered: request => ipcRenderer.invoke("axiom:remote-workspace-push-recovered", request),
     cleanup: id => ipcRenderer.invoke("axiom:remote-workspace-cleanup", id)
   }),
   project: Object.freeze({
