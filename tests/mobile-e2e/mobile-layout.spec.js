@@ -47,6 +47,57 @@ test("switches between all primary mobile sections", async ({ page }) => {
   }
 });
 
+
+test("exposes integration switches and reports missing credentials", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+
+  const github = page.getByRole("switch", { name: "Enable GitHub integration" });
+  await expect(github).toHaveAttribute("aria-checked", "false");
+  await github.click();
+  await expect(page.getByText("A GitHub Personal Access Token is required.")).toBeVisible();
+  await expect(github).toHaveAttribute("aria-checked", "false");
+
+  const supabase = page.getByRole("switch", { name: "Enable Supabase integration" });
+  await expect(supabase).toHaveAttribute("aria-checked", "false");
+  await supabase.click();
+  await expect(page.getByText("A Supabase project URL and API key are required.")).toBeVisible();
+  await expect(supabase).toHaveAttribute("aria-checked", "false");
+});
+
+test("adds and removes an MCP endpoint from the mobile server manager", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "MCP", exact: true }).click();
+
+  await page.getByRole("textbox", { name: "Server name" }).fill("Local test server");
+  await page.getByRole("textbox", { name: "Endpoint URL" }).fill("https://mcp.example.com/mcp");
+  await page.getByRole("button", { name: "Add server" }).click();
+
+  await expect(page.getByText("Local test server")).toBeVisible();
+  await expect(page.getByText("https://mcp.example.com/mcp")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reconnect Local test server" })).toBeVisible();
+  await page.getByRole("button", { name: "Remove Local test server" }).click();
+  await expect(page.getByText("Local test server")).toHaveCount(0);
+  await expect(page.getByText("No MCP servers connected yet.")).toBeVisible();
+});
+
+test("clears execution logs using the labelled mobile action", async ({ page }) => {
+  await page.route("**/api/chat", route => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: JSON.stringify({ message: { role: "assistant", content: "Log this reply" }, done: true }) + "\\n",
+  }));
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Create execution events");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Log this reply")).toBeVisible();
+
+  await page.getByRole("button", { name: "Logs", exact: true }).click();
+  await expect(page.getByText("Ollama /api/chat")).toBeVisible();
+  await page.getByRole("button", { name: "Clear execution logs" }).click();
+  await expect(page.getByText("No execution events yet.")).toBeVisible();
+});
+
 test("sends a chat turn through the streaming Ollama endpoint", async ({ page }) => {
   await page.route("**/api/chat", route => route.fulfill({
     status: 200,
