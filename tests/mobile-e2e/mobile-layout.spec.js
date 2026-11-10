@@ -234,7 +234,7 @@ test("copies a complete assistant response from its message actions", async ({ p
   await page.route("**/api/chat", route => route.fulfill({
     status: 200,
     contentType: "application/x-ndjson",
-    body: JSON.stringify({ message: { role: "assistant", content: response }, done: true }) + "\\n",
+    body: JSON.stringify({ message: { role: "assistant", content: response }, done: true }) + "\n",
   }));
 
   await page.goto("/");
