@@ -113,7 +113,7 @@ async function createRemoteWorkspace(input, options = {}) {
         }
       }
     }
-    throw new Error("Could not create remote workspace. Check repository access and configured Git credentials. " + String(error.message || error).replace(/https?:\/\/[^\s]+/g, "[repository URL redacted]").slice(0, 500));
+    throw new Error("Could not create remote workspace. Check repository access and configured Git credentials. " + String(error.message || error).replace(/https?:\/\/[^\s]+/g, "[repository URL redacted]").slice(0, 500) + (error.cleanupError ? " Cleanup warning: " + error.cleanupError : ""));
   }
 }
 async function commitAndPushWorkspace(job, options = {}) {
@@ -247,6 +247,8 @@ async function discardInterruptedCloneWorkspace(job) {
   const root = path.resolve(job.temporaryRoot);
   const workspace = path.resolve(job.workspacePath);
   if (path.dirname(workspace) !== root) throw new Error("Refusing interrupted clone cleanup: workspace is not a direct child of its managed root.");
+  const rootStat = await fs.lstat(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("Refusing interrupted clone cleanup: managed root is not a real directory.");
   let stat;
   try { stat = await fs.lstat(workspace); }
   catch (error) {
