@@ -830,7 +830,7 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = remoteWorkspaceJobs.get(id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  const result = await cleanupRemoteWorkspace(job);
+  const result = await cleanupRemoteWorkspace(job, { onState: persistRemoteWorkspaceJobs });
   remoteWorkspaceJobs.delete(id);
   await persistRemoteWorkspaceJobs();
   return result;
