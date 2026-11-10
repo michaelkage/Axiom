@@ -92,7 +92,7 @@ export default function App(){
       if(part.thinking)thinking+=part.thinking;
       if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
       if(part.tool_calls?.length)calls.push(...part.tool_calls);
-     });
+     },{signal});
      conversation.push({role:'assistant',thinking,content:turnContent,tool_calls:calls});
      if(!calls.length){completedToolLoop=true;break;}
      for(const call of calls){
@@ -118,10 +118,10 @@ export default function App(){
     await consumeNdjsonStream(response,part=>{
      answer+=part.response||'';
      patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));
-    });
+    },{signal});
    }
    log('success','Generation complete',state.model);
-  }catch(e){if(signal.aborted){log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
+  }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m));log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
  }
  function toggleIntegration(id){
