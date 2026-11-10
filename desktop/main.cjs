@@ -801,6 +801,7 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   const job = await createRemoteWorkspace(request, { temporaryRoot });
   const id = require("node:crypto").randomUUID();
   job.id = id;
+  job.lastActivityAt = Date.now();
   remoteWorkspaceJobs.set(id, job);
   await persistRemoteWorkspaceJobs();
   return { id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath, status: job.status, paths: job.paths };
