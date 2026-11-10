@@ -174,6 +174,7 @@ async function makeRecoveryFixture(prefix) {
   await git(workspacePath, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial"]);
   await git(workspacePath, ["remote", "add", "origin", remote]);
   await git(workspacePath, ["push", "-u", "origin", "main"]);
+  await git(root, ["--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
   const job = { id: "recovery-test", mode: "temporary-full", repositoryUrl: remote, branch: "main", workspacePath, temporaryRoot: root, workspaceOwnership: "axiom-job", status: "failed", verificationPassed: true, pushSucceeded: false, remoteCommitConfirmed: false };
   return { root, remote, workspacePath, job };
 }
@@ -226,6 +227,7 @@ test("detects independent remote advancement without overwriting either branch",
     const localSha = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
     await git(root, ["clone", remote, peer]);
     await fs.writeFile(path.join(peer, "remote.txt"), "independent remote change\n");
+    await git(peer, ["fetch", "origin", "main"]);
     await git(peer, ["add", "--all"]);
     await git(peer, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "independent remote change"]);
     await git(peer, ["push", "origin", "HEAD:refs/heads/main"]);
