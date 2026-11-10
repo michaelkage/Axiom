@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test tests/*.test.js",
-    "test:e2e:mobile": "playwright test --config=playwright.mobile.config.js"
+    "test:e2e:mobile": "playwright test --config=playwright.mobile.config.js",
+    "gateway": "node gateway/server.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
