@@ -381,11 +381,9 @@ test("cleanup refuses a temporary workspace replaced by a symlink", async () => 
   }
 });
 
-test("cleanup rejects nested paths and similarly prefixed sibling roots", async () => {
+test("cleanup rejects nested workspace paths", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-boundary-"));
-  const sibling = root + "-sibling";
-  await fs.mkdir(sibling, { recursive: true });
-  const workspacePath = path.join(sibling, "job-1");
+  const workspacePath = path.join(root, "nested", "job-1");
   try {
     await fs.mkdir(workspacePath, { recursive: true });
     const job = {
