@@ -14,7 +14,7 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
-const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
+const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
 const { restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
@@ -804,6 +804,23 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   try {
     const result = await reconcileRemoteWorkspace(job);
     return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
+  } finally {
+    await persistRemoteWorkspaceJobs();
+  }
+});
+
+ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  try {
+    const result = await pushReconciledWorkspace(job, {
+      verify: async directory => {
+        await remoteGit(directory, ["diff", "--check"]);
+        return true;
+      }
+    });
+    return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
   } finally {
     await persistRemoteWorkspaceJobs();
   }
