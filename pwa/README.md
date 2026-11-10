@@ -32,7 +32,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 ## Deployment
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for static hosting, gateway topology, and tagged release instructions.
 
-See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Tagged builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle as a workflow artifact. The artifact is not automatically deployed to a public hosting provider; configure your HTTPS static host separately.
+See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Web-only builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle. For an installable Android app, use [the Android APK release workflow](../.github/workflows/android-release.yml): it wraps the production build with Capacitor, builds `Axiom-Android-universal-debug.apk`, and uploads it as a workflow artifact. An `android-v*` tag also publishes the APK on the repository's GitHub Releases page. This initial APK is debug-signed for sideload/testing, not a Play Store production-signed release.
 
 ## Run the authenticated gateway
 See [gateway/README.md](./gateway/README.md) for setup, environment variables, and network hardening. Start it separately with `npm run gateway`. Configure the gateway URL and its bearer token in the PWA Settings.
