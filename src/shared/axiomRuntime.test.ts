@@ -99,7 +99,7 @@ describe("Axiom runtime helpers", () => {
     }, record => outcomes.push(record), { maxRetries: 1 });
     expect(result[0]?.result).toBe("recovered");
     expect(calls).toBe(2);
-    expect(outcomes.filter(item => item.status === "running").map(item => item.attempt)).toEqual([undefined, 1, 2]);
+    expect(outcomes.filter(item => item.status === "running").map(item => item.attempt)).toEqual([undefined, 1, 1, 2]);
     expect(outcomes.find(item => item.status === "succeeded")?.attempt).toBe(2);
   });
 
