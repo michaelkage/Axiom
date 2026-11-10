@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, git } = require("./remote-workspace-runner.cjs");
+const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, discardInterruptedCloneWorkspace, git } = require("./remote-workspace-runner.cjs");
 
 test("remote workspace runner rejects embedded credentials", () => {
   assert.throws(() => safeRemoteUrl("https://user:token@example.com/org/repo.git"), /embedded credentials/);
@@ -396,7 +396,6 @@ test("cleanup rejects nested workspace paths", async () => {
     assert.equal((await fs.stat(workspacePath)).isDirectory(), true);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
-    await fs.rm(sibling, { recursive: true, force: true });
   }
 });
 
@@ -420,5 +419,67 @@ test("cleanup retry completes when a prior process removed the directory before 
     assert.deepEqual(states, ["cleaned"]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("cancelled temporary clone removes only its own partial checkout", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-clone-cancel-"));
+  const temporaryRoot = path.join(root, "managed");
+  const workspacePath = path.join(temporaryRoot, "job-1");
+  const controller = new AbortController();
+  controller.abort();
+  try {
+    await assert.rejects(() => createRemoteWorkspace({
+      mode: "temporary-full", repositoryUrl: "https://github.com/acme/repo.git", branch: "main"
+    }, { temporaryRoot, workspacePath, signal: controller.signal }), error => error.name === "AbortError");
+    await assert.rejects(() => fs.lstat(workspacePath), { code: "ENOENT" });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("interrupted clone recovery removes a validated temporary checkout but preserves persistent paths", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-clone-recovery-"));
+  const workspacePath = path.join(root, "job-1");
+  try {
+    await fs.mkdir(workspacePath, { recursive: true });
+    await fs.writeFile(path.join(workspacePath, "partial.txt"), "partial clone");
+    const result = await discardInterruptedCloneWorkspace({
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath
+    });
+    assert.equal(result.removed, true);
+    await assert.rejects(() => fs.lstat(workspacePath), { code: "ENOENT" });
+
+    const persistent = await discardInterruptedCloneWorkspace({
+      mode: "persistent", workspaceOwnership: "user",
+      temporaryRoot: root, workspacePath
+    });
+    assert.equal(persistent.preserved, true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("interrupted clone recovery refuses symlinks and paths outside the managed root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-clone-boundary-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-clone-outside-"));
+  const workspacePath = path.join(root, "job-1");
+  try {
+    await fs.symlink(outside, workspacePath, process.platform === "win32" ? "junction" : "dir");
+    await fs.writeFile(path.join(outside, "keep.txt"), "preserve");
+    await assert.rejects(() => discardInterruptedCloneWorkspace({
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath
+    }), /not a real directory/);
+    assert.equal(await fs.readFile(path.join(outside, "keep.txt"), "utf8"), "preserve");
+    await assert.rejects(() => discardInterruptedCloneWorkspace({
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath: path.join(root + "-sibling", "job-2")
+    }), /direct child/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(outside, { recursive: true, force: true });
   }
 });
