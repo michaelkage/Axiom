@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { connectMcpHttp } from '../src/lib/mcpClient.js';
+import { connectMcpHttp, connectMcpSse } from '../src/lib/mcpClient.js';
 
 test('initializes Streamable HTTP MCP session and discovers tools', async () => {
   const requests = [];
