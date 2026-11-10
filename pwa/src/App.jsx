@@ -54,12 +54,21 @@ export default function App(){
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
  const gatewayBase=()=>String(state.settings?.gatewayUrl||'').replace(/\/$/,'');
  const gatewayFetch=(input,init={})=>{const headers=new Headers(init.headers||{});if(gatewayToken)headers.set('Authorization','Bearer '+gatewayToken);return fetch(input,{...init,headers});};
- async function checkOllama(){
+ async function checkOllama({silent=false}={}){
   const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\/$/,'');
-  try { const r=await gatewayFetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); log('success','Ollama connected',base); }
-  catch(e){setConnection('offline');log('error','Ollama connection failed',e.message);setNotice('Could not reach Ollama. Check the URL and network access.');}
+  const previous=connection;
+  try { const r=await gatewayFetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); if(previous!=='online')log('success','Ollama connected',base); }
+  catch(e){setConnection('offline');if(previous!=='offline')log('error','Ollama connection failed',e.message);if(!silent)setNotice('Could not reach Ollama. Check the gateway, URL, and network access.');}
  }
- useEffect(()=>{checkOllama();},[]);
+ useEffect(()=>{checkOllama({silent:true});},[]);
+ useEffect(()=>{
+  let timer;
+  const retry=()=>{if(document.visibilityState==='visible')checkOllama({silent:true});};
+  const interval=setInterval(()=>{if(connection!=='online'&&document.visibilityState==='visible')retry();},10000);
+  window.addEventListener('online',retry);
+  document.addEventListener('visibilitychange',retry);
+  return()=>{clearInterval(interval);clearTimeout(timer);window.removeEventListener('online',retry);document.removeEventListener('visibilitychange',retry);};
+ },[connection,state.baseUrl,state.settings?.gatewayUrl,gatewayToken]);
  useEffect(()=>{if(!pendingApproval)return;const previous=document.activeElement;const dialog=approvalDialogRef.current;dialog?.querySelector('button')?.focus();const onKeyDown=event=>{if(event.key==='Escape'){event.preventDefault();approvalResolver.current?.(false);}};window.addEventListener('keydown',onKeyDown);return()=>{window.removeEventListener('keydown',onKeyDown);previous?.focus?.();};},[pendingApproval]);
  useEffect(()=>{
   if(!showSettings)return;
