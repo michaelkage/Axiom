@@ -3,6 +3,11 @@ on:
   push:
     tags:
       - "android-v*"
+  push:
+    branches: [main]
+    paths:
+      - "pwa/**"
+      - ".github/workflows/android-release.yml"
   workflow_dispatch:
 permissions:
   contents: write
