@@ -36,11 +36,19 @@ function safeRemoteUrl(value) {
 async function git(directory, args, options = {}) {
   const result = await execFileAsync("git", ["-C", directory, ...args], {
     timeout: options.timeout ?? 120000,
+    signal: options.signal,
     maxBuffer: 4 * 1024 * 1024,
     windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
   });
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    const error = new Error("Remote workspace operation was cancelled.");
+    error.name = "AbortError";
+    throw error;
+  }
 }
 async function createRemoteWorkspace(input, options = {}) {
   const request = validateRemoteWorkspaceRequest(input);
@@ -76,7 +84,7 @@ async function createRemoteWorkspace(input, options = {}) {
     const args = ["clone", "--no-tags", "--branch", request.branch];
     if (request.mode === "temporary-selective") args.push("--filter=blob:none", "--sparse");
     args.push("--", request.repositoryUrl, workspacePath);
-    await execFileAsync("git", args, { timeout: options.cloneTimeout ?? 300000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" } });
+    await execFileAsync("git", args, { timeout: options.cloneTimeout ?? 300000, signal: options.signal, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" } });
     if (request.mode === "temporary-selective") {
       await git(workspacePath, ["sparse-checkout", "set", "--", ...request.paths]);
     }
@@ -94,27 +102,30 @@ async function createRemoteWorkspace(input, options = {}) {
   }
 }
 async function commitAndPushWorkspace(job, options = {}) {
+  throwIfAborted(options.signal);
   if (!job || !job.workspacePath || !job.branch || !job.repositoryUrl) throw new TypeError("A valid remote workspace job is required.");
   if (job.status !== "ready" && job.status !== "verified") throw new Error("Workspace must be ready or verified before committing.");
   if (typeof options.verify !== "function") throw new Error("An explicit verification callback is required before committing.");
-  if (await options.verify(job.workspacePath) !== true) {
+  if (await options.verify(job.workspacePath, options.signal) !== true) {
     job.status = "failed"; job.verificationPassed = false;
     throw new Error("Workspace verification did not pass; refusing to commit or push.");
   }
+  throwIfAborted(options.signal);
   job.verificationPassed = true;
   job.status = "verified";
   const directory = job.workspacePath;
-  const status = await git(directory, ["status", "--porcelain"]);
+  const status = await git(directory, ["status", "--porcelain"], { signal: options.signal });
   if (!status.stdout) throw new Error("No changes to commit.");
   const identityName = options.authorName || "Axiom";
   const identityEmail = options.authorEmail || "axiom@users.noreply.github.com";
-  await git(directory, ["add", "--all"]);
-  await git(directory, ["-c", "user.name=" + identityName, "-c", "user.email=" + identityEmail, "commit", "-m", options.message || "Apply changes with Axiom"]);
-  const localSha = (await git(directory, ["rev-parse", "HEAD"])).stdout;
-  await git(directory, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000 });
+  await git(directory, ["add", "--all"], { signal: options.signal });
+  await git(directory, ["-c", "user.name=" + identityName, "-c", "user.email=" + identityEmail, "commit", "-m", options.message || "Apply changes with Axiom"], { signal: options.signal });
+  const localSha = (await git(directory, ["rev-parse", "HEAD"], { signal: options.signal })).stdout;
+  throwIfAborted(options.signal);
+  await git(directory, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000, signal: options.signal });
   job.pushSucceeded = true;
   const remote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
-    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
   });
   const remoteSha = (remote.stdout.trim().split(/\s+/)[0] || "");
@@ -132,20 +143,21 @@ async function commitAndPushWorkspace(job, options = {}) {
  * never creates commits, pushes, fetches, resets, or changes the checkout.
  */
 async function reconcileRemoteWorkspace(job, options = {}) {
+  throwIfAborted(options.signal);
   if (!job || !job.workspacePath || !job.branch || !job.repositoryUrl) {
     throw new TypeError("A valid remote workspace job is required.");
   }
   if (job.status === "cleaned") throw new Error("A cleaned workspace cannot be reconciled.");
   const directory = job.workspacePath;
   const localSha = (await git(directory, ["rev-parse", "HEAD"])).stdout;
-  const branch = (await git(directory, ["branch", "--show-current"])).stdout;
+  const branch = (await git(directory, ["branch", "--show-current"], { signal: options.signal })).stdout;
   if (branch !== job.branch) return { state: "conflict", reason: "The checkout is not on the job's target branch.", localSha, remoteSha: null };
-  const dirty = (await git(directory, ["status", "--porcelain"])).stdout;
+  const dirty = (await git(directory, ["status", "--porcelain"], { signal: options.signal })).stdout;
   if (dirty) return { state: "conflict", reason: "The workspace has uncommitted changes; preserve them and resolve manually.", localSha, remoteSha: null, dirty: true };
-  const origin = (await git(directory, ["remote", "get-url", "origin"])).stdout;
+  const origin = (await git(directory, ["remote", "get-url", "origin"], { signal: options.signal })).stdout;
   if (origin !== job.repositoryUrl) return { state: "conflict", reason: "The checkout origin does not match the persisted repository URL.", localSha, remoteSha: null };
   const remoteResult = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
-    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
   });
   const remoteSha = remoteResult.stdout.trim().split(/\s+/)[0] || "";
@@ -157,7 +169,8 @@ async function reconcileRemoteWorkspace(job, options = {}) {
     job.status = "pushed";
     return { state: "already-pushed", localSha, remoteSha, dirty: !!dirty };
   }
-  await git(directory, ["fetch", "--no-tags", "origin", "refs/heads/" + job.branch]);
+  throwIfAborted(options.signal);
+  await git(directory, ["fetch", "--no-tags", "origin", "refs/heads/" + job.branch], { signal: options.signal });
   const remoteIsAncestor = await git(directory, ["merge-base", "--is-ancestor", remoteSha, localSha]).then(() => true).catch(() => false);
   const localIsAncestor = await git(directory, ["merge-base", "--is-ancestor", localSha, remoteSha]).then(() => true).catch(() => false);
   if (remoteIsAncestor) {
@@ -178,20 +191,22 @@ async function reconcileRemoteWorkspace(job, options = {}) {
 }
 /** Explicitly push a previously committed, single-commit recovery after fresh verification. */
 async function pushReconciledWorkspace(job, options = {}) {
+  throwIfAborted(options.signal);
   if (typeof options.verify !== "function") throw new Error("A fresh verification callback is required before pushing a recovered commit.");
   const state = await reconcileRemoteWorkspace(job, options);
   if (state.state !== "local-commit-pending-push") throw new Error("Recovered commit is not safely pushable: " + state.state + ".");
-  if (await options.verify(job.workspacePath) !== true) throw new Error("Workspace verification did not pass; refusing to push the recovered commit.");
-  const verifiedLocalSha = (await git(job.workspacePath, ["rev-parse", "HEAD"])).stdout;
-  const verifiedStatus = (await git(job.workspacePath, ["status", "--porcelain"])).stdout;
+  if (await options.verify(job.workspacePath, options.signal) !== true) throw new Error("Workspace verification did not pass; refusing to push the recovered commit.");
+  const verifiedLocalSha = (await git(job.workspacePath, ["rev-parse", "HEAD"], { signal: options.signal })).stdout;
+  const verifiedStatus = (await git(job.workspacePath, ["status", "--porcelain"], { signal: options.signal })).stdout;
   if (verifiedLocalSha !== state.localSha || verifiedStatus) throw new Error("The local checkout changed during verification; refusing to push.");
   const currentRemote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
-    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
   });
   const remoteSha = currentRemote.stdout.trim().split(/\s+/)[0] || "";
   if (remoteSha !== state.remoteSha) throw new Error("Remote branch changed during recovery verification; refusing to push.");
-  await git(job.workspacePath, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000 });
+  throwIfAborted(options.signal);
+  await git(job.workspacePath, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000, signal: options.signal });
   const confirmed = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
@@ -223,4 +238,4 @@ async function cleanupRemoteWorkspace(job, options = {}) {
     throw new Error("Workspace cleanup was interrupted; its confirmed commit is preserved and cleanup can be retried. " + String(error.message || error).slice(0, 300));
   }
 }
-module.exports = { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
+module.exports = { throwIfAborted, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
