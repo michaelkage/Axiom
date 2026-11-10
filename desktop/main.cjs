@@ -839,6 +839,7 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   return runRemoteWorkspaceOperation(job, "reconcile", async signal => {
     try {
       const result = await reconcileRemoteWorkspace(job, { signal });
+      job.interruptedOperation = null;
       return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
     } finally { await persistRemoteWorkspaceJobs(); }
   });
