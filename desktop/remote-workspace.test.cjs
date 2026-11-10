@@ -1,6 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
 
 test("validates full and selective remote workspace requests", () => {
@@ -81,7 +82,7 @@ test("restores persistent user-owned workspaces without granting cleanup ownersh
     workspaceOwnership: "user",
     status: "ready"
   }, "/var/lib/axiom/remote-workspaces");
-  assert.equal(job.workspacePath, "/home/user/projects/repo");
+  assert.equal(job.workspacePath, path.resolve("/home/user/projects/repo"));
   assert.equal(job.workspaceOwnership, "user");
   assert.equal(job.temporaryRoot, null);
   assert.equal(mayCleanupRemoteWorkspace(job), false);
