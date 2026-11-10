@@ -19,7 +19,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm ci
       - name: Unit tests
         run: npm test
       - name: Production build
@@ -30,7 +30,7 @@ jobs:
         run: npm run test:e2e:mobile
       - name: Package release bundle
         run: |
-          tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md package.json package-lock.json 2>/dev/null || tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md package.json
+          tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md ANDROID_VALIDATION.md package.json package-lock.json
       - uses: actions/upload-artifact@v4
         with:
           name: axiom-mobile-${{ github.ref_name }}
