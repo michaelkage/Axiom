@@ -128,3 +128,30 @@ test("restores stale operation leases as explicit interruptions after app restar
   assert.equal(unknown.operation, null);
   assert.equal(unknown.interruptedOperation, undefined);
 });
+
+
+test("restores interrupted clone jobs as recoverable without granting user-workspace cleanup", () => {
+  const root = "/var/lib/axiom/remote-workspaces";
+  const temporary = restoreRemoteWorkspaceJob({
+    id: "123e4567-e89b-12d3-a456-426614174000",
+    mode: "temporary-full", repositoryUrl: "https://github.com/acme/repo.git",
+    branch: "main", paths: [], workspacePath: root + "/job-1",
+    temporaryRoot: root, workspaceOwnership: "axiom-job",
+    status: "creating", operation: { kind: "clone", startedAt: 1700000000000 }
+  }, root);
+  assert.ok(temporary);
+  const recovered = recoverInterruptedRemoteWorkspaceOperation(temporary);
+  assert.equal(recovered.status, "clone-interrupted");
+  assert.equal(recovered.interruptedOperation.kind, "clone");
+  assert.equal(recovered.operation, null);
+
+  const persistent = restoreRemoteWorkspaceJob({
+    id: "123e4567-e89b-12d3-a456-426614174001",
+    mode: "persistent", repositoryUrl: "https://github.com/acme/repo.git",
+    branch: "main", paths: [], workspacePath: "/home/user/repo",
+    workspaceOwnership: "user", status: "creating",
+    operation: { kind: "clone", startedAt: 1700000000000 }
+  }, root);
+  assert.ok(persistent);
+  assert.equal(recoverInterruptedRemoteWorkspaceOperation(persistent).status, "clone-interrupted");
+});
