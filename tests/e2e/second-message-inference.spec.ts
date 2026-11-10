@@ -141,20 +141,22 @@ test.describe("Second Message Inference Bug", () => {
     // Track POST requests to the message endpoint
     const postRequests: { url: string; body: string; timestamp: number }[] = [];
 
-    await page.route("**/session/*/message", async (route) => {
-      if (route.request().method() === "POST") {
-        const body = route.request().postData() || "";
+    // Observe requests without intercepting them. Route interception can
+    // perturb the streaming webview transport and make sequential sends flaky.
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (request.method() === "POST" && /\/session\/[^/]+\/message\/?$/.test(pathname)) {
+        const body = request.postData() || "";
         postRequests.push({
-          url: route.request().url(),
+          url: request.url(),
           body,
           timestamp: Date.now(),
         });
         console.log(`[test] POST request #${postRequests.length}:`, {
-          url: route.request().url(),
+          url: request.url(),
           bodyLength: body.length,
         });
       }
-      await route.continue();
     });
 
     const textarea = webview.getByRole("textbox", { name: "Message input" });
@@ -222,21 +224,23 @@ test.describe("Second Message Inference Bug", () => {
     // Capture request bodies from POST requests
     const requestBodies: { messageID?: string; hasMessageID: boolean }[] = [];
 
-    await page.route("**/session/*/message", async (route) => {
-      if (route.request().method() === "POST") {
-        try {
-          const body = JSON.parse(route.request().postData() || "{}");
-          const hasMessageID = "messageID" in body && body.messageID !== undefined;
-          requestBodies.push({
-            messageID: body.messageID,
-            hasMessageID,
-          });
-          console.log(`[test] Captured request: messageID=${body.messageID}, hasMessageID=${hasMessageID}`);
-        } catch {
-          // ignore parse errors
-        }
+    // Observe requests without intercepting the streaming transport.
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (request.method() !== "POST" || !/\/session\/[^/]+\/message\/?$/.test(pathname)) {
+        return;
       }
-      await route.continue();
+      try {
+        const body = JSON.parse(request.postData() || "{}");
+        const hasMessageID = "messageID" in body && body.messageID !== undefined;
+        requestBodies.push({
+          messageID: body.messageID,
+          hasMessageID,
+        });
+        console.log(`[test] Captured request: messageID=${body.messageID}, hasMessageID=${hasMessageID}`);
+      } catch {
+        // ignore parse errors
+      }
     });
 
     const textarea = webview.getByRole("textbox", { name: "Message input" });
