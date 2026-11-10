@@ -35,9 +35,7 @@ export function RemoteWorkspaceRecoveryPanel() {
   };
   onMount(() => {
     void refresh();
-    const timer = window.setInterval(() => {
-      if (jobs().some(job => !!job.operation)) void refresh();
-    }, 1500);
+    const timer = window.setInterval(() => { void refresh(); }, 2000);
     onCleanup(() => window.clearInterval(timer));
   });
 
