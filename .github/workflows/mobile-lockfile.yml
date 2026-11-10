@@ -1,5 +1,10 @@
 name: Generate mobile lockfile
 on:
+  push:
+    branches: [main]
+    paths:
+      - "pwa/package.json"
+      - ".github/workflows/mobile-lockfile.yml"
   workflow_dispatch:
 permissions:
   contents: write
