@@ -141,6 +141,9 @@ async function reconcileRemoteWorkspace(job, options = {}) {
   const branch = (await git(directory, ["branch", "--show-current"])).stdout;
   if (branch !== job.branch) return { state: "conflict", reason: "The checkout is not on the job's target branch.", localSha, remoteSha: null };
   const dirty = (await git(directory, ["status", "--porcelain"])).stdout;
+  if (dirty) return { state: "conflict", reason: "The workspace has uncommitted changes; preserve them and resolve manually.", localSha, remoteSha: null, dirty: true };
+  const origin = (await git(directory, ["remote", "get-url", "origin"])).stdout;
+  if (origin !== job.repositoryUrl) return { state: "conflict", reason: "The checkout origin does not match the persisted repository URL.", localSha, remoteSha: null };
   const remoteResult = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
@@ -154,6 +157,7 @@ async function reconcileRemoteWorkspace(job, options = {}) {
     job.status = "pushed";
     return { state: "already-pushed", localSha, remoteSha, dirty: !!dirty };
   }
+  await git(directory, ["fetch", "--no-tags", "origin", "refs/heads/" + job.branch]);
   const remoteIsAncestor = await git(directory, ["merge-base", "--is-ancestor", remoteSha, localSha]).then(() => true).catch(() => false);
   const localIsAncestor = await git(directory, ["merge-base", "--is-ancestor", localSha, remoteSha]).then(() => true).catch(() => false);
   if (remoteIsAncestor) {
