@@ -86,3 +86,21 @@ test('does not acquire a stream reader for an already aborted signal', async () 
   );
   assert.equal(acquired, false);
 });
+
+
+test('does not process additional buffered records after a callback aborts', async () => {
+  const controller = new AbortController();
+  const seen = [];
+  await assert.rejects(
+    consumeNdjsonStream(
+      new Response('{"n":1}\\n{"n":2}\\n'),
+      record => {
+        seen.push(record.n);
+        controller.abort(new Error('stop after first record'));
+      },
+      { signal: controller.signal }
+    ),
+    /stop after first record/
+  );
+  assert.deepEqual(seen, [1]);
+});
