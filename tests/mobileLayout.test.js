@@ -10,6 +10,7 @@ const [app, styles, html] = await Promise.all([
 
 test('mobile viewport uses dynamic height and safe-area-aware document sizing', () => {
   assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /interactive-widget=resizes-content/);
   assert.match(styles, /#root\s*\{\s*min-height:\s*100dvh/);
   assert.match(styles, /body\s*\{[^}]*min-height:\s*100dvh/);
   assert.match(styles, /\.safe-bottom\s*\{\s*padding-bottom:\s*calc\(env\(safe-area-inset-bottom\)\s*\+\s*8px\)/);
