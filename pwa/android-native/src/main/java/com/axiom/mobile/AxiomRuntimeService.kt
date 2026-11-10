@@ -24,7 +24,7 @@ class AxiomRuntimeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { releaseWakeLock(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> { releaseWakeLock(); if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else stopForeground(true); stopSelf(); return START_NOT_STICKY }
             ACTION_WAKE_LOCK -> updateWakeLock()
             ACTION_START, null -> updateWakeLock()
         }

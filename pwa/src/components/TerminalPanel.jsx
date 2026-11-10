@@ -6,7 +6,7 @@ import {
 } from '../lib/axiomRuntime.js';
 
 const MAX_SCROLLBACK = 160000;
-const cleanAnsi = value => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '');
+const cleanAnsi = value => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 export default function TerminalPanel({ onNotice }) {
   const native = isNativeAndroid();
   const [runtime, setRuntime] = useState(null);
@@ -24,6 +24,7 @@ export default function TerminalPanel({ onNotice }) {
   const [rows, setRows] = useState(24);
   const outputRef = useRef(null);
   const inputRef = useRef(null);
+  const pendingChunksRef = useRef(new Map());
   const sessionRef = useRef(null);
   const append = useCallback(text => setOutput(current => (current + cleanAnsi(text)).slice(-MAX_SCROLLBACK)), []);
 
@@ -40,6 +41,7 @@ export default function TerminalPanel({ onNotice }) {
     let disposed = false;
     addRuntimeListener('ptyData', event => {
       if (event.sessionId === sessionRef.current) append(event.data || '');
+      else pendingChunksRef.current.set(event.sessionId, ((pendingChunksRef.current.get(event.sessionId) || '') + (event.data || '')).slice(-32768));
     }).then(listener => { if (disposed) listener.remove(); else dataListener = listener; });
     addRuntimeListener('ptyExit', event => {
       if (event.sessionId === sessionRef.current) {
@@ -79,6 +81,8 @@ export default function TerminalPanel({ onNotice }) {
     try {
       const result = await startTerminal({ rows, cols });
       sessionRef.current = result.sessionId;
+      const pending = pendingChunksRef.current.get(result.sessionId);
+      if (pending) { append(pending); pendingChunksRef.current.delete(result.sessionId); }
       setSessionId(result.sessionId);
       setStatus('running');
       append('Axiom shell · ' + result.cwd + '\r\n');

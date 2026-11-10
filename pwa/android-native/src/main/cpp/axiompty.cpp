@@ -94,7 +94,16 @@ Java_com_axiom_mobile_AxiomRuntimePlugin_nativeClose(JNIEnv*, jobject, jlong han
     if (session.fd >= 0) close(session.fd);
     if (session.pid > 0) {
         int status = 0;
-        waitpid(session.pid, &status, WNOHANG);
+        pid_t result = 0;
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            result = waitpid(session.pid, &status, WNOHANG);
+            if (result == session.pid || (result < 0 && errno != EINTR)) break;
+            usleep(10000);
+        }
+        if (result == 0 || (result < 0 && errno == EINTR)) {
+            kill(-session.pid, SIGKILL);
+            while (waitpid(session.pid, &status, 0) < 0 && errno == EINTR) {}
+        }
     }
     return JNI_TRUE;
 }

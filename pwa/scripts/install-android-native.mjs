@@ -23,13 +23,13 @@ const gradlePath = join(app, 'build.gradle');
 if (!existsSync(gradlePath)) throw new Error('Expected Groovy app/build.gradle; Kotlin DSL is not supported.');
 let gradle = await readFile(gradlePath, 'utf8');
 if (!gradle.includes('org.jetbrains.kotlin.android')) {
-  if (gradle.startsWith('plugins {')) gradle = gradle.replace('plugins {', "plugins {\n    id 'org.jetbrains.kotlin.android' version '2.0.21'");
+  if (gradle.startsWith('plugins {')) gradle = gradle.replace('plugins {', "plugins {\n    id 'org.jetbrains.kotlin.android' version '2.1.20'");
   else {
     if (!gradle.includes("apply plugin: 'com.android.application'")) throw new Error('Could not locate the Android application plugin declaration.');
     gradle = gradle.replace("apply plugin: 'com.android.application'", "apply plugin: 'com.android.application'\napply plugin: 'org.jetbrains.kotlin.android'");
     const rootGradlePath = join(android, 'build.gradle');
     let rootGradle = await readFile(rootGradlePath, 'utf8');
-    if (!rootGradle.includes('kotlin-gradle-plugin')) rootGradle = rootGradle.replace(/dependencies\s*\{/, "dependencies {\n        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'");
+    if (!rootGradle.includes('kotlin-gradle-plugin')) rootGradle = rootGradle.replace(/dependencies\s*\{/, "dependencies {\n        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.20'");
     await writeFile(rootGradlePath, rootGradle);
   }
 }
