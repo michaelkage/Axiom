@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -159,7 +161,7 @@ export function createAxiomGateway({
   return server;
 }
 
-if (import.meta.url === 'file://' + process.argv[1]) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const server = createAxiomGateway();
   const host = process.env.AXIOM_GATEWAY_HOST || '127.0.0.1';
   const port = Number(process.env.AXIOM_GATEWAY_PORT || 8787);
