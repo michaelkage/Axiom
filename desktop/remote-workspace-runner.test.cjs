@@ -280,3 +280,47 @@ test("pushes a recovered local commit only after fresh verification", async () =
     assert.equal(job.status, "pushed");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test("interrupted temporary cleanup is persisted and can be safely retried", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-recovery-"));
+  const workspacePath = path.join(root, "job-1");
+  const states = [];
+  try {
+    await fs.mkdir(workspacePath, { recursive: true });
+    await fs.writeFile(path.join(workspacePath, "result.txt"), "confirmed");
+    const job = {
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath, status: "pushed",
+      remoteCommitConfirmed: true, verificationPassed: true,
+      pushSucceeded: true, commitSha: "a".repeat(40)
+    };
+    await assert.rejects(() => cleanupRemoteWorkspace(job, {
+      onState: async current => states.push(current.status),
+      remove: async () => { throw new Error("simulated interrupted filesystem cleanup"); }
+    }), /cleanup was interrupted/);
+    assert.equal(job.status, "cleanup-interrupted");
+    assert.deepEqual(states, ["cleaning", "cleanup-interrupted"]);
+    assert.equal(await fs.readFile(path.join(workspacePath, "result.txt"), "utf8"), "confirmed");
+
+    const result = await cleanupRemoteWorkspace(job, {
+      onState: async current => states.push(current.status)
+    });
+    assert.equal(result.cleaned, true);
+    assert.equal(job.status, "cleaned");
+    assert.deepEqual(states, ["cleaning", "cleanup-interrupted", "cleaning", "cleaned"]);
+    await assert.rejects(() => fs.stat(workspacePath), { code: "ENOENT" });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cleanup remains forbidden for persistent or unconfirmed workspaces", async () => {
+  const job = {
+    mode: "persistent", workspaceOwnership: "user",
+    workspacePath: "/tmp/user-checkout", status: "pushed",
+    remoteCommitConfirmed: true, verificationPassed: true,
+    pushSucceeded: true, commitSha: "b".repeat(40)
+  };
+  await assert.rejects(() => cleanupRemoteWorkspace(job), /Refusing cleanup/);
+  assert.equal(job.status, "pushed");
+});
