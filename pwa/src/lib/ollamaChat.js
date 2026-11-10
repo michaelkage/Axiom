@@ -73,7 +73,7 @@ export async function runOllamaToolChat({
       onEvent({ type: 'tool.request', name, args });
 
       const meta = getToolMeta(name);
-      if (meta?.requiresApproval && !(await confirmTool(name, args))) {
+      if (meta?.requiresApproval && !(await confirmTool(name, args, { signal }))) {
         conversation.push({
           role: 'tool',
           tool_name: name,
