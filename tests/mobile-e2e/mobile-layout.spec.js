@@ -154,7 +154,7 @@ test("supports Shift+Enter for newlines and Enter to send on mobile chat", async
   await page.route("**/api/chat", route => route.fulfill({
     status: 200,
     contentType: "application/x-ndjson",
-    body: JSON.stringify({ message: { role: "assistant", content: "Keyboard submission worked" }, done: true }) + "\\n",
+    body: JSON.stringify({ message: { role: "assistant", content: "Keyboard submission worked" }, done: true }) + "\n",
   }));
 
   await page.goto("/");
@@ -162,10 +162,10 @@ test("supports Shift+Enter for newlines and Enter to send on mobile chat", async
   await composer.fill("First line");
   await composer.press("Shift+Enter");
   await composer.type("Second line");
-  await expect(composer).toHaveValue("First line\\nSecond line");
+  await expect(composer).toHaveValue("First line\nSecond line");
   await composer.press("Enter");
 
   await expect(page.getByText("Keyboard submission worked")).toBeVisible();
-  await expect(page.getByText("First line\\nSecond line")).toBeVisible();
+  await expect(page.getByText("First line\nSecond line")).toBeVisible();
   await expect(composer).toHaveValue("");
 });
