@@ -814,6 +814,9 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   const workspacePath = validated.mode === "persistent"
     ? path.resolve(request.persistentPath || "")
     : path.join(temporaryRoot, id);
+  if (validated.mode === "persistent" && (!request.persistentPath || workspacePath === path.parse(workspacePath).root)) {
+    throw new Error("Persistent mode requires an explicit, non-root workspace path.");
+  }
   const job = {
     id, ...validated, workspacePath,
     temporaryRoot: validated.mode === "persistent" ? null : temporaryRoot,
