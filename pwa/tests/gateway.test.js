@@ -64,3 +64,50 @@ test('gateway rejects untrusted browser origins', async () => {
     assert.equal(response.status, 403);
   });
 });
+
+
+test('GitHub proxy is scoped to one configured repository and keeps the PAT server-side', async () => {
+  let seen;
+  await withServer({
+    env: { GITHUB_TOKEN: 'github-server-secret', GITHUB_REPOSITORY: 'michaelkage/Axiom' },
+    fetchImpl: async (url, options) => {
+      seen = { url: String(url), options };
+      return new Response(JSON.stringify({ sha: 'blob' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  }, async base => {
+    const denied = await fetch(base + '/api/github/repos/other/repo/contents/README.md', { headers: { authorization: 'Bearer ' + TOKEN } });
+    assert.equal(denied.status, 403);
+    const response = await fetch(base + '/api/github/repos/michaelkage/Axiom/contents/README.md', { headers: { authorization: 'token ' + TOKEN } });
+    assert.equal(response.status, 200);
+    assert.equal(seen.url, 'https://api.github.com/repos/michaelkage/Axiom/contents/README.md');
+    assert.equal(seen.options.headers.authorization, 'Bearer github-server-secret');
+  });
+});
+
+test('Supabase proxy injects only a configured publishable key', async () => {
+  let seen;
+  await withServer({
+    env: { SUPABASE_URL: 'https://project.example.test', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test_key' },
+    fetchImpl: async (url, options) => {
+      seen = { url: String(url), options };
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  }, async base => {
+    const response = await fetch(base + '/api/supabase/rest/v1/widgets?select=id', { headers: { authorization: 'Bearer ' + TOKEN } });
+    assert.equal(response.status, 200);
+    assert.equal(seen.url, 'https://project.example.test/rest/v1/widgets?select=id');
+    assert.equal(seen.options.headers.apikey, 'sb_publishable_test_key');
+    assert.equal(seen.options.headers.authorization, 'Bearer sb_publishable_test_key');
+  });
+});
+
+test('Supabase gateway rejects secret keys before proxying', async () => {
+  await withServer({
+    env: { SUPABASE_URL: 'https://project.example.test', SUPABASE_PUBLISHABLE_KEY: 'sb_secret_do_not_use' },
+    fetchImpl: async () => { throw new Error('must not call upstream'); }
+  }, async base => {
+    const response = await fetch(base + '/api/supabase/rest/v1/widgets', { headers: { authorization: 'Bearer ' + TOKEN } });
+    assert.equal(response.status, 500);
+    assert.match((await response.json()).error, /must not be a secret key/);
+  });
+});
