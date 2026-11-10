@@ -35,7 +35,7 @@ export async function runOllamaToolChat({
     const payload = { model, messages: conversation, tools, stream: true };
     onEvent({ type: 'request', endpoint: '/api/chat', turn, model, toolCount: tools.length });
 
-    const response = await fetchImpl(baseUrl.replace(/\\/$/, '') + '/api/chat', {
+    const response = await fetchImpl(baseUrl.replace(/\/$/, '') + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
