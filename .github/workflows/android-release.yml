@@ -5,8 +5,8 @@ on:
     paths:
       - "pwa/**"
       - ".github/workflows/android-release.yml"
-    tags:
-      - "android-v*"
+  release:
+    types: [published]
   workflow_dispatch:
 permissions:
   contents: write
@@ -60,7 +60,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/android-v')
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           name: Axiom Android ${{ github.ref_name }}
