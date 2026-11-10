@@ -18,7 +18,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.concurrent.thread
 
 @CapacitorPlugin(name = "AxiomRuntime")
 class AxiomRuntimePlugin : Plugin() {
@@ -117,7 +116,7 @@ class AxiomRuntimePlugin : Plugin() {
             val cols = (call.getInt("cols") ?: 80).coerceIn(2, 400)
             val handle = nativeStart(cwd.absolutePath, rows, cols)
             if (handle == 0L) throw IllegalStateException("Could not create Android PTY.")
-            val reader = thread(name = "axiom-pty-$id", isDaemon = true) {
+            val reader = Thread({
                 val buffer = ByteArray(8192)
                 try {
                     while (!Thread.currentThread().isInterrupted) {
@@ -129,11 +128,13 @@ class AxiomRuntimePlugin : Plugin() {
                     }
                 } catch (_: Exception) {
                 } finally {
+                    nativeClose(handle, 15)
                     terminals.remove(id)
                     notifyListeners("ptyExit", JSObject().put("sessionId", id))
                 }
-            }
+            }, "axiom-pty-$id").apply { isDaemon = true }
             terminals[id] = Terminal(handle, reader)
+            reader.start()
             call.resolve(JSObject().put("sessionId", id).put("cwd", cwd.absolutePath).put("rows", rows).put("cols", cols))
         } catch (error: Exception) {
             call.reject(error.message ?: "Terminal start failed.")
