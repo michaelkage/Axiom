@@ -25,7 +25,9 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 - Ollama is a fixed upstream; only known API endpoints and GET/POST methods are allowed.
 - MCP servers are selected by ID from `MCP_SERVERS_JSON`; browser input cannot supply arbitrary upstream URLs. Upstream bearer tokens remain in the gateway process.
 - Request bodies are capped at 2 MiB. Responses are streamed and marked no-store.
-- The gateway does not expose GitHub or Supabase privileged credentials. Keep those integrations disabled until their backend adapter is configured; never place service-role keys in the PWA.
+- GitHub access is restricted to GET/PUT content operations in the single configured `GITHUB_REPOSITORY`; the PAT stays in the gateway process.
+- Supabase REST requests use the gateway-held publishable key. Secret and service-role keys are rejected; database permissions and RLS remain the actual authorization boundary.
+- MCP requests can only target IDs in `MCP_SERVERS_JSON`; gateway-managed connections use Streamable HTTP. Legacy SSE remains direct-browser only and cannot carry gateway authorization.
 - This gateway is a local trust boundary, not an internet-facing multi-user service. Do not expose it publicly without TLS, network controls, per-user identity, rate limits, and audit logging.
 
 ## Environment
@@ -38,5 +40,9 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Fixed Ollama upstream |
 | `AXIOM_ALLOWED_ORIGINS` | local Vite origins | Comma-separated exact browser origins |
 | `MCP_SERVERS_JSON` | `{}` | Server-side MCP ID-to-URL/token map |
+| `GITHUB_TOKEN` | optional | Least-privilege GitHub PAT, gateway only |
+| `GITHUB_REPOSITORY` | optional | Exact `owner/name` allowlist for GitHub content API |
+| `SUPABASE_URL` | optional | Supabase project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | optional | Publishable key or legacy anon JWT only, never service-role |
 
 Run gateway tests with `npm test`.
