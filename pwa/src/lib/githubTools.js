@@ -1,10 +1,10 @@
 import { Octokit } from '@octokit/rest';
 import { registerTool } from './toolRegistry.js';
 
-export function registerGitHubTools({ token, repository }) {
+export function registerGitHubTools({ token, repository, baseUrl = 'https://api.github.com' }) {
   if (!token) throw new Error('A GitHub Personal Access Token is required.');
   if (!repository || !/^[^/]+\/[^/]+$/.test(repository)) throw new Error('Repository must be owner/name.');
-  const octokit = new Octokit({ auth: token });
+  const octokit = new Octokit({ auth: token, baseUrl });
   const [owner, repo] = repository.split('/');
   const unregister = [];
   try {
