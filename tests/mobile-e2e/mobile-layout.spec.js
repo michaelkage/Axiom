@@ -63,6 +63,8 @@ test("exposes integration switches and reports missing credentials", async ({ pa
   await supabase.click();
   await expect(page.getByText("A Supabase project URL and API key are required.")).toBeVisible();
   await expect(supabase).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("button", { name: "Dismiss notification" }).click();
+  await expect(page.getByText("A Supabase project URL and API key are required.")).toHaveCount(0);
 });
 
 
