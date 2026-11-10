@@ -39,8 +39,9 @@ test.describe("Second Message Inference Bug", () => {
       webview.getByRole("article", { name: "assistant message" }).first()
     ).toBeVisible({ timeout: 30000 });
 
-    // Wait for thinking to stop (submit button should be visible and enabled)
-    await expect(textarea).toBeEnabled({ timeout: 15000 });
+    // The editor remains enabled while a response is streaming. Wait for the
+    // Stop control to disappear so the next prompt is a sequential send, not a steer.
+    await expect(webview.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 15000 });
 
     // Count assistant messages before second send
     const assistantMessagesBefore = await webview
@@ -109,10 +110,12 @@ test.describe("Second Message Inference Bug", () => {
           .filter({ hasText: message })
       ).toBeVisible({ timeout: 15000 });
 
-      // Wait for assistant response
+      // Wait for assistant response and for the session to finish streaming
+      // before sending the next message.
       await expect(
         webview.getByRole("article", { name: "assistant message" }).nth(i)
       ).toBeVisible({ timeout: 30000 });
+      await expect(webview.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 15000 });
 
       console.log(`[test] Got assistant response for message ${i + 1}`);
     }
@@ -166,7 +169,9 @@ test.describe("Second Message Inference Bug", () => {
     await expect(
       webview.getByRole("article", { name: "assistant message" }).first()
     ).toBeVisible({ timeout: 30000 });
-    await expect(textarea).toBeEnabled({ timeout: 15000 });
+    // Input remains enabled during streaming; wait for the Stop control to
+    // disappear before measuring the first completed turn.
+    await expect(webview.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 15000 });
 
     const postsAfterFirst = postRequests.length;
     console.log(`[test] POST requests after first message: ${postsAfterFirst}`);
@@ -245,7 +250,7 @@ test.describe("Second Message Inference Bug", () => {
     await expect(
       webview.getByRole("article", { name: "assistant message" }).first()
     ).toBeVisible({ timeout: 30000 });
-    await expect(textarea).toBeEnabled({ timeout: 15000 });
+    await expect(webview.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 15000 });
 
     await textarea.fill("second");
     await expect(submitButton).toBeEnabled({ timeout: 5000 });
