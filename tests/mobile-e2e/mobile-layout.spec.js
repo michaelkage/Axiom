@@ -148,3 +148,24 @@ test("keeps generation cancellation available after navigating away from chat", 
   await expect(page.getByText("Generation stopped.")).toBeVisible();
   await expect(page.getByText("Late response must stay cancelled")).toHaveCount(0);
 });
+
+
+test("supports Shift+Enter for newlines and Enter to send on mobile chat", async ({ page }) => {
+  await page.route("**/api/chat", route => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: JSON.stringify({ message: { role: "assistant", content: "Keyboard submission worked" }, done: true }) + "\\n",
+  }));
+
+  await page.goto("/");
+  const composer = page.getByRole("textbox", { name: "Message your local model" });
+  await composer.fill("First line");
+  await composer.press("Shift+Enter");
+  await composer.type("Second line");
+  await expect(composer).toHaveValue("First line\\nSecond line");
+  await composer.press("Enter");
+
+  await expect(page.getByText("Keyboard submission worked")).toBeVisible();
+  await expect(page.getByText("First line\\nSecond line")).toBeVisible();
+  await expect(composer).toHaveValue("");
+});
