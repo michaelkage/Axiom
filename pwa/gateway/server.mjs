@@ -86,7 +86,8 @@ export function createAxiomGateway({
     if (url.pathname === '/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, service: 'axiom-gateway' });
 
     const auth = req.headers.authorization || '';
-    if (!auth.startsWith('Bearer ') || !safeEqual(auth.slice(7), token)) {
+    const presentedToken = auth.startsWith('Bearer ') ? auth.slice(7) : auth.startsWith('token ') ? auth.slice(6) : (req.headers.apikey || '');
+    if (!safeEqual(presentedToken, token)) {
       return sendJson(res, 401, { error: 'Unauthorized.' });
     }
 
@@ -119,6 +120,70 @@ export function createAxiomGateway({
       } catch (error) {
         logger.error?.('[axiom-gateway] Ollama upstream failed:', error.message);
         return sendJson(res, 502, { error: 'Ollama upstream unavailable.' });
+      }
+    }
+
+
+    const githubMatch = url.pathname.match(/^\\/api\\/github\\/repos\\/([^/]+)\\/([^/]+)\\/contents\\/(.+)$/);
+    if (githubMatch) {
+      const configuredRepo = env.GITHUB_REPOSITORY || '';
+      const requestedRepo = githubMatch[1] + '/' + githubMatch[2];
+      if (!env.GITHUB_TOKEN || !configuredRepo || requestedRepo.toLowerCase() !== configuredRepo.toLowerCase()) {
+        return sendJson(res, 403, { error: 'GitHub repository is not configured for this gateway.' });
+      }
+      if (!['GET', 'PUT'].includes(req.method)) return sendJson(res, 405, { error: 'GitHub method not allowed.' });
+      const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => {
+        sendJson(res, error.status || 400, { error: error.message }); return null;
+      });
+      if (body === null) return;
+      const target = new URL('/repos/' + requestedRepo + '/contents/' + githubMatch[3] + url.search, 'https://api.github.com');
+      try {
+        const upstream = await fetchImpl(target, {
+          method: req.method,
+          headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+          body,
+          signal: AbortSignal.timeout(60000)
+        });
+        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
+        if (!upstream.body) return res.end();
+        for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
+        return res.end();
+      } catch (error) {
+        logger.error?.('[axiom-gateway] GitHub upstream failed:', error.message);
+        return sendJson(res, 502, { error: 'GitHub upstream unavailable.' });
+      }
+    }
+
+    const supabasePrefix = '/api/supabase/rest/v1/';
+    if (url.pathname.startsWith(supabasePrefix)) {
+      const key = env.SUPABASE_PUBLISHABLE_KEY || '';
+      if (!env.SUPABASE_URL || !key) return sendJson(res, 503, { error: 'Supabase publishable-key upstream is not configured.' });
+      if (!['GET', 'POST', 'PATCH', 'DELETE', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'Supabase method not allowed.' });
+      const supabaseBase = new URL(env.SUPABASE_URL);
+      if (!['http:', 'https:'].includes(supabaseBase.protocol) || supabaseBase.username || supabaseBase.password) {
+        return sendJson(res, 500, { error: 'Invalid SUPABASE_URL gateway configuration.' });
+      }
+      const body = ['GET', 'HEAD', 'DELETE'].includes(req.method) ? undefined : await readBody(req).catch(error => {
+        sendJson(res, error.status || 400, { error: error.message }); return null;
+      });
+      if (body === null) return;
+      const suffix = url.pathname.slice('/api/supabase'.length);
+      const target = new URL(suffix + url.search, supabaseBase);
+      const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
+      try {
+        const upstream = await fetchImpl(target, { method: req.method, headers, body, signal: AbortSignal.timeout(60000) });
+        const responseHeaders = { 'cache-control': 'no-store' };
+        for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
+          const value = upstream.headers.get(name);
+          if (value) responseHeaders[name] = value;
+        }
+        res.writeHead(upstream.status, responseHeaders);
+        if (!upstream.body) return res.end();
+        for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
+        return res.end();
+      } catch (error) {
+        logger.error?.('[axiom-gateway] Supabase upstream failed:', error.message);
+        return sendJson(res, 502, { error: 'Supabase upstream unavailable.' });
       }
     }
 
