@@ -62,7 +62,7 @@ describe("Axiom product workflow primitives", () => {
 
 describe("untrusted planner output validation", () => {
   const baseTask = { id: "task-1", title: "Implement feature", scope: "Add the feature safely", targetFiles: ["src/feature.ts"], dependsOn: [], acceptanceCriteria: [{ id: "done", description: "Feature passes its tests" }] };
-  it.each([".", "../outside.ts", "src/../../outside.ts", "/etc/passwd", "C:/Windows/system.ini", "c:relative.ts", "\\\\server\\share\\file.ts", "src/\0secret.ts"])("rejects unsafe target path %s", path => {
+  it.each([".", "../outside.ts", "src/../../outside.ts", "src\\..\\..\\outside.ts", "/etc/passwd", "C:/Windows/system.ini", "c:relative.ts", "\\\\server\\share\\file.ts", "src/\0secret.ts"])("rejects unsafe target path %s", path => {
     expect(() => validateTaskPlan([{ ...baseTask, targetFiles: [path] }])).toThrow(/Unsafe target path/);
   });
   it("rejects duplicate paths after normalization and duplicate dependency edges", () => {
