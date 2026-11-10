@@ -45,6 +45,7 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       else pendingChunksRef.current.set(event.sessionId, ((pendingChunksRef.current.get(event.sessionId) || '') + (event.data || '')).slice(-32768));
     }).then(listener => { if (disposed) listener.remove(); else dataListener = listener; });
     addRuntimeListener('ptyExit', event => {
+      pendingChunksRef.current.delete(event.sessionId);
       if (event.sessionId === sessionRef.current) {
         sessionRef.current = null;
         setSessionId(null);

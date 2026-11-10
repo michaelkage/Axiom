@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
+#include <vector>
 #include <string>
 #include <unordered_map>
 #include <mutex>
@@ -15,6 +16,15 @@
 struct PtySession { int fd; pid_t pid; };
 static std::unordered_map<jlong, PtySession> sessions;
 static std::mutex sessionsMutex;
+extern char **environ;
+
+static void putEnv(std::vector<std::string>& values, const std::string& key, const std::string& value) {
+    const std::string prefix = key + "=";
+    for (auto& entry : values) {
+        if (entry.rfind(prefix, 0) == 0) { entry = prefix + value; return; }
+    }
+    values.push_back(prefix + value);
+}
 static jlong makeHandle(int fd, pid_t pid) { return static_cast<jlong>((static_cast<uint64_t>(pid) << 32) | static_cast<uint32_t>(fd)); }
 static PtySession lookup(jlong handle) {
     std::lock_guard<std::mutex> lock(sessionsMutex);
@@ -28,15 +38,27 @@ Java_com_axiom_mobile_AxiomRuntimePlugin_nativeStart(JNIEnv* env, jobject, jstri
     struct winsize size{};
     size.ws_row = static_cast<unsigned short>(rows);
     size.ws_col = static_cast<unsigned short>(cols);
+    std::vector<std::string> environment;
+    for (char** item = environ; item && *item; ++item) environment.emplace_back(*item);
+    putEnv(environment, "TERM", "xterm-256color");
+    putEnv(environment, "HOME", path);
+    putEnv(environment, "PWD", path);
+    putEnv(environment, "SHELL", "/system/bin/sh");
+    putEnv(environment, "PATH", "/system/bin:/system/xbin");
+    putEnv(environment, "TMPDIR", path);
+    std::vector<char*> envp;
+    envp.reserve(environment.size() + 1);
+    for (auto& entry : environment) envp.push_back(const_cast<char*>(entry.c_str()));
+    envp.push_back(nullptr);
+    char shell[] = "sh";
+    char interactive[] = "-i";
+    char* argv[] = {shell, interactive, nullptr};
+
     int master = -1;
     pid_t pid = forkpty(&master, nullptr, nullptr, &size);
     if (pid == 0) {
-        setenv("TERM", "xterm-256color", 1);
-        setenv("HOME", path, 1);
-        setenv("PWD", path, 1);
-        setenv("PATH", "/system/bin:/system/xbin", 1);
-        chdir(path);
-        execl("/system/bin/sh", "sh", "-i", static_cast<char*>(nullptr));
+        if (chdir(path) != 0) _exit(126);
+        execve("/system/bin/sh", argv, envp.data());
         _exit(127);
     }
     env->ReleaseStringUTFChars(cwd, path);
