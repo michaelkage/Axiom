@@ -57,3 +57,32 @@ test('rejects responses without a readable body', async () => {
     /Streaming response body unavailable/
   );
 });
+
+
+test('cancels a pending stream read when the caller aborts', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    cancel() { cancelled = true; }
+  });
+  const controller = new AbortController();
+  const pending = consumeNdjsonStream(new Response(body), () => {}, { signal: controller.signal });
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort(new Error('stream cancelled'));
+  await assert.rejects(pending, /stream cancelled/);
+  assert.equal(cancelled, true);
+});
+
+test('does not acquire a stream reader for an already aborted signal', async () => {
+  let acquired = false;
+  const body = new ReadableStream({
+    start() {},
+    getReader() { acquired = true; }
+  });
+  const controller = new AbortController();
+  controller.abort(new Error('already stopped'));
+  await assert.rejects(
+    consumeNdjsonStream(new Response(body), () => {}, { signal: controller.signal }),
+    /already stopped/
+  );
+  assert.equal(acquired, false);
+});
