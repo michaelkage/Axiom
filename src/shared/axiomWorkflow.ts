@@ -57,8 +57,12 @@ export function validateTaskPlan(tasks: PlannedTask[]): PlannedTask[] {
     if (new Set(criterionIds).size !== criterionIds.length) throw new Error(`Task ${task.id} contains duplicate acceptance-criterion ids.`);
     const normalizedFiles = task.targetFiles.map(file => {
       if (typeof file !== "string" || !file.trim() || file.includes("\0")) throw new Error(`Unsafe target path in task ${task.id}: ${String(file)}`);
-      const normalized = normalizePath(file.trim());
-      if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/") || /^[a-z]:($|\/)/i.test(normalized)) {
+      const portablePath = file.trim().replace(/\\/g, "/");
+      if (portablePath.startsWith("/") || /^[a-z]:/i.test(portablePath) || portablePath.split("/").some(segment => segment === "..")) {
+        throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
+      }
+      const normalized = normalizePath(portablePath);
+      if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/")) {
         throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
       }
       return normalized;
