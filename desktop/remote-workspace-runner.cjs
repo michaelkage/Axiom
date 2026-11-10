@@ -205,10 +205,22 @@ async function pushReconciledWorkspace(job, options = {}) {
   job.status = "pushed";
   return { state: "pushed", commitSha: state.localSha, branch: job.branch };
 }
-async function cleanupRemoteWorkspace(job) {
+async function cleanupRemoteWorkspace(job, options = {}) {
   if (!mayCleanupRemoteWorkspace(job)) throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
-  await fs.rm(job.workspacePath, { recursive: true, force: false });
-  job.status = "cleaned";
-  return { cleaned: true, commitSha: job.commitSha };
+  // Persist intent before touching disk. If the process exits mid-removal, the
+  // restored job remains eligible for an idempotent cleanup retry.
+  job.status = "cleaning";
+  if (typeof options.onState === "function") await options.onState(job);
+  try {
+    const remove = options.remove || fs.rm;
+    await remove(job.workspacePath, { recursive: true, force: true });
+    job.status = "cleaned";
+    if (typeof options.onState === "function") await options.onState(job);
+    return { cleaned: true, commitSha: job.commitSha };
+  } catch (error) {
+    job.status = "cleanup-interrupted";
+    if (typeof options.onState === "function") await options.onState(job).catch(() => undefined);
+    throw new Error("Workspace cleanup was interrupted; its confirmed commit is preserved and cleanup can be retried. " + String(error.message || error).slice(0, 300));
+  }
 }
 module.exports = { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
