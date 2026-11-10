@@ -5,7 +5,7 @@ import {
   startBackgroundService, stopBackgroundService, storeGatewayPairingToken
 } from '../lib/axiomRuntime.js';
 
-export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, terminalRows = 24, terminalCols = 80, onTerminalConfigChange = () => {} }) {
+export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, terminalRows = 24, terminalCols = 80, onTerminalConfigChange = () => {}, gatewaySessionActive = false }) {
   const native = isNativeAndroid();
   const [info, setInfo] = useState(null);
   const [pairingToken, setPairingToken] = useState('');
@@ -18,15 +18,6 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
   };
   useEffect(() => {
     refresh();
-    const renew = () => {
-      if (native && gatewayUrl && document.visibilityState === 'visible') {
-        registerGatewaySession(gatewayUrl).then(result => onSessionToken(result.token)).catch(() => {});
-      }
-    };
-    renew();
-    document.addEventListener('visibilitychange', renew);
-    const interval = setInterval(renew, 6 * 60 * 60 * 1000);
-    return () => { document.removeEventListener('visibilitychange', renew); clearInterval(interval); };
   }, [native, gatewayUrl]);
 
   const pair = async () => {
@@ -63,6 +54,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
 
   return <div className="mt-5 border-t border-white/[.08] pt-5">
     <div className="flex items-center justify-between mb-3"><div><div className="text-sm font-semibold">Android runtime</div><p className="text-xs text-slate-500 mt-1">Native PTY · private workspaces · foreground execution</p></div><span className="text-[10px] text-lime-300 border border-lime-300/20 rounded-full px-2 py-1">NATIVE</span></div>
+    <div className="rounded-xl bg-black/25 p-3 mb-3 flex items-center justify-between"><div><div className="text-xs text-slate-400">Gateway session</div><div className="text-sm font-semibold">{gatewaySessionActive ? 'Registered' : 'Not paired'}</div></div><span className={'w-2 h-2 rounded-full '+(gatewaySessionActive?'bg-lime-400':'bg-slate-600')}/></div>
     <div className="grid grid-cols-2 gap-2 mb-3">
       <div className="rounded-xl bg-black/25 p-3"><div className="text-[10px] text-slate-500">PTY sessions</div><div className="text-lg font-semibold">{info?.terminalCount ?? 0}</div></div>
       <div className="rounded-xl bg-black/25 p-3"><div className="text-[10px] text-slate-500">Workspace</div><div className="text-sm font-semibold truncate">{info?.activeWorkspace ?? 'Loading…'}</div></div>
@@ -75,6 +67,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
       <p className="text-[11px] text-slate-500 mt-1 mb-3">Enter the gateway's existing AXIOM_GATEWAY_TOKEN once. Android encrypts it with Android Keystore, then registers a 12-hour session token. The pairing token never enters browser storage.</p>
       <input type="password" autoComplete="off" value={pairingToken} onChange={e => setPairingToken(e.target.value)} placeholder="Gateway pairing token" aria-label="Gateway pairing token" className="w-full p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/>
       <button type="button" disabled={busy || pairingToken.trim().length < 32 || !gatewayUrl} onClick={pair} className="w-full mt-2 p-3 rounded-xl bg-lime-300 text-slate-950 text-sm font-semibold disabled:opacity-40">{busy?'Pairing…':'Pair and register session'}</button>
+      <p className="text-[10px] text-amber-200/70 mt-2">Android localhost is the phone itself. If the Node gateway runs on your computer, use its reachable HTTPS address instead of 127.0.0.1.</p>
       <div className="text-[10px] text-slate-600 mt-2 flex items-center gap-1"><ShieldCheck size={12}/> Session credentials are memory-only; pairing secret is Keystore-encrypted.</div>
     </div>
     {error && <p role="alert" className="mt-3 text-xs text-red-300">{error}</p>}
