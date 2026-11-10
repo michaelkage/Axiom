@@ -127,10 +127,55 @@ async function commitAndPushWorkspace(job, options = {}) {
   job.status = "pushed";
   return { commitSha: localSha, branch: job.branch, status: job.status };
 }
+/**
+ * Inspect local and remote refs after an interrupted commit/push. This function
+ * never creates commits, pushes, fetches, resets, or changes the checkout.
+ */
+async function reconcileRemoteWorkspace(job, options = {}) {
+  if (!job || !job.workspacePath || !job.branch || !job.repositoryUrl) {
+    throw new TypeError("A valid remote workspace job is required.");
+  }
+  if (job.status === "cleaned") throw new Error("A cleaned workspace cannot be reconciled.");
+  const directory = job.workspacePath;
+  const localSha = (await git(directory, ["rev-parse", "HEAD"])).stdout;
+  const branch = (await git(directory, ["branch", "--show-current"])).stdout;
+  if (branch !== job.branch) return { state: "conflict", reason: "The checkout is not on the job's target branch.", localSha, remoteSha: null };
+  const dirty = (await git(directory, ["status", "--porcelain"])).stdout;
+  const remoteResult = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
+    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
+  });
+  const remoteSha = remoteResult.stdout.trim().split(/\s+/)[0] || "";
+  if (!/^[0-9a-f]{40,64}$/i.test(remoteSha)) return { state: "conflict", reason: "The remote branch did not return a valid commit SHA.", localSha, remoteSha: null };
+  if (localSha === remoteSha) {
+    job.commitSha = localSha;
+    job.remoteCommitConfirmed = true;
+    job.pushSucceeded = true;
+    job.status = "pushed";
+    return { state: "already-pushed", localSha, remoteSha, dirty: !!dirty };
+  }
+  const remoteIsAncestor = await git(directory, ["merge-base", "--is-ancestor", remoteSha, localSha]).then(() => true).catch(() => false);
+  const localIsAncestor = await git(directory, ["merge-base", "--is-ancestor", localSha, remoteSha]).then(() => true).catch(() => false);
+  if (remoteIsAncestor) {
+    const ahead = Number((await git(directory, ["rev-list", "--count", remoteSha + ".." + localSha])).stdout);
+    if (ahead === 1 && !dirty) {
+      job.commitSha = localSha;
+      job.remoteCommitConfirmed = false;
+      job.pushSucceeded = false;
+      job.status = "verified";
+      return { state: "local-commit-pending-push", localSha, remoteSha, dirty: false, pushAllowed: job.verificationPassed === true };
+    }
+    return { state: "conflict", reason: dirty ? "The workspace has uncommitted changes." : "The local branch contains multiple commits not present remotely; automatic recovery is ambiguous.", localSha, remoteSha, dirty: !!dirty };
+  }
+  if (localIsAncestor) {
+    return { state: "remote-advanced", reason: "The remote branch advanced independently; no push or reset was attempted.", localSha, remoteSha, dirty: !!dirty };
+  }
+  return { state: "diverged", reason: "Local and remote branches have diverged; manual conflict resolution is required.", localSha, remoteSha, dirty: !!dirty };
+}
 async function cleanupRemoteWorkspace(job) {
   if (!mayCleanupRemoteWorkspace(job)) throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
   await fs.rm(job.workspacePath, { recursive: true, force: false });
   job.status = "cleaned";
   return { cleaned: true, commitSha: job.commitSha };
 }
-module.exports = { createRemoteWorkspace, commitAndPushWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
+module.exports = { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
