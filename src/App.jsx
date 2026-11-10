@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
 import { consumeNdjsonStream } from './lib/ndjson.js';
 import { runOllamaToolChat } from './lib/ollamaChat.js';
-import { executeTool, listTools, registerTool, toOllamaTools } from './lib/toolRegistry.js';
+import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
 import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
@@ -90,6 +90,7 @@ export default function App(){
      tools:availableTools,
      signal,
      executeTool,
+     serializeToolResult,
      getToolMeta:name=>listTools().find(tool=>tool.name===name),
      confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?'),
      onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
