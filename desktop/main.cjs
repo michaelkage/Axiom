@@ -57,21 +57,26 @@ function cancelRemoteWorkspaceOperation(id) {
   return true;
 }
 const remoteWorkspaceJobsFile = () => path.join(app.getPath("userData"), "remote-workspace-jobs.json");
-async function persistRemoteWorkspaceJobs() {
-  const file = remoteWorkspaceJobsFile();
-  const payload = [...remoteWorkspaceJobs.values()].map(job => ({
-    id: job.id, mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch,
-    paths: job.paths, workspacePath: job.workspacePath, temporaryRoot: job.temporaryRoot,
-    workspaceOwnership: job.workspaceOwnership, status: job.status,
-    remoteCommitConfirmed: job.remoteCommitConfirmed === true,
-    verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true,
-    commitSha: job.commitSha || null, operation: job.operation || null,
-    interruptedOperation: job.interruptedOperation || null, lastActivityAt: job.lastActivityAt || null
-  }));
-  await fs.promises.mkdir(path.dirname(file), { recursive: true });
-  const temporary = file + ".tmp";
-  await fs.promises.writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o600 });
-  await fs.promises.rename(temporary, file);
+let remoteWorkspacePersistQueue = Promise.resolve();
+function persistRemoteWorkspaceJobs() {
+  const writeSnapshot = async () => {
+    const file = remoteWorkspaceJobsFile();
+    const payload = [...remoteWorkspaceJobs.values()].map(job => ({
+      id: job.id, mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch,
+      paths: job.paths, workspacePath: job.workspacePath, temporaryRoot: job.temporaryRoot,
+      workspaceOwnership: job.workspaceOwnership, status: job.status,
+      remoteCommitConfirmed: job.remoteCommitConfirmed === true,
+      verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true,
+      commitSha: job.commitSha || null, operation: job.operation || null,
+      interruptedOperation: job.interruptedOperation || null, lastActivityAt: job.lastActivityAt || null
+    }));
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    const temporary = file + "." + remoteWorkspaceInstanceId + ".tmp";
+    await fs.promises.writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o600 });
+    await fs.promises.rename(temporary, file);
+  };
+  remoteWorkspacePersistQueue = remoteWorkspacePersistQueue.then(writeSnapshot, writeSnapshot);
+  return remoteWorkspacePersistQueue;
 }
 async function restoreRemoteWorkspaceJobs() {
   try {
