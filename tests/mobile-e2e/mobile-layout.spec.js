@@ -185,6 +185,12 @@ test("renders assistant Markdown headings, lists, inline formatting, links and f
     "",
     "> Keep the output readable.",
     "",
+    "| Feature | Status |",
+    "| --- | --- |",
+    "| Markdown | **Ready** |",
+    "",
+    "---",
+    "",
     "```js",
     "const answer = 42;",
     "console.log(answer);",
@@ -212,6 +218,9 @@ test("renders assistant Markdown headings, lists, inline formatting, links and f
   await expect(page.locator("ul li")).toHaveText(["First capability", "Second capability"]);
   await expect(page.locator("ol li")).toHaveText(["Validate input", "Execute safely"]);
   await expect(page.locator("blockquote")).toContainText("Keep the output readable.");
+  await expect(page.locator("table thead th")).toHaveText(["Feature", "Status"]);
+  await expect(page.locator("table tbody td")).toHaveText(["Markdown", "Ready"]);
+  await expect(page.locator("hr")).toHaveCount(1);
   await expect(page.locator("pre code")).toContainText("const answer = 42;");
   await expect(page.getByRole("link", { name: "Project docs" })).toHaveAttribute("rel", "noopener noreferrer");
   await expect(page.locator("script")).toHaveCount(0);
