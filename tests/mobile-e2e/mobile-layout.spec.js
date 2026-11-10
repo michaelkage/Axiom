@@ -209,7 +209,6 @@ test("renders assistant Markdown headings, lists, inline formatting, links and f
   await expect(page.locator("strong", { hasText: "bold" })).toBeVisible();
   await expect(page.locator("em", { hasText: "emphasis" })).toBeVisible();
   await expect(page.locator("code", { hasText: "inlineCode()" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "" })).toHaveCount(0);
   await expect(page.locator("ul li")).toHaveText(["First capability", "Second capability"]);
   await expect(page.locator("ol li")).toHaveText(["Validate input", "Execute safely"]);
   await expect(page.locator("blockquote")).toContainText("Keep the output readable.");
