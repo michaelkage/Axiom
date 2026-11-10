@@ -120,11 +120,11 @@ export default function App(){
     if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
     await consumeNdjsonStream(response,part=>{
      answer+=part.response||'';
-     patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));
+     patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);
     },{signal});
    }
    log('success','Generation complete',state.model);
-  }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
+  }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m),chatId);log('error','Generation failed',e.message);}}
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
  }
  function toggleIntegration(id){
