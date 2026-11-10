@@ -93,7 +93,7 @@ test('does not process additional buffered records after a callback aborts', asy
   const seen = [];
   await assert.rejects(
     consumeNdjsonStream(
-      new Response('{"n":1}\\n{"n":2}\\n'),
+      new Response('{"n":1}\n{"n":2}\n'),
       record => {
         seen.push(record.n);
         controller.abort(new Error('stop after first record'));
