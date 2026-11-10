@@ -20,6 +20,7 @@ export async function consumeNdjsonStream(response, onRecord, { signal } = {}) {
   let lineNumber = 0;
 
   const consumeLine = async line => {
+    if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');
     lineNumber += 1;
     if (!line.trim()) return;
     let record;
@@ -29,6 +30,7 @@ export async function consumeNdjsonStream(response, onRecord, { signal } = {}) {
       throw new Error('Invalid NDJSON on line ' + lineNumber + ': ' + error.message);
     }
     await onRecord(record);
+    if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');
   };
 
   try {
