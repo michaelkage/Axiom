@@ -13,12 +13,18 @@ test('all chat messages use the conversation-aware Ollama chat runtime', () => {
 
 test('chat runtime receives tool execution, cancellation and streamed UI callbacks', () => {
   assert.match(app, /signal,\s*executeTool,\s*serializeToolResult/);
-  assert.match(app, /onText:value=>\{answer=value;patchChat/);
+  assert.match(app, /onText:value=>\{answer=value;if\(streamTimerRef\.current===null\)streamTimerRef\.current=setTimeout/);
+  assert.match(app, /clearTimeout\(streamTimerRef\.current\)/);
   assert.match(app, /onEvent:event=>/);
   assert.match(app, /Permission required/);
   assert.match(app, /Approve tool execution/);
   assert.match(app, /Allow once/);
   assert.match(app, /confirmTool:\(name,args/);
+});
+
+test('stream rendering, persistence and prompt context are bounded for mobile devices', () => {
+  assert.match(app, /setTimeout\(\(\)=>\{const settings=/);
+  assert.match(app, /const priorMessages=\(currentChat\?\.messages\|\|\[\]\)\.slice\(-12\)/);
 });
 
 test('partial output and cancellation are retained against the originating chat', () => {
