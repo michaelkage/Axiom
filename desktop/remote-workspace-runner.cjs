@@ -235,7 +235,12 @@ async function assertOwnedTemporaryWorkspace(job) {
   if (path.dirname(workspace) !== root) throw new Error("Refusing cleanup: workspace is not a direct child of its managed temporary root.");
   const rootStat = await fs.lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("Refusing cleanup: managed temporary root is not a real directory.");
-  const workspaceStat = await fs.lstat(workspace);
+  let workspaceStat;
+  try { workspaceStat = await fs.lstat(workspace); }
+  catch (error) {
+    if (error && error.code === "ENOENT") return null;
+    throw error;
+  }
   if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) throw new Error("Refusing cleanup: workspace is not a real directory.");
   const [realRoot, realWorkspace] = await Promise.all([fs.realpath(root), fs.realpath(workspace)]);
   const relative = path.relative(realRoot, realWorkspace);
@@ -245,7 +250,14 @@ async function assertOwnedTemporaryWorkspace(job) {
   return workspace;
 }
 async function cleanupRemoteWorkspace(job, options = {}) {
-  await assertOwnedTemporaryWorkspace(job);
+  const ownedWorkspace = await assertOwnedTemporaryWorkspace(job);
+  if (!ownedWorkspace) {
+    // A previous process may have removed the directory and crashed before
+    // persisting "cleaned". Treat that exact, already-absent owned path as done.
+    job.status = "cleaned";
+    if (typeof options.onState === "function") await options.onState(job);
+    return { cleaned: true, commitSha: job.commitSha };
+  }
   // Persist intent before touching disk. If the process exits mid-removal, the
   // restored job remains eligible for an idempotent cleanup retry.
   job.status = "cleaning";
@@ -254,7 +266,7 @@ async function cleanupRemoteWorkspace(job, options = {}) {
     const remove = options.remove || fs.rm;
     // Revalidate immediately before deletion; never follow a replaced symlink.
     const workspace = await assertOwnedTemporaryWorkspace(job);
-    await remove(workspace, { recursive: true, force: false });
+    if (workspace) await remove(workspace, { recursive: true, force: true });
     job.status = "cleaned";
     if (typeof options.onState === "function") await options.onState(job);
     return { cleaned: true, commitSha: job.commitSha };
