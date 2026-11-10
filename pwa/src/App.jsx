@@ -66,7 +66,7 @@ export default function App(){
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
  const gatewayBase=()=>String(state.settings?.gatewayUrl||'').replace(/\/$/,'');
- const gatewayFetch=(input,init={})=>{const headers=new Headers(init.headers||{});if(gatewayToken)headers.set('Authorization','Bearer '+gatewayToken);return fetch(input,{...init,headers});};
+ const gatewayFetch=async(input,init={})=>{let token=gatewayToken;const requestUrl=typeof input==='string'?input:(input?.url||'');const isGatewayRequest=Boolean(gatewayBase())&&requestUrl.startsWith(gatewayBase()+'/');const send=()=>{const headers=new Headers(init.headers||{});if(token)headers.set('Authorization','Bearer '+token);return fetch(input,{...init,headers});};let response=await send();if(response.status===401&&isGatewayRequest&&isNativeAndroid()){try{const session=await registerGatewaySession(gatewayBase());token=session.token;setGatewayToken(token);response=await send();}catch{}}return response;};
  async function checkOllama({silent=false}={}){
   const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\/$/,'');
   const previous=connection;
