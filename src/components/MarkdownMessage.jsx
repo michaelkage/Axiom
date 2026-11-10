@@ -49,6 +49,31 @@ export default function MarkdownMessage({ content = '' }) {
       continue;
     }
 
+    const tableSeparator = lines[0]?.match(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/);
+    if (line.includes('|') && tableSeparator) {
+      flushParagraph();
+      const parseCells = value => value.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+      const headers = parseCells(line);
+      lines.shift();
+      const rows = [];
+      while (lines.length && lines[0].includes('|') && lines[0].trim()) rows.push(parseCells(lines.shift()));
+      blocks.push(
+        <div key={'table-' + index++} className="max-w-full overflow-x-auto rounded-lg border border-white/10">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-white/[.06]"><tr>{headers.map((cell, cellIndex) => <th key={cellIndex} className="border-b border-white/10 px-3 py-2 font-semibold text-slate-100">{renderInline(cell, 'th' + index + '-' + cellIndex)}</th>)}</tr></thead>
+            <tbody>{rows.map((cells, rowIndex) => <tr key={rowIndex} className="even:bg-white/[.025]">{headers.map((_, cellIndex) => <td key={cellIndex} className="border-b border-white/[.06] px-3 py-2 align-top text-slate-300">{renderInline(cells[cellIndex] || '', 'td' + index + '-' + rowIndex + '-' + cellIndex)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    if (/^\s*(?:---+|\*\*\*+|___+)\s*$/.test(line)) {
+      flushParagraph();
+      blocks.push(<hr key={'hr-' + index++} className="border-white/10" />);
+      continue;
+    }
+
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       flushParagraph();
