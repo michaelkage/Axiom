@@ -5,7 +5,7 @@ function withAbortSignal(query, signal) { return signal ? query.abortSignal(sign
 
 export function registerSupabaseTools({ url, key }) {
   if (!url || !key) throw new Error('A Supabase project URL and API key are required.');
-  const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, skipAutoInitialize: true } });
   const unregister = [];
   try {
   unregister.push(registerTool({
