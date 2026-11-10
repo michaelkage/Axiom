@@ -13,7 +13,7 @@ export async function runOllamaToolChat({
   baseUrl,
   model,
   messages,
-  tools,
+  tools = [],
   signal,
   fetchImpl = fetch,
   executeTool,
@@ -32,7 +32,8 @@ export async function runOllamaToolChat({
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
     throwIfAborted(signal);
-    const payload = { model, messages: conversation, tools, stream: true };
+    const payload = { model, messages: conversation, stream: true };
+    if (tools.length) payload.tools = tools;
     onEvent({ type: 'request', endpoint: '/api/chat', turn, model, toolCount: tools.length });
 
     const response = await fetchImpl(baseUrl.replace(/\/$/, '') + '/api/chat', {
