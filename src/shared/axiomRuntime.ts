@@ -113,6 +113,10 @@ export interface TaskBatchExecutionOptions {
   timeoutMs?: number;
   /** Maximum number of independent workers allowed to run at the same time. Defaults to 3. */
   maxConcurrency?: number;
+  /** Retry only failures classified as safe for automatic retry. Defaults to zero. */
+  maxRetries?: number;
+  /** Hard cap on total runner invocations across the complete plan. */
+  maxTotalAttempts?: number;
 }
 export class TaskBatchExecutionError extends Error {
   constructor(
@@ -137,6 +141,10 @@ export async function executeTaskBatches<T>(
   const batches = createIndependentTasks(tasks);
   const maxConcurrency = Number.isInteger(options.maxConcurrency) && (options.maxConcurrency ?? 0) > 0
     ? Math.min(options.maxConcurrency!, Math.max(tasks.length, 1)) : 3;
+  const maxRetries = Number.isInteger(options.maxRetries) && (options.maxRetries ?? 0) > 0 ? options.maxRetries! : 0;
+  const maxTotalAttempts = Number.isInteger(options.maxTotalAttempts) && (options.maxTotalAttempts ?? 0) > 0
+    ? options.maxTotalAttempts! : tasks.length * (maxRetries + 1);
+  let totalAttempts = 0;
   let activeWorkers = 0;
   const workerWaiters: Array<() => void> = [];
   const acquireWorkerSlot = async () => {
@@ -201,29 +209,45 @@ export async function executeTaskBatches<T>(
       try {
         outcomeById.set(task.id, "running");
         emit({ taskId: task.id, title: task.title, status: "running", startedAt });
-        const runnerPromise = runner(task, [...completedContext], controller.signal);
-        let removeCancellationListener = () => {};
-        const cancellation = options.signal ? new Promise<never>((_, reject) => {
-          const cancel = () => reject(new Error("Task execution cancelled."));
-          if (options.signal!.aborted) cancel();
-          else {
-            options.signal!.addEventListener("abort", cancel, { once: true });
-            removeCancellationListener = () => options.signal!.removeEventListener("abort", cancel);
-          }
-        }) : new Promise<never>(() => {});
-        const timeoutPromise = options.timeoutMs && options.timeoutMs > 0 ? new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            controller.abort(new Error("Task timed out"));
-            reject(new Error("Task timed out after " + options.timeoutMs + "ms"));
-          }, options.timeoutMs);
-        }) : new Promise<never>(() => {});
         let result: T;
-        try { result = await Promise.race([runnerPromise, timeoutPromise, cancellation]); }
-        finally { removeCancellationListener(); }
+        let attempt = 0;
+        while (true) {
+          if (totalAttempts >= maxTotalAttempts) throw new Error("Execution attempt budget exhausted (" + maxTotalAttempts + " total attempts).");
+          attempt++;
+          totalAttempts++;
+          emit({ taskId: task.id, title: task.title, status: "running", attempt, startedAt });
+          const runnerPromise = runner(task, [...completedContext], controller.signal);
+          let removeCancellationListener = () => {};
+          const cancellation = options.signal ? new Promise<never>((_, reject) => {
+            const cancel = () => reject(new Error("Task execution cancelled."));
+            if (options.signal!.aborted) cancel();
+            else {
+              options.signal!.addEventListener("abort", cancel, { once: true });
+              removeCancellationListener = () => options.signal!.removeEventListener("abort", cancel);
+            }
+          }) : new Promise<never>(() => {});
+          const timeoutPromise = options.timeoutMs && options.timeoutMs > 0 ? new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              controller.abort(new Error("Task timed out"));
+              reject(new Error("Task timed out after " + options.timeoutMs + "ms"));
+            }, options.timeoutMs);
+          }) : new Promise<never>(() => {});
+          try {
+            result = await Promise.race([runnerPromise, timeoutPromise, cancellation]);
+            break;
+          } catch (error) {
+            const advice = classifyRecovery(error);
+            if (attempt > maxRetries || !advice.safeToRetryAutomatically || options.signal?.aborted || controller.signal.aborted) throw error;
+            emit({ taskId: task.id, title: task.title, status: "running", attempt, startedAt, error: "Safe automatic retry: " + (error instanceof Error ? error.message : String(error)) });
+          } finally {
+            removeCancellationListener();
+            if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = undefined; }
+          }
+        }
         outcomeById.set(task.id, "succeeded");
         const detail = result && typeof result === "object" ? result as Record<string, unknown> : {};
         emit({
-          taskId: task.id, title: task.title, status: "succeeded", startedAt, finishedAt: Date.now(),
+          taskId: task.id, title: task.title, status: "succeeded", attempt, startedAt, finishedAt: Date.now(),
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
           ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
@@ -242,7 +266,7 @@ export async function executeTaskBatches<T>(
         outcomeById.set(task.id, status);
         const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
         emit({
-          taskId: task.id, title: task.title, status, startedAt, finishedAt: Date.now(),
+          taskId: task.id, title: task.title, status, attempt: typeof attempt === "number" ? attempt : undefined, startedAt, finishedAt: Date.now(),
           error: errorMessage,
           ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
           ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
