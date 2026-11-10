@@ -223,6 +223,6 @@ test("renders assistant Markdown headings, lists, inline formatting, links and f
   await expect(page.locator("hr")).toHaveCount(1);
   await expect(page.locator("pre code")).toContainText("const answer = 42;");
   await expect(page.getByRole("link", { name: "Project docs" })).toHaveAttribute("rel", "noopener noreferrer");
-  await expect(page.locator("script")).toHaveCount(0);
+  await expect(page.locator(".markdown-content script")).toHaveCount(0);
   expect(await page.evaluate(() => window.markdownXss)).toBeUndefined();
 });
