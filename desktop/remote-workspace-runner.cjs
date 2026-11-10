@@ -63,10 +63,10 @@ async function createRemoteWorkspace(input, options = {}) {
   if (request.mode === "persistent" && (!input.persistentPath || workspacePath === path.parse(workspacePath).root)) {
     throw new TypeError("Persistent mode requires an explicit, non-root workspace path.");
   }
-  await fs.mkdir(path.dirname(workspacePath), { recursive: true });
   if (request.mode !== "persistent" && path.dirname(workspacePath) !== temporaryRoot) {
     throw new TypeError("Temporary workspace path must be a direct child of its managed root.");
   }
+  await fs.mkdir(path.dirname(workspacePath), { recursive: true });
   if (request.mode === "persistent") {
     try {
       const stat = await fs.stat(workspacePath);
