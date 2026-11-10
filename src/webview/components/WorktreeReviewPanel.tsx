@@ -91,7 +91,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
               onInput={event => setCriteriaEvidence(old => ({ ...old, [criterion]: event.currentTarget.value }))}
             />
           </label>}</For>
-          <Show when={!criteriaComplete()}><p class="worktree-review__note">Outstanding criteria: {(props.acceptanceCriteria ?? []).filter(item => !criteriaDone().includes(item)).length}</p></Show>
+          <Show when={!criteriaComplete()}><p class="worktree-review__note">Outstanding criteria: {(props.acceptanceCriteria ?? []).filter(item => !(criteriaEvidence()[item] ?? "").trim()).length}</p></Show>
         </Show>
           <p>Select files to integrate after reviewing the diff and quality-gate evidence:</p>
           <For each={item.changedFiles}>{file => <label class="worktree-review__file">
