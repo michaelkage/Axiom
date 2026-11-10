@@ -58,3 +58,19 @@ describe("Axiom product workflow primitives", () => {
     expect(summary.suggestedNextSteps.length).toBeGreaterThan(0);
   });
 });
+
+
+describe("untrusted planner output validation", () => {
+  const baseTask = { id: "task-1", title: "Implement feature", scope: "Add the feature safely", targetFiles: ["src/feature.ts"], dependsOn: [], acceptanceCriteria: [{ id: "done", description: "Feature passes its tests" }] };
+  it.each([".", "../outside.ts", "src/../../outside.ts", "/etc/passwd", "C:/Windows/system.ini", "c:relative.ts", "\\\\server\\share\\file.ts", "src/\\0secret.ts"])("rejects unsafe target path %s", path => {
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: [path] }])).toThrow(/Unsafe target path/);
+  });
+  it("rejects duplicate paths after normalization and duplicate dependency edges", () => {
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: ["src/feature.ts", "src\\feature.ts"] }])).toThrow(/duplicate target paths/);
+    expect(() => validateTaskPlan([{ ...baseTask, dependsOn: ["task-2", "task-2"] }, { ...baseTask, id: "task-2", dependsOn: [] }])).toThrow(/duplicate dependency/);
+  });
+  it("rejects malformed task shapes and duplicate acceptance criterion ids", () => {
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: null as unknown as string[] }])).toThrow(/invalid task-plan shape/);
+    expect(() => validateTaskPlan([{ ...baseTask, acceptanceCriteria: [{ id: "same", description: "One" }, { id: "same", description: "Two" }] }])).toThrow(/duplicate acceptance-criterion ids/);
+  });
+});
