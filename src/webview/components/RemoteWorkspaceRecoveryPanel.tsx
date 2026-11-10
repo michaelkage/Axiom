@@ -1,10 +1,10 @@
-import { createSignal, onMount, For, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
 
 type RemoteJob = {
   id: string; mode: string; branch: string; workspacePath: string; status: string;
   paths?: string[]; commitSha?: string | null; remoteCommitConfirmed?: boolean;
   verificationPassed?: boolean; pushSucceeded?: boolean;
-  interruptedOperation?: { kind: string; startedAt: number | null } | null; lastActivityAt?: number | null;
+  interruptedOperation?: { kind: string; startedAt: number | null } | null; operation?: { kind: string; startedAt: number } | null; error?: string | null; lastActivityAt?: number | null;
 };
 type ReconcileResult = {
   id: string; state: string; reason?: string; localSha?: string; remoteSha?: string;
@@ -33,7 +33,13 @@ export function RemoteWorkspaceRecoveryPanel() {
     try { setJobs(await api()!.list()); }
     catch (error) { setNotice(error instanceof Error ? error.message : "Could not load remote workspaces."); }
   };
-  onMount(() => { void refresh(); });
+  onMount(() => {
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (jobs().some(job => !!job.operation)) void refresh();
+    }, 1500);
+    onCleanup(() => window.clearInterval(timer));
+  });
 
   const reconcile = async (id: string) => {
     if (!api()) return;
@@ -114,6 +120,15 @@ export function RemoteWorkspaceRecoveryPanel() {
                   <span class="text-xs">{result()?.state || job.status}</span>
                 </div>
                 <Show when={result()?.reason}><p class="mt-2 text-sm text-muted">{result()!.reason}</p></Show>
+                <Show when={job.error}>
+                  <p class="mt-2 text-sm text-amber-500">{job.error}</p>
+                </Show>
+                <Show when={job.status === "creating" && job.operation?.kind === "clone"}>
+                  <p class="mt-2 text-sm text-muted">Cloning repository… this operation can be cancelled safely.</p>
+                </Show>
+                <Show when={job.status === "clone-interrupted"}>
+                  <p class="mt-2 text-sm text-amber-500">Clone was interrupted. Temporary partial checkouts are removed on recovery; persistent destinations are preserved.</p>
+                </Show>
                 <Show when={job.interruptedOperation}>
                   <p class="mt-2 text-sm text-amber-500">
                     Previous {job.interruptedOperation!.kind} operation was interrupted when Axiom closed. Check recovery before retrying.
@@ -126,9 +141,9 @@ export function RemoteWorkspaceRecoveryPanel() {
                   </div>
                 </Show>
                 <div class="mt-3 flex flex-wrap gap-2">
-                  <Show when={busy() === job.id}>
+                  <Show when={busy() === job.id || !!job.operation}>
                     <button class="workflow-plan__secondary" onClick={() => void cancel(job)}>
-                      Cancel operation
+                      Cancel {job.operation?.kind || "operation"}
                     </button>
                   </Show>
                   <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void reconcile(job.id)}>
