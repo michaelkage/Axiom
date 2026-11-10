@@ -1,6 +1,6 @@
 # Axiom local gateway
 
-The gateway keeps Ollama and MCP upstream access behind one authenticated local process. Browser clients never receive configured MCP bearer tokens.
+The gateway keeps Ollama, GitHub, Supabase, and MCP upstream access behind one authenticated local process. Browser clients never receive configured GitHub PATs, Supabase publishable keys, or MCP bearer tokens.
 
 ## Run
 
