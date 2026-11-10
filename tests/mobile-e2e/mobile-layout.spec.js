@@ -248,13 +248,24 @@ test("copies a complete assistant response from its message actions", async ({ p
 });
 
 
-test("exposes settings as an accessible dialog and closes it with Escape", async ({ page }) => {
+test("traps focus in settings, restores focus, and closes with Escape", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open settings" }).click();
+  const trigger = page.getByRole("button", { name: "Open settings" });
+  await trigger.click();
 
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("aria-modal", "true");
+  const close = page.getByRole("button", { name: "Close settings" });
+  await expect(close).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+  const lastControl = page.getByRole("button", { name: "Test Ollama connection" });
+  await expect(lastControl).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
