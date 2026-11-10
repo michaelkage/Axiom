@@ -224,15 +224,37 @@ async function pushReconciledWorkspace(job, options = {}) {
   job.status = "pushed";
   return { state: "pushed", commitSha: state.localSha, branch: job.branch };
 }
+async function assertOwnedTemporaryWorkspace(job) {
+  if (!mayCleanupRemoteWorkspace(job)) {
+    throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
+  }
+  const root = path.resolve(job.temporaryRoot);
+  const workspace = path.resolve(job.workspacePath);
+  // Jobs are created as direct children of Axiom's managed root. Requiring
+  // that exact relationship prevents prefix tricks and nested-path surprises.
+  if (path.dirname(workspace) !== root) throw new Error("Refusing cleanup: workspace is not a direct child of its managed temporary root.");
+  const rootStat = await fs.lstat(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("Refusing cleanup: managed temporary root is not a real directory.");
+  const workspaceStat = await fs.lstat(workspace);
+  if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) throw new Error("Refusing cleanup: workspace is not a real directory.");
+  const [realRoot, realWorkspace] = await Promise.all([fs.realpath(root), fs.realpath(workspace)]);
+  const relative = path.relative(realRoot, realWorkspace);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative) || path.dirname(relative) !== ".") {
+    throw new Error("Refusing cleanup: resolved workspace escapes the managed temporary root.");
+  }
+  return workspace;
+}
 async function cleanupRemoteWorkspace(job, options = {}) {
-  if (!mayCleanupRemoteWorkspace(job)) throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
+  await assertOwnedTemporaryWorkspace(job);
   // Persist intent before touching disk. If the process exits mid-removal, the
   // restored job remains eligible for an idempotent cleanup retry.
   job.status = "cleaning";
   if (typeof options.onState === "function") await options.onState(job);
   try {
     const remove = options.remove || fs.rm;
-    await remove(job.workspacePath, { recursive: true, force: true });
+    // Revalidate immediately before deletion; never follow a replaced symlink.
+    const workspace = await assertOwnedTemporaryWorkspace(job);
+    await remove(workspace, { recursive: true, force: false });
     job.status = "cleaned";
     if (typeof options.onState === "function") await options.onState(job);
     return { cleaned: true, commitSha: job.commitSha };
@@ -242,4 +264,4 @@ async function cleanupRemoteWorkspace(job, options = {}) {
     throw new Error("Workspace cleanup was interrupted; its confirmed commit is preserved and cleanup can be retried. " + String(error.message || error).slice(0, 300));
   }
 }
-module.exports = { throwIfAborted, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
+module.exports = { throwIfAborted, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git, assertOwnedTemporaryWorkspace };
