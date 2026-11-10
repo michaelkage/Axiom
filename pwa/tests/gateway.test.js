@@ -111,3 +111,40 @@ test('Supabase gateway rejects secret keys before proxying', async () => {
     assert.match((await response.json()).error, /must not be a secret key/);
   });
 });
+
+
+test('gateway pairs a native ephemeral session token using the bootstrap credential', async () => {
+  const session = 'native-session-token-that-is-at-least-32-characters-long';
+  await withServer({
+    fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }, async base => {
+    const denied = await fetch(base + '/session/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: session, ttlSeconds: 3600 })
+    });
+    assert.equal(denied.status, 401);
+    const paired = await fetch(base + '/session/register', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ token: session, ttlSeconds: 3600 })
+    });
+    assert.equal(paired.status, 201);
+    const body = await paired.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.expiresIn, 3600);
+    const proxy = await fetch(base + '/api/ollama/api/tags', { headers: { authorization: 'Bearer ' + session } });
+    assert.equal(proxy.status, 200);
+  });
+});
+
+test('gateway rejects malformed native session registrations', async () => {
+  await withServer({}, async base => {
+    const response = await fetch(base + '/session/register', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'short', ttlSeconds: 3600 })
+    });
+    assert.equal(response.status, 400);
+  });
+});

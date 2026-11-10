@@ -10,7 +10,7 @@ npm run dev -- --host 0.0.0.0
 Open the Vite network URL from Android. Ollama must be reachable from the browser at the configured base URL (default `http://localhost:11434`) and allow the PWA origin through CORS.
 
 ## Implemented
-- Responsive bottom navigation: Chat, Tools, MCP, Logs
+- Responsive bottom navigation: Chat, Terminal, Tools, MCP, Logs
 - Ollama model discovery and streamed `/api/generate` responses
 - Ollama `/api/chat` tool-calling loop when integrations are registered
 - LocalStorage persistence for chats, preferences, endpoints, and settings
@@ -19,9 +19,10 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Supabase tools: list/describe tables, select rows, and optional project-defined SQL RPC
 - MCP Streamable HTTP and legacy SSE; discovered tools are schema-injected and registered for model use
 - Collapsible execution traces and installable PWA shell
+- Android native PTY shell, app-private project workspaces, foreground runtime service, and Android Keystore-backed gateway pairing (APK only)
 
 ## Security and transport notes
-- Browser storage is not encrypted. Conversations and non-secret preferences are stored locally; GitHub, Supabase, MCP, and gateway credentials are kept in memory only and must be re-entered after reload.
+- Browser storage is not encrypted. Conversations and non-secret preferences are stored locally; browser-mode GitHub, Supabase, MCP, and gateway credentials are memory-only. The Android APK stores only the gateway pairing credential encrypted with Android Keystore; its short-lived session token stays in memory.
 - Use the authenticated gateway for Ollama, GitHub, Supabase, and gateway-managed Streamable HTTP MCP. GitHub PATs, Supabase publishable keys, and MCP bearer tokens remain in the gateway process. Never configure a Supabase service-role/secret key.
 - GitHub gateway access is restricted to content reads/writes for one configured repository. SQL execution and remote MCP tools require explicit per-call approval. MCP annotations are supplied by remote servers and are treated as advisory, not as a trusted security boundary.
 - Supabase's REST OpenAPI schema is no longer available to anon/publishable-key requests. Table and column discovery therefore uses a project-owned `exec_sql` RPC; the app does not create that function or grant it permissions. Only connect a narrowly permissioned RPC that you have reviewed. Do not implement it as a broadly executable SECURITY DEFINER function.
@@ -32,7 +33,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 ## Deployment
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for static hosting, gateway topology, and tagged release instructions.
 
-See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Web-only builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle. For an installable Android app, use [the Android APK release workflow](../.github/workflows/android-release.yml): it wraps the production build with Capacitor, builds `Axiom-Android-universal-debug.apk`, and uploads it as a workflow artifact. An `android-v*` tag also publishes the APK on the repository's GitHub Releases page. This initial APK is debug-signed for sideload/testing, not a Play Store production-signed release.
+See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Web-only builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle. For native shell, workspace, and background-runtime behavior, see [ANDROID_RUNTIME.md](./ANDROID_RUNTIME.md). For an installable Android app, use [the Android APK release workflow](../.github/workflows/android-release.yml): it wraps the production build with Capacitor, builds `Axiom-Android-universal-debug.apk`, and uploads it as a workflow artifact. An `android-v*` tag also publishes the APK on the repository's GitHub Releases page. This initial APK is debug-signed for sideload/testing, not a Play Store production-signed release.
 
 ## Run the authenticated gateway
 See [gateway/README.md](./gateway/README.md) for setup, environment variables, and network hardening. Start it separately with `npm run gateway`. Configure the gateway URL and its bearer token in the PWA Settings.

@@ -69,14 +69,16 @@ function upstreamHeaders(req, extra = {}) {
 export function createAxiomGateway({
   env = process.env,
   fetchImpl = fetch,
-  logger = console
+  logger = console,
+  now = Date.now
 } = {}) {
   const token = env.AXIOM_GATEWAY_TOKEN;
   if (!token || token.length < 32) throw new Error('AXIOM_GATEWAY_TOKEN must be set to a random value of at least 32 characters.');
   const ollamaBase = new URL(env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434');
   if (!['http:', 'https:'].includes(ollamaBase.protocol) || ollamaBase.username || ollamaBase.password) throw new Error('OLLAMA_BASE_URL must be an HTTP(S) URL without embedded credentials.');
-  const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173');
+  const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
+  const sessionTokens = new Map();
 
   const server = http.createServer(async (req, res) => {
     if (!applyCors(req, res, origins)) return sendJson(res, 403, { error: 'Origin not allowed.' });
@@ -87,9 +89,27 @@ export function createAxiomGateway({
 
     const auth = req.headers.authorization || '';
     const presentedToken = auth.startsWith('Bearer ') ? auth.slice(7) : auth.startsWith('token ') ? auth.slice(6) : (req.headers.apikey || '');
-    if (!safeEqual(presentedToken, token)) {
-      return sendJson(res, 401, { error: 'Unauthorized.' });
+
+    if (url.pathname === '/session/register' && req.method === 'POST') {
+      if (!safeEqual(presentedToken, token)) return sendJson(res, 401, { error: 'Gateway pairing token rejected.' });
+      const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
+      if (body === null) return;
+      let input;
+      try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
+      const sessionToken = typeof input.token === 'string' ? input.token : '';
+      const ttlSeconds = Number(input.ttlSeconds || 43200);
+      if (sessionToken.length < 32 || sessionToken.length > 256 || !Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 43200) return sendJson(res, 400, { error: 'Session token or lifetime is invalid.' });
+      sessionTokens.set(sessionToken, now() + ttlSeconds * 1000);
+      return sendJson(res, 201, { ok: true, expiresIn: ttlSeconds });
     }
+
+    let authenticated = safeEqual(presentedToken, token);
+    if (!authenticated && presentedToken.length >= 32) {
+      const expiresAt = sessionTokens.get(presentedToken);
+      if (expiresAt && expiresAt > now()) authenticated = true;
+      else if (expiresAt) sessionTokens.delete(presentedToken);
+    }
+    if (!authenticated) return sendJson(res, 401, { error: 'Unauthorized.' });
 
     const requestController = new AbortController();
     req.on('aborted', () => requestController.abort(new Error('Client request aborted.')));

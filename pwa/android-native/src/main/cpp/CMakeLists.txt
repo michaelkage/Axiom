@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(axiompty)
+add_library(axiompty SHARED axiompty.cpp)
+target_compile_features(axiompty PRIVATE cxx_std_17)
+target_link_libraries(axiompty android log)

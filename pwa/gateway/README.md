@@ -23,7 +23,8 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 
 ## Security model
 
-- Every non-health route requires a random bearer token of at least 32 characters.
+- Every protected route requires either the bootstrap bearer token or a registered ephemeral session token. Both are compared in constant time.
+- POST /session/register requires the bootstrap token and registers a random client session token for at most 12 hours. Sessions are held in memory and are cleared when the gateway restarts.
 - Token comparisons use constant-time comparison.
 - Browser origins are checked against an exact allowlist. No wildcard origin or credentialed cookie support.
 - Ollama is a fixed upstream; only known API endpoints and GET/POST methods are allowed.
