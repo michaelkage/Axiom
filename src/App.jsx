@@ -41,8 +41,9 @@ export default function App(){
  const update=(patch)=>setState(s=>({...s,...patch}));
  useEffect(()=>{localStorage.setItem(STORE,JSON.stringify({...state,activeTab:tab}));},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[messages.length,busy]);
+ useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
- const patchChat=(fn)=>setState(s=>{const chats=[...s.chats]; if(!chats.length) chats.unshift({id:uid(),title:'New conversation',messages:[]}); chats[0]={...chats[0],messages:fn(chats[0].messages||[])}; return {...s,chats};});
+ const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
  async function checkOllama(){
   const base=state.baseUrl.replace(/\/$/,'');
   try { const r=await fetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); log('success','Ollama connected',base); }
@@ -67,14 +68,16 @@ export default function App(){
   const controller=new AbortController();
   activeRunRef.current=controller;
   const signal=controller.signal;
+  const chatId=currentChat?.id||uid();
+  if(!currentChat)setState(s=>({...s,chats:[{id:chatId,title:'New conversation',messages:[]},...s.chats]}));
   setDraft(''); setBusy(true);
   const userMsg={id:uid(),role:'user',content:prompt,time:stamp()};
   const priorMessages=currentChat?.messages||[];
-  patchChat(old=>[...old,userMsg]);
-  setState(s=>{const chats=[...s.chats]; if(chats[0]) chats[0]={...chats[0],title:chats[0].title==='New conversation'?prompt.slice(0,36):chats[0].title}; return {...s,chats};});
+  patchChat(old=>[...old,userMsg],chatId);
+  setState(s=>({...s,chats:s.chats.map(chat=>chat.id===chatId?{...chat,title:chat.title==='New conversation'?prompt.slice(0,36):chat.title}:chat)}));
   const base=state.baseUrl.replace(/\/$/,'');
   const assistantId=uid();
-  patchChat(old=>[...old,{id:assistantId,role:'assistant',content:'',time:stamp()}]);
+  patchChat(old=>[...old,{id:assistantId,role:'assistant',content:'',time:stamp()}],chatId);
   let answer='';
   try{
    const availableTools=toOllamaTools();
@@ -90,7 +93,7 @@ export default function App(){
      await consumeNdjsonStream(response,chunk=>{
       const part=chunk.message||{};
       if(part.thinking)thinking+=part.thinking;
-      if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m));}
+      if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);}
       if(part.tool_calls?.length)calls.push(...part.tool_calls);
      },{signal});
      conversation.push({role:'assistant',thinking,content:turnContent,tool_calls:calls});
@@ -121,7 +124,7 @@ export default function App(){
     },{signal});
    }
    log('success','Generation complete',state.model);
-  }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m));log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
+  }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
  }
  function toggleIntegration(id){
@@ -184,7 +187,7 @@ export default function App(){
   <header className="safe-top sticky top-0 z-30 glass border-b border-white/[.07]">
    <div className="h-[66px] px-4 flex items-center justify-between">
     <button onClick={()=>setTab('chat')} className="flex items-center gap-3 text-left"><div className="w-9 h-9 rounded-xl bg-lime-300 text-slate-950 grid place-items-center shadow-[0_0_28px_rgba(163,230,53,.2)]"><Zap size={21} fill="currentColor"/></div><div><div className="font-bold tracking-[.18em] text-[15px]">AXIOM</div><div className="text-[10px] tracking-[.16em] text-slate-500 uppercase">Local intelligence</div></div></button>
-    <div className="flex items-center gap-2"><span className={'w-2 h-2 rounded-full '+(connection==='online'?'bg-lime-400 shadow-[0_0_10px_#a3e635]':'bg-slate-600')}/><span className="text-xs text-slate-400 hidden sm:block">{connection==='online'?'Ollama online':connection==='offline'?'Offline':'Connecting'}</span><button onClick={()=>setShowSettings(true)} className="p-2.5 rounded-xl border border-white/10 bg-white/[.04] active:scale-95"><Settings2 size={18}/></button></div>
+    <div className="flex items-center gap-2"><span className={'w-2 h-2 rounded-full '+(connection==='online'?'bg-lime-400 shadow-[0_0_10px_#a3e635]':'bg-slate-600')}/><span className="text-xs text-slate-400 hidden sm:block">{connection==='online'?'Ollama online':connection==='offline'?'Offline':'Connecting'}</span>{busy&&<button onClick={stopGeneration} aria-label="Stop generation" title="Stop generation" className="p-2.5 rounded-xl border border-red-400/30 bg-red-400/10 text-red-300 active:scale-95"><Square size={16} fill="currentColor"/></button>}<button onClick={()=>setShowSettings(true)} className="p-2.5 rounded-xl border border-white/10 bg-white/[.04] active:scale-95"><Settings2 size={18}/></button></div>
    </div>
   </header>
   <main className="flex-1 px-4 pt-5 pb-36">
