@@ -186,7 +186,7 @@ class AxiomRuntimePlugin : Plugin() {
         val gatewayUrl = call.getString("gatewayUrl").orEmpty().trimEnd('/')
         val parsedGateway = try { java.net.URL(gatewayUrl) } catch (_: Exception) { return call.reject("Gateway URL must be a valid HTTP(S) URL.") }
         if ((parsedGateway.protocol != "http" && parsedGateway.protocol != "https") || parsedGateway.userInfo != null || parsedGateway.host.isBlank()) return call.reject("Gateway URL must be a valid HTTP(S) URL without embedded credentials.")
-        thread(name = "axiom-gateway-register") {
+        Thread({
             try {
                 val bootstrap = prefs.getString("gateway_bootstrap", null)
                     ?: throw IllegalStateException("Pair the gateway in Settings first.")
@@ -208,7 +208,7 @@ class AxiomRuntimePlugin : Plugin() {
             } catch (error: Exception) {
                 activity.runOnUiThread { call.reject(error.message ?: "Gateway registration failed.") }
             }
-        }
+        }, "axiom-gateway-register").apply { isDaemon = true }.start()
     }
 
     @PluginMethod
