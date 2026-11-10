@@ -169,3 +169,52 @@ test("supports Shift+Enter for newlines and Enter to send on mobile chat", async
   await expect(page.getByText("First line\nSecond line")).toBeVisible();
   await expect(composer).toHaveValue("");
 });
+
+
+test("renders assistant Markdown headings, lists, inline formatting, links and fenced code safely", async ({ page }) => {
+  const markdown = [
+    "## Build summary",
+    "",
+    "This is **bold** with `inlineCode()` and *emphasis*.",
+    "",
+    "- First capability",
+    "- Second capability",
+    "",
+    "1. Validate input",
+    "2. Execute safely",
+    "",
+    "> Keep the output readable.",
+    "",
+    "```js",
+    "const answer = 42;",
+    "console.log(answer);",
+    "```",
+    "",
+    "[Project docs](https://example.com/docs)",
+    "",
+    "<script>window.markdownXss = true</script>",
+  ].join("\n");
+
+  await page.route("**/api/chat", route => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: JSON.stringify({ message: { role: "assistant", content: markdown }, done: true }) + "\n",
+  }));
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Show formatted output");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  await expect(page.getByRole("heading", { name: "Build summary" })).toBeVisible();
+  await expect(page.locator("strong", { hasText: "bold" })).toBeVisible();
+  await expect(page.locator("em", { hasText: "emphasis" })).toBeVisible();
+  await expect(page.locator("code", { hasText: "inlineCode()" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "" })).toHaveCount(0);
+  await expect(page.locator("ul li")).toHaveText(["First capability", "Second capability"]);
+  await expect(page.locator("ol li")).toHaveText(["Validate input", "Execute safely"]);
+  await expect(page.locator("blockquote")).toContainText("Keep the output readable.");
+  await expect(page.locator("pre code")).toContainText("const answer = 42;");
+  await expect(page.getByRole("link", { name: "Project docs" })).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.locator("script")).toHaveCount(0);
+  expect(await page.evaluate(() => window.markdownXss)).toBeUndefined();
+});
