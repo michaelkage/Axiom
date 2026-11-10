@@ -306,6 +306,16 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
       // Navigate to the standalone HTML page
       await page.goto("/src/webview/standalone.html");
 
+      // These E2E cases exercise message transport, queueing, and session behavior.
+      // Accept the visible workflow plan so they continue testing the runtime interaction
+      // rather than stopping at the new plan-confirmation step. Plan UX has its own surface.
+      await page.addLocatorHandler(
+        page.locator('section[aria-label="Build plan"]'),
+        async (plan) => {
+          await plan.getByRole("button", { name: /Run this plan/ }).click();
+        }
+      );
+
       // Wait for the app to be ready (message log container)
       await page.waitForSelector('[role="log"]', { timeout: 10000 });
 
