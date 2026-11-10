@@ -156,6 +156,7 @@ export default function App(){
     onText:value=>{answer=value;if(streamTimerRef.current===null)streamTimerRef.current=setTimeout(()=>{streamTimerRef.current=null;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},100);},
     onEvent:event=>{
      if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
+     else if(event.type==='metrics')log('info','Model performance',JSON.stringify(event.metrics,null,2));
      else if(event.type==='tool.request')log('request','Tool: '+event.name,JSON.stringify(event.args,null,2));
      else if(event.type==='tool.completed')log('success','Tool completed: '+event.name,event.result);
      else if(event.type==='tool.failed')log('error','Tool failed: '+event.name,event.error);

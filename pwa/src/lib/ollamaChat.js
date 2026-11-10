@@ -46,8 +46,13 @@ export async function runOllamaToolChat({
 
     let turnContent = '';
     let thinking = '';
+    let firstTokenAt = null;
+    let finalStats = null;
+    const requestStartedAt = Date.now();
     const calls = [];
     await consumeNdjsonStream(response, chunk => {
+      finalStats = chunk;
+      if (chunk.message?.content && firstTokenAt === null) firstTokenAt = Date.now();
       const part = chunk.message || {};
       if (part.thinking) thinking += part.thinking;
       if (part.content) {
@@ -58,6 +63,17 @@ export async function runOllamaToolChat({
       if (Array.isArray(part.tool_calls)) calls.push(...part.tool_calls);
     }, { signal });
 
+    const generationMs = Number(finalStats?.eval_duration || 0) / 1e6;
+    onEvent({ type: 'metrics', metrics: {
+      firstTokenMs: firstTokenAt === null ? null : firstTokenAt - requestStartedAt,
+      promptTokens: finalStats?.prompt_eval_count ?? null,
+      promptEvalMs: finalStats?.prompt_eval_duration == null ? null : Math.round(Number(finalStats.prompt_eval_duration) / 1e6),
+      generatedTokens: finalStats?.eval_count ?? null,
+      generationMs: generationMs ? Math.round(generationMs) : null,
+      tokensPerSecond: generationMs > 0 && Number.isFinite(Number(finalStats?.eval_count))
+        ? Math.round(Number(finalStats.eval_count) / (generationMs / 1000) * 10) / 10
+        : null
+    } });
     conversation.push({ role: 'assistant', thinking, content: turnContent, tool_calls: calls });
     if (!calls.length) return { answer, conversation, turns: turn + 1 };
 

@@ -53,6 +53,23 @@ test('streams a normal answer and finishes when the model returns no tool calls'
   assert.equal(harness.requests[0].url, 'http://localhost:11434/api/chat');
 });
 
+
+test('reports first-token latency and Ollama prompt/generation throughput', async () => {
+  const harness = setup([streamResponse([
+    assistant('Measured response'),
+    { ...assistant(), done: true, prompt_eval_count: 120, prompt_eval_duration: 500_000_000, eval_count: 80, eval_duration: 2_000_000_000 }
+  ])]);
+  await harness.run();
+  const metrics = harness.events.find(event => event.type === 'metrics')?.metrics;
+  assert.ok(metrics);
+  assert.ok(metrics.firstTokenMs >= 0);
+  assert.equal(metrics.promptTokens, 120);
+  assert.equal(metrics.promptEvalMs, 500);
+  assert.equal(metrics.generatedTokens, 80);
+  assert.equal(metrics.generationMs, 2000);
+  assert.equal(metrics.tokensPerSecond, 40);
+});
+
 test('executes tool calls sequentially and sends serialized results back to Ollama', async () => {
   const order = [];
   const harness = setup([
