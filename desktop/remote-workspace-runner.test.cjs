@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, cleanupRemoteWorkspace, git } = require("./remote-workspace-runner.cjs");
+const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, git } = require("./remote-workspace-runner.cjs");
 
 test("remote workspace runner rejects embedded credentials", () => {
   assert.throws(() => safeRemoteUrl("https://user:token@example.com/org/repo.git"), /embedded credentials/);
@@ -161,4 +161,98 @@ test("remote workspace refuses commit and push when verification fails", async (
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+
+async function makeRecoveryFixture(prefix) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  const remote = path.join(root, "remote.git");
+  const workspacePath = path.join(root, "workspace");
+  await git(root, ["init", "--bare", remote]);
+  await fs.mkdir(workspacePath, { recursive: true });
+  await git(workspacePath, ["init", "--initial-branch", "main"]);
+  await git(workspacePath, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial"]);
+  await git(workspacePath, ["remote", "add", "origin", remote]);
+  await git(workspacePath, ["push", "-u", "origin", "main"]);
+  const job = { id: "recovery-test", mode: "temporary-full", repositoryUrl: remote, branch: "main", workspacePath, temporaryRoot: root, workspaceOwnership: "axiom-job", status: "failed", verificationPassed: true, pushSucceeded: false, remoteCommitConfirmed: false };
+  return { root, remote, workspacePath, job };
+}
+
+test("reconciles a crash after local commit without creating a duplicate commit", async () => {
+  const fixture = await makeRecoveryFixture("axiom-reconcile-local-");
+  const { root, remote, workspacePath, job } = fixture;
+  try {
+    await fs.writeFile(path.join(workspacePath, "change.txt"), "one change\n");
+    await git(workspacePath, ["add", "--all"]);
+    await git(workspacePath, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "interrupted commit"]);
+    const localBefore = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
+    const remoteBefore = (await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout;
+    const result = await reconcileRemoteWorkspace(job);
+    assert.equal(result.state, "local-commit-pending-push");
+    assert.equal(result.localSha, localBefore);
+    assert.equal(result.remoteSha, remoteBefore);
+    assert.equal((await git(workspacePath, ["rev-parse", "HEAD"])).stdout, localBefore);
+    assert.equal((await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout, remoteBefore);
+    assert.equal(job.commitSha, localBefore);
+    assert.equal(job.remoteCommitConfirmed, false);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("reconciles a crash after push but before remote SHA confirmation", async () => {
+  const fixture = await makeRecoveryFixture("axiom-reconcile-pushed-");
+  const { root, remote, workspacePath, job } = fixture;
+  try {
+    await fs.writeFile(path.join(workspacePath, "change.txt"), "pushed change\n");
+    await git(workspacePath, ["add", "--all"]);
+    await git(workspacePath, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "pushed before crash"]);
+    const localSha = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
+    await git(workspacePath, ["push", "origin", "HEAD:refs/heads/main"]);
+    const result = await reconcileRemoteWorkspace(job);
+    assert.equal(result.state, "already-pushed");
+    assert.equal(result.localSha, localSha);
+    assert.equal(result.remoteSha, localSha);
+    assert.equal(job.status, "pushed");
+    assert.equal(job.commitSha, localSha);
+    assert.equal(job.remoteCommitConfirmed, true);
+    assert.equal(job.pushSucceeded, true);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("detects independent remote advancement without overwriting either branch", async () => {
+  const fixture = await makeRecoveryFixture("axiom-reconcile-drift-");
+  const { root, remote, workspacePath, job } = fixture;
+  const peer = path.join(root, "peer");
+  try {
+    const localSha = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
+    await git(root, ["clone", remote, peer]);
+    await fs.writeFile(path.join(peer, "remote.txt"), "independent remote change\n");
+    await git(peer, ["add", "--all"]);
+    await git(peer, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "independent remote change"]);
+    await git(peer, ["push", "origin", "HEAD:refs/heads/main"]);
+    const remoteSha = (await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout;
+    const result = await reconcileRemoteWorkspace(job);
+    assert.equal(result.state, "remote-advanced");
+    assert.equal(result.localSha, localSha);
+    assert.equal(result.remoteSha, remoteSha);
+    assert.equal((await git(workspacePath, ["rev-parse", "HEAD"])).stdout, localSha);
+    assert.equal(job.remoteCommitConfirmed, false);
+    assert.equal(job.pushSucceeded, false);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("refuses reconciliation when uncommitted changes or origin mismatch exist", async () => {
+  const fixture = await makeRecoveryFixture("axiom-reconcile-unsafe-");
+  const { root, workspacePath, job } = fixture;
+  try {
+    await fs.writeFile(path.join(workspacePath, "keep.txt"), "preserve me");
+    const dirty = await reconcileRemoteWorkspace(job);
+    assert.equal(dirty.state, "conflict");
+    assert.match(dirty.reason, /uncommitted changes/);
+    assert.equal(await fs.readFile(path.join(workspacePath, "keep.txt"), "utf8"), "preserve me");
+    await fs.rm(path.join(workspacePath, "keep.txt"));
+    await git(workspacePath, ["remote", "set-url", "origin", "https://github.com/other/repo.git"]);
+    const mismatch = await reconcileRemoteWorkspace(job);
+    assert.equal(mismatch.state, "conflict");
+    assert.match(mismatch.reason, /origin does not match/);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
