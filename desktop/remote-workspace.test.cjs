@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace } = require("./remote-workspace.cjs");
+const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
 
 test("validates full and selective remote workspace requests", () => {
   assert.equal(validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl: "https://github.com/acme/repo.git", branch: "feature/work" }).mode, "temporary-full");
@@ -38,4 +38,60 @@ test("temporary cleanup requires verified push and a job-owned nested directory"
   assert.equal(mayCleanupRemoteWorkspace({ ...base, workspacePath: "/tmp/axiom-jobs" }), false);
   assert.equal(mayCleanupRemoteWorkspace({ ...base, mode: "persistent" }), false);
   assert.equal(mayCleanupRemoteWorkspace({ ...base, status: "failed" }), false);
+});
+
+
+test("restores only valid persisted remote jobs inside the managed workspace root", () => {
+  const root = "/var/lib/axiom/remote-workspaces";
+  const valid = {
+    id: "123e4567-e89b-12d3-a456-426614174000",
+    mode: "temporary-full",
+    repositoryUrl: "https://github.com/acme/repo.git",
+    branch: "feature/work",
+    paths: [],
+    workspacePath: root + "/job-1",
+    temporaryRoot: root,
+    workspaceOwnership: "axiom-job",
+    status: "pushed",
+    remoteCommitConfirmed: true,
+    verificationPassed: true,
+    pushSucceeded: true,
+    commitSha: "a".repeat(40)
+  };
+  const restored = restoreRemoteWorkspaceJob(valid, root);
+  assert.equal(restored.id, valid.id);
+  assert.equal(restored.status, "pushed");
+  assert.equal(restored.remoteCommitConfirmed, true);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, workspacePath: root + "-evil/job-1" }, root), null);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, temporaryRoot: "/tmp/other-root" }, root), null);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, mode: "unknown" }, root), null);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, remoteCommitConfirmed: true, verificationPassed: false }, root), null);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, commitSha: "not-a-sha" }, root), null);
+  assert.equal(restoreRemoteWorkspaceJob({ ...valid, status: "running" }, root), null);
+});
+
+test("restores persistent user-owned workspaces without granting cleanup ownership", () => {
+  const job = restoreRemoteWorkspaceJob({
+    id: "123e4567-e89b-12d3-a456-426614174000",
+    mode: "persistent",
+    repositoryUrl: "https://github.com/acme/repo.git",
+    branch: "main",
+    paths: [],
+    workspacePath: "/home/user/projects/repo",
+    workspaceOwnership: "user",
+    status: "ready"
+  }, "/var/lib/axiom/remote-workspaces");
+  assert.equal(job.workspacePath, "/home/user/projects/repo");
+  assert.equal(job.workspaceOwnership, "user");
+  assert.equal(job.temporaryRoot, null);
+  assert.equal(mayCleanupRemoteWorkspace(job), false);
+  assert.equal(restoreRemoteWorkspaceJob({
+    id: "123e4567-e89b-12d3-a456-426614174000",
+    mode: "persistent",
+    repositoryUrl: "https://github.com/acme/repo.git",
+    branch: "main",
+    workspacePath: "/home/user/projects/repo",
+    workspaceOwnership: "axiom-job",
+    status: "ready"
+  }, "/var/lib/axiom/remote-workspaces"), null);
 });
