@@ -146,14 +146,42 @@ export async function executeTaskBatches<T>(
     ? options.maxTotalAttempts! : tasks.length * (maxRetries + 1);
   let totalAttempts = 0;
   let activeWorkers = 0;
-  const workerWaiters: Array<() => void> = [];
+  type WorkerWaiter = { resolve: () => void; reject: (error: Error) => void; signal?: AbortSignal; onAbort?: () => void };
+  const workerWaiters: WorkerWaiter[] = [];
   const acquireWorkerSlot = async () => {
-    if (activeWorkers >= maxConcurrency) await new Promise<void>(resolve => workerWaiters.push(resolve));
-    activeWorkers++;
+    if (options.signal?.aborted) throw new Error("Task execution cancelled while waiting for a worker slot.");
+    if (activeWorkers < maxConcurrency) {
+      activeWorkers++;
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const waiter: WorkerWaiter = { resolve, reject, signal: options.signal };
+      waiter.onAbort = () => {
+        const index = workerWaiters.indexOf(waiter);
+        if (index >= 0) workerWaiters.splice(index, 1);
+        options.signal?.removeEventListener("abort", waiter.onAbort!);
+        reject(new Error("Task execution cancelled while waiting for a worker slot."));
+      };
+      workerWaiters.push(waiter);
+      options.signal?.addEventListener("abort", waiter.onAbort, { once: true });
+      if (options.signal?.aborted) waiter.onAbort();
+    });
   };
   const releaseWorkerSlot = () => {
     activeWorkers--;
-    workerWaiters.shift()?.();
+    while (workerWaiters.length) {
+      const waiter = workerWaiters.shift()!;
+      waiter.signal?.removeEventListener("abort", waiter.onAbort!);
+      if (waiter.signal?.aborted) {
+        waiter.reject(new Error("Task execution cancelled while waiting for a worker slot."));
+        continue;
+      }
+      // Reserve the released slot before waking the waiter so a new arrival
+      // cannot steal it and push the active count above the configured limit.
+      activeWorkers++;
+      waiter.resolve();
+      break;
+    }
   };
   const outcomeById = new Map<string, TaskExecutionStatus>();
   for (const task of tasks) { outcomeById.set(task.id, "queued"); emit({ taskId: task.id, title: task.title, status: "queued" }); }
@@ -199,7 +227,16 @@ export async function executeTaskBatches<T>(
   for (const batch of batches) {
     if (options.signal?.aborted) finishFailure([], "Task execution cancelled before the next batch.", "cancelled");
     const settled = await Promise.allSettled(batch.map(async task => {
-      await acquireWorkerSlot();
+      try {
+        await acquireWorkerSlot();
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (options.signal?.aborted || /cancelled/i.test(reason)) {
+          outcomeById.set(task.id, "cancelled");
+          emit({ taskId: task.id, title: task.title, status: "cancelled", finishedAt: Date.now(), error: reason });
+        }
+        throw error;
+      }
       const startedAt = Date.now();
       const controller = new AbortController();
       const abortFromParent = () => controller.abort(options.signal?.reason);
