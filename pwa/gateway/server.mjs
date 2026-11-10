@@ -124,7 +124,7 @@ export function createAxiomGateway({
     }
 
 
-    const githubMatch = url.pathname.match(/^\\/api\\/github\\/repos\\/([^/]+)\\/([^/]+)\\/contents\\/(.+)$/);
+    const githubMatch = url.pathname.match(/^\/api\/github\/repos\/([^/]+)\/([^/]+)\/contents\/(.+)$/);
     if (githubMatch) {
       const configuredRepo = env.GITHUB_REPOSITORY || '';
       const requestedRepo = githubMatch[1] + '/' + githubMatch[2];
