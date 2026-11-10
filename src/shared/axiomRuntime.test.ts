@@ -96,7 +96,7 @@ describe("Axiom runtime helpers", () => {
       calls++;
       if (calls === 1) throw new Error("ECONNRESET: connection reset");
       return "recovered";
-    }, record => outcomes.push(record));
+    }, record => outcomes.push(record), { maxRetries: 1 });
     expect(result[0]?.result).toBe("recovered");
     expect(calls).toBe(2);
     expect(outcomes.filter(item => item.status === "running").map(item => item.attempt)).toEqual([undefined, 1, 2]);
@@ -156,7 +156,7 @@ describe("Axiom runtime helpers", () => {
       return { sessionId: task.id + "-session" };
     }, record => outcomes.push(record.taskId + ":" + record.status));
     expect(result).toHaveLength(2);
-    expect(outcomes).toEqual(["a:queued", "b:queued", "a:running", "a:succeeded", "b:running", "b:succeeded"]);
+    expect(outcomes).toEqual(["a:queued", "b:queued", "a:running", "a:running", "a:succeeded", "b:running", "b:running", "b:succeeded"]);
   });
 
   it("terminalizes queued tasks when a failed batch prevents later work", async () => {
@@ -245,6 +245,27 @@ describe("Axiom runtime helpers", () => {
     }, record => outcomes.push(record.status), { timeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
     expect(receivedSignal?.aborted).toBe(true);
     expect(outcomes).toContain("timed_out");
+  });
+
+  it("cancels workers queued for a concurrency slot without starting them", async () => {
+    const tasks = parseSubTasks(["first", "second"].map(id => ({
+      id, title: id, scope: "independent", targetFiles: [id + ".ts"], dependsOn: [], acceptanceCriteria: ["Queued work cancels promptly"],
+    })));
+    const controller = new AbortController();
+    const started: string[] = [];
+    const outcomes: Array<{ taskId: string; status: string }> = [];
+    const execution = executeTaskBatches(tasks, async task => {
+      started.push(task.id);
+      return new Promise<string>((_resolve, reject) => {
+        controller.signal.addEventListener("abort", () => reject(new Error("runner cancelled")), { once: true });
+      });
+    }, record => outcomes.push({ taskId: record.taskId, status: record.status }), { signal: controller.signal, maxConcurrency: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    await expect(execution).rejects.toThrow(/cancelled/i);
+    expect(started).toEqual(["first"]);
+    expect(outcomes.find(item => item.taskId === "second" && item.status === "cancelled")).toBeTruthy();
   });
 
   it("stops waiting when the caller cancels task execution", async () => {
