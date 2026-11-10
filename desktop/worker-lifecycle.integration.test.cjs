@@ -101,6 +101,13 @@ test("worker lifecycle persists failure, retry, success, and ignores stale attem
     assert.equal(persisted.sessionId, "session-attempt-2");
     assert.deepEqual(persisted.logs, ["retry started", "build passed", "verification passed"]);
     assert.equal(persisted.result, "Build and verification passed");
+
+    // Startup recovery must leave completed work terminal; it must never enqueue or rerun it.
+    const afterRestartRecovery = await restartedStore.recoverInterrupted();
+    const completedAfterRecovery = afterRestartRecovery.find((task) => task.taskId === "integration-task");
+    assert.equal(completedAfterRecovery.status, "succeeded");
+    assert.equal(completedAfterRecovery.attempt, 2);
+    assert.equal(completedAfterRecovery.result, "Build and verification passed");
   });
 });
 
