@@ -65,4 +65,36 @@ function mayCleanupRemoteWorkspace(job) {
   return true;
 }
 
-module.exports = { WORKSPACE_MODES, validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace };
+/** Validate persisted metadata before it can re-enter the in-memory job registry. */
+function restoreRemoteWorkspaceJob(job, managedRoot) {
+  try {
+    if (!job || typeof job !== "object" || typeof job.id !== "string" || !/^[0-9a-f-]{36}$/i.test(job.id)) return null;
+    const request = validateRemoteWorkspaceRequest({ mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch, paths: job.paths ?? [] });
+    const statuses = new Set(["ready", "verified", "pushed", "failed"]);
+    if (!statuses.has(job.status)) return null;
+    if (typeof job.workspacePath !== "string" || !job.workspacePath.trim()) return null;
+    const workspacePath = path.resolve(job.workspacePath);
+    const flags = {
+      remoteCommitConfirmed: job.remoteCommitConfirmed === true,
+      verificationPassed: job.verificationPassed === true,
+      pushSucceeded: job.pushSucceeded === true
+    };
+    if (job.remoteCommitConfirmed != null && typeof job.remoteCommitConfirmed !== "boolean") return null;
+    if (job.verificationPassed != null && typeof job.verificationPassed !== "boolean") return null;
+    if (job.pushSucceeded != null && typeof job.pushSucceeded !== "boolean") return null;
+    if (flags.remoteCommitConfirmed && (!flags.verificationPassed || !flags.pushSucceeded || typeof job.commitSha !== "string" || !/^[0-9a-f]{40,64}$/i.test(job.commitSha))) return null;
+    if (job.mode === "persistent") {
+      if (job.workspaceOwnership !== "user") return null;
+      return { ...job, ...request, workspacePath, temporaryRoot: null, workspaceOwnership: "user", ...flags, commitSha: job.commitSha || null };
+    }
+    if (job.workspaceOwnership !== "axiom-job" || typeof managedRoot !== "string" || !managedRoot.trim()) return null;
+    const root = path.resolve(managedRoot);
+    const storedRoot = typeof job.temporaryRoot === "string" ? path.resolve(job.temporaryRoot) : "";
+    if (storedRoot !== root || workspacePath === root || !workspacePath.startsWith(root + path.sep)) return null;
+    return { ...job, ...request, workspacePath, temporaryRoot: root, workspaceOwnership: "axiom-job", ...flags, commitSha: job.commitSha || null };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { WORKSPACE_MODES, validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob };
