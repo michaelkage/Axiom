@@ -29,7 +29,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Browser MCP requires server CORS support. Streamable HTTP and legacy SSE are implemented; legacy EventSource cannot attach custom authorization headers, so a same-origin authenticated proxy is recommended for protected production servers.
 - Browser-to-Ollama requests require CORS permission. Android localhost routing depends on where Ollama is hosted. HTTPS pages may block plain HTTP connections depending on browser security policy.
 
-## Android installation and release
+## Deployment\nSee [DEPLOYMENT.md](./DEPLOYMENT.md) for static hosting, gateway topology, and tagged release instructions.\n\n## Android installation and release
 See [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Tagged builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle as a workflow artifact. The artifact is not automatically deployed to a public hosting provider; configure your HTTPS static host separately.
 
 ## Run the authenticated gateway
