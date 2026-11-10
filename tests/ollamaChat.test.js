@@ -115,7 +115,7 @@ test('rejects malformed tool arguments and missing tool names', async () => {
 test('enforces the tool-loop safety limit', async () => {
   const endless = setup(Array.from({ length: 2 }, () => streamResponse([assistant('', [toolCall('again')])])),
     { maxTurns: 2 });
-  await assert.rejects(endless.run(), /two-turn safety limit/);
+  await assert.rejects(endless.run(), /2-turn safety limit/);
 });
 
 test('propagates cancellation to fetch and stops before starting another tool', async () => {
