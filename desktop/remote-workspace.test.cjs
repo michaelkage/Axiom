@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
+const { validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob, recoverInterruptedRemoteWorkspaceOperation } = require("./remote-workspace.cjs");
 
 test("validates full and selective remote workspace requests", () => {
   assert.equal(validateRemoteWorkspaceRequest({ mode: "temporary-full", repositoryUrl: "https://github.com/acme/repo.git", branch: "feature/work" }).mode, "temporary-full");
@@ -95,4 +95,36 @@ test("restores persistent user-owned workspaces without granting cleanup ownersh
     workspaceOwnership: "axiom-job",
     status: "ready"
   }, "/var/lib/axiom/remote-workspaces"), null);
+});
+
+test("restores stale operation leases as explicit interruptions after app restart", () => {
+  const active = {
+    id: "123e4567-e89b-12d3-a456-426614174000",
+    mode: "temporary-full",
+    status: "ready",
+    operation: { kind: "push-recovered", instanceId: "previous-process", startedAt: 1700000000000 }
+  };
+  const recovered = recoverInterruptedRemoteWorkspaceOperation(active);
+  assert.equal(recovered.operation, null);
+  assert.deepEqual(recovered.interruptedOperation, {
+    kind: "push-recovered",
+    startedAt: 1700000000000
+  });
+  assert.equal(recovered.status, "ready");
+  assert.equal(active.operation.kind, "push-recovered", "recovery must not mutate the persisted input");
+
+  const interruptedCleanup = recoverInterruptedRemoteWorkspaceOperation({
+    ...active,
+    status: "cleaning",
+    operation: { kind: "cleanup", startedAt: 1700000000001 }
+  });
+  assert.equal(interruptedCleanup.status, "cleanup-interrupted");
+  assert.equal(interruptedCleanup.interruptedOperation.kind, "cleanup");
+
+  const unknown = recoverInterruptedRemoteWorkspaceOperation({
+    ...active,
+    operation: { kind: "arbitrary-command", startedAt: Date.now() }
+  });
+  assert.equal(unknown.operation, null);
+  assert.equal(unknown.interruptedOperation, undefined);
 });
