@@ -15,6 +15,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
 const { createRemoteWorkspace, commitAndPushWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
+const { restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -47,13 +48,14 @@ async function restoreRemoteWorkspaceJobs() {
     const raw = await fs.promises.readFile(remoteWorkspaceJobsFile(), "utf8");
     const jobs = JSON.parse(raw);
     if (!Array.isArray(jobs)) throw new Error("Invalid remote workspace job state.");
-    for (const job of jobs) {
-      if (!job || typeof job.id !== "string" || typeof job.workspacePath !== "string" || typeof job.repositoryUrl !== "string") continue;
-      // Only restore paths under Axiom's managed temp root or explicitly user-owned persistent checkouts.
-      const managedRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
-      const workspacePath = path.resolve(job.workspacePath);
-      if (job.mode !== "persistent" && !workspacePath.startsWith(managedRoot + path.sep)) continue;
-      remoteWorkspaceJobs.set(job.id, { ...job, workspacePath, remoteCommitConfirmed: job.remoteCommitConfirmed === true, verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true });
+    const managedRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
+    for (const persistedJob of jobs) {
+      const job = restoreRemoteWorkspaceJob(persistedJob, managedRoot);
+      if (!job) {
+        await appendRuntimeLog("Skipped invalid or unsafe persisted remote workspace job.");
+        continue;
+      }
+      remoteWorkspaceJobs.set(job.id, job);
     }
   } catch (error) {
     if (error && error.code !== "ENOENT") await appendRuntimeLog("Could not restore remote workspace jobs: " + String(error.message || error).slice(0, 500));
