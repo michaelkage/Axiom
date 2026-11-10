@@ -345,3 +345,34 @@ test("traps focus in settings, restores focus, and closes with Escape", async ({
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
+
+
+test("gateway credentials remain session-only and are not persisted", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const token = page.getByRole("textbox", { name: "Gateway bearer token" });
+  await token.fill("a".repeat(48));
+  await expect(token).toHaveValue("a".repeat(48));
+  const stored = await page.evaluate(() => localStorage.getItem("axiom.mobile.v1"));
+  expect(stored).not.toContain("aaaaaaaa");
+  await page.reload();
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await expect(page.getByRole("textbox", { name: "Gateway bearer token" })).toHaveValue("");
+});
+
+test("mobile composer sends on Enter and keeps Shift+Enter for multiline input", async ({ page }) => {
+  await page.route("**/api/chat", route => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: JSON.stringify({ message: { role: "assistant", content: "Keyboard reply" }, done: true }) + "\n",
+  }));
+  await page.goto("/");
+  const composer = page.getByRole("textbox", { name: "Message your local model" });
+  await composer.fill("Keyboard send");
+  await composer.press("Enter");
+  await expect(page.getByText("Keyboard reply")).toBeVisible();
+  await composer.fill("line one");
+  await composer.press("Shift+Enter");
+  await composer.pressSequentially("line two");
+  await expect(composer).toHaveValue("line one\nline two");
+});
