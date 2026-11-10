@@ -246,3 +246,15 @@ test("copies a complete assistant response from its message actions", async ({ p
   await expect(page.getByText("Assistant response copied.")).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(response);
 });
+
+
+test("exposes settings as an accessible dialog and closes it with Escape", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open settings" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
