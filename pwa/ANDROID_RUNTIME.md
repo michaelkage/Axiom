@@ -18,7 +18,7 @@ Android 14+ declares specialUse for continued user-started local terminal/develo
 
 ## Gateway credential lifecycle
 
-1. The gateway's existing AXIOM_GATEWAY_TOKEN is used as a one-time pairing credential.
+1. The gateway's existing AXIOM_GATEWAY_TOKEN is the long-lived pairing/master credential; the user enters it once in Android Settings.
 2. In Android Settings, the user enters it once. The native plugin encrypts it with an AES-GCM key held by Android Keystore; only ciphertext is stored in app-private preferences.
 3. The Android plugin generates a 256-bit random session token in process memory and registers it with POST /session/register.
 4. The gateway accepts that token for 12 hours. The session token is not persisted to browser storage. After an app process restart, the plugin registers a new in-memory token using the stored pairing credential.
