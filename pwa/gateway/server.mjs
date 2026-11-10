@@ -52,7 +52,7 @@ function applyCors(req, res, origins) {
   if (origin && origins.has(origin)) {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'Origin');
-    res.setHeader('access-control-allow-headers', 'authorization, apikey, content-type, accept, prefer, range, accept-profile, content-profile, mcp-session-id, mcp-protocol-version, last-event-id');
+    res.setHeader('access-control-allow-headers', 'authorization, apikey, content-type, accept, prefer, range, range-unit, accept-profile, content-profile, x-client-info, mcp-session-id, mcp-protocol-version, last-event-id');
     res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
     res.setHeader('access-control-max-age', '600');
   }
