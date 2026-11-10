@@ -29,7 +29,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Browser MCP requires server CORS support. Streamable HTTP and legacy SSE are implemented; legacy EventSource cannot attach custom authorization headers, so a same-origin authenticated proxy is recommended for protected production servers.
 - Browser-to-Ollama requests require CORS permission. Android localhost routing depends on where Ollama is hosted. HTTPS pages may block plain HTTP connections depending on browser security policy.
 
-## Run the authenticated gateway\nSee [gateway/README.md](./gateway/README.md) for setup, environment variables, and network hardening. Start it separately with `npm run gateway`. Configure the gateway URL and its bearer token in the PWA Settings.\n\n## Test and build
+## Android installation and release\nSee [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) for Chrome installation, standalone-mode, offline, keyboard, network, and physical-device sign-off steps. Tagged builds use [the mobile release workflow](../.github/workflows/mobile-release.yml) and publish a tested `dist/` bundle as a workflow artifact. The artifact is not automatically deployed to a public hosting provider; configure your HTTPS static host separately.\n\n## Run the authenticated gateway\nSee [gateway/README.md](./gateway/README.md) for setup, environment variables, and network hardening. Start it separately with `npm run gateway`. Configure the gateway URL and its bearer token in the PWA Settings.\n\n## Test and build
 ```bash
 npm install
 npm test
