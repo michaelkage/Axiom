@@ -153,7 +153,7 @@ async function reconcileRemoteWorkspace(job, options = {}) {
   }
   if (job.status === "cleaned") throw new Error("A cleaned workspace cannot be reconciled.");
   const directory = job.workspacePath;
-  const localSha = (await git(directory, ["rev-parse", "HEAD"])).stdout;
+  const localSha = (await git(directory, ["rev-parse", "HEAD"], { signal: options.signal })).stdout;
   const branch = (await git(directory, ["branch", "--show-current"], { signal: options.signal })).stdout;
   if (branch !== job.branch) return { state: "conflict", reason: "The checkout is not on the job's target branch.", localSha, remoteSha: null };
   const dirty = (await git(directory, ["status", "--porcelain"], { signal: options.signal })).stdout;
@@ -175,10 +175,10 @@ async function reconcileRemoteWorkspace(job, options = {}) {
   }
   throwIfAborted(options.signal);
   await git(directory, ["fetch", "--no-tags", "origin", "refs/heads/" + job.branch], { signal: options.signal });
-  const remoteIsAncestor = await git(directory, ["merge-base", "--is-ancestor", remoteSha, localSha]).then(() => true).catch(() => false);
-  const localIsAncestor = await git(directory, ["merge-base", "--is-ancestor", localSha, remoteSha]).then(() => true).catch(() => false);
+  const remoteIsAncestor = await git(directory, ["merge-base", "--is-ancestor", remoteSha, localSha], { signal: options.signal }).then(() => true).catch(() => false);
+  const localIsAncestor = await git(directory, ["merge-base", "--is-ancestor", localSha, remoteSha], { signal: options.signal }).then(() => true).catch(() => false);
   if (remoteIsAncestor) {
-    const ahead = Number((await git(directory, ["rev-list", "--count", remoteSha + ".." + localSha])).stdout);
+    const ahead = Number((await git(directory, ["rev-list", "--count", remoteSha + ".." + localSha], { signal: options.signal })).stdout);
     if (ahead === 1 && !dirty) {
       job.commitSha = localSha;
       job.remoteCommitConfirmed = false;
