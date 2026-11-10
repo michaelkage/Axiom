@@ -15,7 +15,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
 const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
-const { restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
+const { restoreRemoteWorkspaceJob, recoverInterruptedRemoteWorkspaceOperation } = require("./remote-workspace.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -80,11 +80,8 @@ async function restoreRemoteWorkspaceJobs() {
         await appendRuntimeLog("Skipped invalid or unsafe persisted remote workspace job.");
         continue;
       }
-      if (persistedJob.operation && typeof persistedJob.operation.kind === "string") {
-        job.interruptedOperation = { kind: persistedJob.operation.kind, startedAt: Number(persistedJob.operation.startedAt) || null };
-        if (job.status === "cleaning") job.status = "cleanup-interrupted";
-        job.operation = null;
-      }
+      const recovered = recoverInterruptedRemoteWorkspaceOperation({ ...job, operation: persistedJob.operation || null });
+      Object.assign(job, recovered);
       job.lastActivityAt = Number(persistedJob.lastActivityAt) || null;
       remoteWorkspaceJobs.set(job.id, job);
     }
