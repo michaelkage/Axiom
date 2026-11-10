@@ -206,11 +206,11 @@ export async function executeTaskBatches<T>(
       options.signal?.addEventListener("abort", abortFromParent, { once: true });
       if (options.signal?.aborted) abortFromParent();
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      let attempt = 0;
       try {
         outcomeById.set(task.id, "running");
         emit({ taskId: task.id, title: task.title, status: "running", startedAt });
         let result: T;
-        let attempt = 0;
         while (true) {
           if (totalAttempts >= maxTotalAttempts) throw new Error("Execution attempt budget exhausted (" + maxTotalAttempts + " total attempts).");
           attempt++;
