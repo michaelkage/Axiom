@@ -55,13 +55,18 @@ async function createRemoteWorkspace(input, options = {}) {
   safeRemoteUrl(request.repositoryUrl);
   const temporaryRoot = path.resolve(options.temporaryRoot || path.join(os.tmpdir(), "axiom-remote-workspaces"));
   await fs.mkdir(temporaryRoot, { recursive: true });
-  const workspacePath = request.mode === "persistent"
-    ? path.resolve(input.persistentPath || "")
-    : path.join(temporaryRoot, randomUUID());
+  const workspacePath = options.workspacePath
+    ? path.resolve(options.workspacePath)
+    : request.mode === "persistent"
+      ? path.resolve(input.persistentPath || "")
+      : path.join(temporaryRoot, randomUUID());
   if (request.mode === "persistent" && (!input.persistentPath || workspacePath === path.parse(workspacePath).root)) {
     throw new TypeError("Persistent mode requires an explicit, non-root workspace path.");
   }
   await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+  if (request.mode !== "persistent" && path.dirname(workspacePath) !== temporaryRoot) {
+    throw new TypeError("Temporary workspace path must be a direct child of its managed root.");
+  }
   if (request.mode === "persistent") {
     try {
       const stat = await fs.stat(workspacePath);
@@ -95,8 +100,18 @@ async function createRemoteWorkspace(input, options = {}) {
       status: "ready", remoteCommitConfirmed: false, verificationPassed: false, pushSucceeded: false
     };
   } catch (error) {
-    if (request.mode !== "persistent" && workspacePath.startsWith(temporaryRoot + path.sep)) {
-      await fs.rm(workspacePath, { recursive: true, force: true }).catch(() => undefined);
+    if (request.mode !== "persistent" && path.dirname(workspacePath) === temporaryRoot) {
+      try {
+        const stat = await fs.lstat(workspacePath);
+        if (stat.isDirectory() && !stat.isSymbolicLink()) {
+          const [realRoot, realWorkspace] = await Promise.all([fs.realpath(temporaryRoot), fs.realpath(workspacePath)]);
+          if (path.dirname(realWorkspace) === realRoot) await fs.rm(realWorkspace, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        if (!cleanupError || cleanupError.code !== "ENOENT") {
+          error.cleanupError = String(cleanupError.message || cleanupError).slice(0, 300);
+        }
+      }
     }
     throw new Error("Could not create remote workspace. Check repository access and configured Git credentials. " + String(error.message || error).replace(/https?:\/\/[^\s]+/g, "[repository URL redacted]").slice(0, 500));
   }
@@ -224,6 +239,26 @@ async function pushReconciledWorkspace(job, options = {}) {
   job.status = "pushed";
   return { state: "pushed", commitSha: state.localSha, branch: job.branch };
 }
+async function discardInterruptedCloneWorkspace(job) {
+  if (!job || job.mode === "persistent" || job.workspaceOwnership !== "axiom-job" ||
+      typeof job.temporaryRoot !== "string" || typeof job.workspacePath !== "string") {
+    return { removed: false, preserved: true };
+  }
+  const root = path.resolve(job.temporaryRoot);
+  const workspace = path.resolve(job.workspacePath);
+  if (path.dirname(workspace) !== root) throw new Error("Refusing interrupted clone cleanup: workspace is not a direct child of its managed root.");
+  let stat;
+  try { stat = await fs.lstat(workspace); }
+  catch (error) {
+    if (error && error.code === "ENOENT") return { removed: false, alreadyAbsent: true };
+    throw error;
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Refusing interrupted clone cleanup: partial checkout is not a real directory.");
+  const [realRoot, realWorkspace] = await Promise.all([fs.realpath(root), fs.realpath(workspace)]);
+  if (path.dirname(realWorkspace) !== realRoot) throw new Error("Refusing interrupted clone cleanup: resolved checkout escapes its managed root.");
+  await fs.rm(realWorkspace, { recursive: true, force: false });
+  return { removed: true };
+}
 async function assertOwnedTemporaryWorkspace(job) {
   if (!mayCleanupRemoteWorkspace(job)) {
     throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
@@ -276,4 +311,4 @@ async function cleanupRemoteWorkspace(job, options = {}) {
     throw new Error("Workspace cleanup was interrupted; its confirmed commit is preserved and cleanup can be retried. " + String(error.message || error).slice(0, 300));
   }
 }
-module.exports = { throwIfAborted, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git, assertOwnedTemporaryWorkspace };
+module.exports = { throwIfAborted, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git, assertOwnedTemporaryWorkspace, discardInterruptedCloneWorkspace };
