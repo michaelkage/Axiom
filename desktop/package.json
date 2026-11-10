@@ -1,0 +1,90 @@
+{
+  "name": "axiom-desktop",
+  "version": "0.4.13",
+  "private": true,
+  "description": "Axiom standalone desktop application",
+  "homepage": "https://github.com/michaelkage/Axiom",
+  "author": {
+    "name": "Axiom Contributors",
+    "email": "michaelkage9@gmail.com"
+  },
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:dir": "electron-builder --dir --win --x64",
+    "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs runtime-environment.test.cjs remote-workspace.test.cjs remote-workspace-runner.test.cjs"
+  },
+  "dependencies": {
+    "opencode-ai": "1.19.0"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.axiom.desktop",
+    "productName": "Axiom",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/.bin/opencode*",
+      "node_modules/opencode-ai/**",
+      "node_modules/opencode-windows-x64/**",
+      "node_modules/opencode-windows-x64-baseline/**"
+    ],
+    "files": [
+      "main.cjs",
+      "runtime-environment.cjs",
+      "mcp-manager.cjs",
+      "mcp-runtime.cjs",
+      "mcp-catalog.cjs",
+      "preload.cjs",
+      "project-store.cjs",
+      "filesystem.cjs",
+      "package.json",
+      "node_modules/**",
+      "terminal.cjs",
+      "omniroute.cjs",
+      "workspace-drift.cjs",
+      "worker-state.cjs",
+      "remote-workspace.cjs",
+      "remote-workspace-runner.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "../out",
+        "to": "out",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Axiom-Setup-${version}-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Axiom",
+      "uninstallDisplayName": "Axiom"
+    },
+    "linux": {
+      "maintainer": "michaelkage9@gmail.com",
+      "category": "Development"
+    }
+  }
+}

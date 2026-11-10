@@ -15,7 +15,7 @@ on:
       version:
         description: "Desktop release version (for example 0.4.4)"
         required: true
-        default: "0.4.12"
+        default: "0.4.13"
         type: string
 
 permissions:
@@ -118,6 +118,7 @@ jobs:
           $log = ""
           $runtimeReady = $false
           $rendererReady = $false
+          $uiMounted = $false
           do {
             $app.Refresh()
             if ($app.HasExited) {
@@ -131,12 +132,14 @@ jobs:
               if ($log -match "Runtime executable lookup failed|Runtime process error|Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
               $runtimeReady = $log -match "Runtime ready at http://127\.0\.0\.1:"
               $rendererReady = $log -match "Axiom renderer loaded\."
-              if ($runtimeReady -and $rendererReady) { break }
+              $uiMounted = $log -match "Axiom UI mounted\."
+              if ($runtimeReady -and $rendererReady -and $uiMounted) { break }
             }
             Start-Sleep -Seconds 2
           } while ((Get-Date) -lt $deadline)
           if (-not $runtimeReady) { throw "Installed Axiom did not confirm the local runtime became ready within 60 seconds. $log" }
           if (-not $rendererReady) { throw "Installed Axiom did not confirm that the standalone UI loaded within 60 seconds. $log" }
+          if (-not $uiMounted) { throw "Installed Axiom renderer loaded, but the Axiom UI did not mount within 60 seconds. $log" }
           try { & taskkill.exe /pid $app.Id /t /f | Out-Null } catch {}
           $app.WaitForExit(10000) | Out-Null
 

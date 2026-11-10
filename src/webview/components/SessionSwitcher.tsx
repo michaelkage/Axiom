@@ -14,26 +14,34 @@ interface SessionSwitcherProps {
 export function SessionSwitcher(props: SessionSwitcherProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isLoading, setIsLoading] = createSignal(false);
+  const [refreshFailed, setRefreshFailed] = createSignal(false);
   const [spinnerFrame, setSpinnerFrame] = createSignal(0);
-  
-  const spinnerFrames = ['\\', '|', '/', '-'];
-  
+
+  const spinnerFrames = ["\\", "|", "/", "-"];
+
   const spinnerInterval = setInterval(() => {
     setSpinnerFrame((prev) => (prev + 1) % spinnerFrames.length);
   }, 150);
-  
+
   onCleanup(() => clearInterval(spinnerInterval));
+
+  const refreshSessions = async () => {
+    setIsLoading(true);
+    setRefreshFailed(false);
+    try {
+      await props.onRefreshSessions();
+    } catch {
+      setRefreshFailed(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const toggleDropdown = () => {
     const shouldOpen = !isOpen();
     setIsOpen(shouldOpen);
-    
-    if (shouldOpen) {
-      setIsLoading(true);
-      props.onRefreshSessions().finally(() => {
-        setIsLoading(false);
-      });
-    }
+
+    if (shouldOpen) void refreshSessions();
   };
 
   const handleSessionClick = (sessionId: string) => {
@@ -42,8 +50,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   };
 
   const formatRelativeTime = (timestamp: number): string => {
-    const now = Date.now();
-    const diff = now - timestamp;
+    const diff = Date.now() - timestamp;
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -58,6 +65,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   return (
     <div class="session-switcher">
       <button
+        type="button"
         class={`session-switcher-button ${isOpen() ? "active" : ""}`}
         onClick={toggleDropdown}
         aria-label="Switch session"
@@ -69,39 +77,41 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
       <Show when={isOpen()}>
         <div class="session-dropdown">
           <Show when={isLoading()}>
-            <div class="session-loading">Loading sessions...</div>
+            <div class="session-loading" role="status">Loading sessions...</div>
           </Show>
-          <Show when={!isLoading()}>
+          <Show when={!isLoading() && refreshFailed()}>
+            <div class="session-loading" role="alert">
+              Couldn't load sessions.
+              <button type="button" onClick={() => void refreshSessions()}>Retry</button>
+            </div>
+          </Show>
+          <Show when={!isLoading() && !refreshFailed()}>
             <Show
               when={props.sessions.length > 0}
-              fallback={
-                <div class="session-loading">No sessions found</div>
-              }
+              fallback={<div class="session-loading">No sessions found</div>}
             >
               <For each={props.sessions}>
                 {(session) => {
                   const status = () => props.sessionStatus(session.id);
                   const isBusy = () => status()?.type === "busy";
-                  
+
                   return (
-                    <div
-                      class={`session-item ${
-                        session.id === props.currentSessionId ? "current" : ""
-                      }`}
+                    <button
+                      type="button"
+                      class={`session-item ${session.id === props.currentSessionId ? "current" : ""}`}
+                      aria-current={session.id === props.currentSessionId ? "true" : undefined}
                       onClick={() => handleSessionClick(session.id)}
                     >
-                      <div class="session-item-title">
+                      <span class="session-item-title">
                         <Show when={isBusy()}>
-                          <span class="loading-indicator session-status-indicator">
+                          <span class="loading-indicator session-status-indicator" aria-label="Session busy">
                             {spinnerFrames[spinnerFrame()]}
                           </span>
                         </Show>
                         {session.title}
-                      </div>
-                      <div class="session-item-time">
-                        {formatRelativeTime(session.time.updated)}
-                      </div>
-                    </div>
+                      </span>
+                      <span class="session-item-time">{formatRelativeTime(session.time.updated)}</span>
+                    </button>
                   );
                 }}
               </For>

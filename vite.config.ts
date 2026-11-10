@@ -3,6 +3,9 @@ import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 
 export default defineConfig({
+  // The desktop app loads the built UI from file:// via Electron loadFile().
+  // Relative asset URLs are required there; absolute /assets URLs resolve to the drive root.
+  base: './',
   plugins: [solidPlugin()],
   server: {
     port: 5173,
@@ -17,11 +20,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'out',
-    minify: false,
+    minify: true,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'src/webview/index.html'),
-        uikit: resolve(__dirname, 'src/webview/uikit.html')
+        standalone: resolve(__dirname, 'src/webview/standalone.html')
       },
       output: {
         entryFileNames: '[name].js',
@@ -31,7 +33,7 @@ export default defineConfig({
         }
       }
     },
-    sourcemap: true
+    sourcemap: process.env.GENERATE_SOURCEMAP === "true"
   },
   resolve: {
     alias: {
