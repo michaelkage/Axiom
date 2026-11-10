@@ -48,7 +48,7 @@ Do not expose the raw Node gateway port to the public internet. It is a single-u
 The Android workflow builds an installable universal debug APK from the production PWA bundle.
 
 - Run it manually from **Actions → Android APK release → Run workflow** to get a downloadable workflow artifact.
-- Or create and push an `android-v1.1.0` tag to build the APK and publish it as a GitHub Release.
+- To attach the APK to a permanent GitHub Release, create a GitHub Release using a tag such as `android-v1.1.0` and publish it. The `release.published` workflow then builds the APK and uploads it to that release.
 - Download `Axiom-Android-universal-debug.apk` from the workflow artifact or the GitHub Release assets, then open it on the Android device and allow installation from that source when Android prompts.
 
 This debug-signed APK is intended for direct sideloading and testing. It is not signed with a private production upload key and is not the Play Store release package. A production Play Store release requires a privately managed signing key and Android App Bundle (AAB) configuration.
