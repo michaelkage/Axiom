@@ -27,6 +27,13 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+const remoteWorkspaceOperations = new Set();
+async function runRemoteWorkspaceOperation(id, operation) {
+  if (remoteWorkspaceOperations.has(id)) throw new Error("This remote workspace already has an operation in progress.");
+  remoteWorkspaceOperations.add(id);
+  try { return await operation(); }
+  finally { remoteWorkspaceOperations.delete(id); }
+}
 const remoteWorkspaceJobsFile = () => path.join(app.getPath("userData"), "remote-workspace-jobs.json");
 async function persistRemoteWorkspaceJobs() {
   const file = remoteWorkspaceJobsFile();
@@ -781,59 +788,62 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  try {
-    const result = await commitAndPushWorkspace(job, {
-      message: request.message,
-      verify: async directory => {
-        await remoteGit(directory, ["diff", "--check"]);
-        return true;
-      }
-    });
-    return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
-  } finally {
-    // Persist intermediate failure state too: a push or remote-SHA check can fail
-    // after the local commit has already been created. Recovery must not forget it.
-    await persistRemoteWorkspaceJobs();
-  }
+  return runRemoteWorkspaceOperation(job.id, async () => {
+    try {
+      const result = await commitAndPushWorkspace(job, {
+        message: request.message,
+        verify: async directory => {
+          await remoteGit(directory, ["diff", "--check"]);
+          return true;
+        }
+      });
+      return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+    } finally {
+      // Preserve a local commit if the process fails after commit but before push confirmation.
+      await persistRemoteWorkspaceJobs();
+    }
+  });
 });
 
 ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = remoteWorkspaceJobs.get(id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  try {
-    const result = await reconcileRemoteWorkspace(job);
-    return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
-  } finally {
-    await persistRemoteWorkspaceJobs();
-  }
+  return runRemoteWorkspaceOperation(job.id, async () => {
+    try {
+      const result = await reconcileRemoteWorkspace(job);
+      return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
+    } finally { await persistRemoteWorkspaceJobs(); }
+  });
 });
 
 ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  try {
-    const result = await pushReconciledWorkspace(job, {
-      verify: async directory => {
-        await remoteGit(directory, ["diff", "--check"]);
-        return true;
-      }
-    });
-    return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
-  } finally {
-    await persistRemoteWorkspaceJobs();
-  }
+  return runRemoteWorkspaceOperation(job.id, async () => {
+    try {
+      const result = await pushReconciledWorkspace(job, {
+        verify: async directory => {
+          await remoteGit(directory, ["diff", "--check"]);
+          return true;
+        }
+      });
+      return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+    } finally { await persistRemoteWorkspaceJobs(); }
+  });
 });
 
 ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = remoteWorkspaceJobs.get(id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
-  const result = await cleanupRemoteWorkspace(job, { onState: persistRemoteWorkspaceJobs });
-  remoteWorkspaceJobs.delete(id);
-  await persistRemoteWorkspaceJobs();
-  return result;
+  return runRemoteWorkspaceOperation(job.id, async () => {
+    const result = await cleanupRemoteWorkspace(job, { onState: persistRemoteWorkspaceJobs });
+    remoteWorkspaceJobs.delete(id);
+    await persistRemoteWorkspaceJobs();
+    return result;
+  });
 });
 
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
