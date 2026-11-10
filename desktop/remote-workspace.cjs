@@ -70,7 +70,7 @@ function restoreRemoteWorkspaceJob(job, managedRoot) {
   try {
     if (!job || typeof job !== "object" || typeof job.id !== "string" || !/^[0-9a-f-]{36}$/i.test(job.id)) return null;
     const request = validateRemoteWorkspaceRequest({ mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch, paths: job.paths ?? [] });
-    const statuses = new Set(["ready", "verified", "pushed", "failed", "cleaning", "cleanup-interrupted", "cleaned"]);
+    const statuses = new Set(["creating", "clone-interrupted", "ready", "verified", "pushed", "failed", "cleaning", "cleanup-interrupted", "cleaned"]);
     if (!statuses.has(job.status)) return null;
     if (typeof job.workspacePath !== "string" || !job.workspacePath.trim()) return null;
     const workspacePath = path.resolve(job.workspacePath);
@@ -101,7 +101,7 @@ function restoreRemoteWorkspaceJob(job, managedRoot) {
 /** Convert a persisted operation lease from a previous app process into an explicit recoverable interruption. */
 function recoverInterruptedRemoteWorkspaceOperation(job) {
   if (!job || !job.operation || typeof job.operation !== "object") return job;
-  const allowed = new Set(["commit-push", "reconcile", "push-recovered", "cleanup"]);
+  const allowed = new Set(["clone", "commit-push", "reconcile", "push-recovered", "cleanup"]);
   if (!allowed.has(job.operation.kind)) return { ...job, operation: null };
   const startedAt = Number(job.operation.startedAt);
   return {
@@ -111,7 +111,7 @@ function recoverInterruptedRemoteWorkspaceOperation(job) {
       kind: job.operation.kind,
       startedAt: Number.isFinite(startedAt) && startedAt > 0 ? startedAt : null
     },
-    status: job.status === "cleaning" ? "cleanup-interrupted" : job.status
+    status: job.status === "cleaning" ? "cleanup-interrupted" : job.operation.kind === "clone" && job.status === "creating" ? "clone-interrupted" : job.status
   };
 }
 
