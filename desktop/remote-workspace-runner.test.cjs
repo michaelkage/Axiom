@@ -357,3 +357,47 @@ test("cancellation during verification prevents commit and push while preserving
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("cleanup refuses a temporary workspace replaced by a symlink", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-symlink-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-outside-"));
+  const workspacePath = path.join(root, "job-1");
+  try {
+    await fs.symlink(outside, workspacePath, process.platform === "win32" ? "junction" : "dir");
+    await fs.writeFile(path.join(outside, "keep.txt"), "do not delete");
+    const job = {
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath, status: "pushed",
+      remoteCommitConfirmed: true, verificationPassed: true,
+      pushSucceeded: true, commitSha: "c".repeat(40)
+    };
+    await assert.rejects(() => cleanupRemoteWorkspace(job), /not a real directory/);
+    assert.equal(await fs.readFile(path.join(outside, "keep.txt"), "utf8"), "do not delete");
+    assert.equal(job.status, "pushed");
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("cleanup rejects nested paths and similarly prefixed sibling roots", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-boundary-"));
+  const sibling = root + "-sibling";
+  await fs.mkdir(sibling, { recursive: true });
+  const workspacePath = path.join(sibling, "job-1");
+  try {
+    await fs.mkdir(workspacePath, { recursive: true });
+    const job = {
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath, status: "pushed",
+      remoteCommitConfirmed: true, verificationPassed: true,
+      pushSucceeded: true, commitSha: "d".repeat(40)
+    };
+    await assert.rejects(() => cleanupRemoteWorkspace(job), /direct child/);
+    assert.equal((await fs.stat(workspacePath)).isDirectory(), true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(sibling, { recursive: true, force: true });
+  }
+});
