@@ -91,7 +91,7 @@ export function createAxiomGateway({
     }
 
     if (url.pathname.startsWith('/api/ollama/')) {
-      const upstreamPath = '/api/' + url.pathname.slice('/api/ollama/'.length);
+      const upstreamPath = url.pathname.slice('/api/ollama'.length);
       if (!OLLAMA_PATHS.has(upstreamPath) || !['GET', 'POST'].includes(req.method)) return sendJson(res, 404, { error: 'Ollama route not allowed.' });
       const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => {
         sendJson(res, error.status || 400, { error: error.message }); return null;
