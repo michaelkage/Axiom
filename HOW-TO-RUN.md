@@ -1,130 +1,89 @@
-# How to Run the Extension
+# Develop Axiom locally
 
-## 🎯 Quick Start (Easiest Way)
+Axiom's product target is the standalone desktop application. Start with [README.md](./README.md) for user installation, architecture, and release details.
 
-### Step 1: Run the startup script
+## Requirements
+
+- Node.js 20
+- pnpm 10, matching the root `package.json`
+- npm for Electron desktop packaging
+- Git for worktree-based task isolation and review
+- Windows x64 to build/test the current official installer target
+
+## Build the standalone UI
+
+From the repository root:
+
 ```bash
-./start-dev.sh
+pnpm install --frozen-lockfile
+pnpm run build:webview
 ```
 
-This will:
-- Build the extension
-- Start watch mode
-- Show you what to do next
+This generates `out/src/webview/standalone.html` and its assets.
 
-### Step 2: Launch the Extension
-**In Cursor/VSCode:**
-1. Look at the left sidebar for the **Run and Debug** icon (▶️🐛)
-2. Click it (or press `Cmd+Shift+D` on Mac, `Ctrl+Shift+D` on Windows/Linux)
-3. At the top of that panel, you'll see a dropdown that says "Run Extension"
-4. Click the **green play button** next to it (or just press `F5`)
+## Run automated checks
 
-### Step 3: See Your Extension
-A new window called "Extension Development Host" will open.
-
-In that new window:
-1. Look at the **left sidebar** (Activity Bar)
-2. Find the **OpenCode icon** (looks like a square/box)
-3. **Click the icon**
-4. The sidebar opens with "Hello from Opencode" 🎉
-
----
-
-## 📋 Detailed Manual Steps
-
-If the script doesn't work or you prefer manual control:
-
-### 1. Build Everything
 ```bash
-npm run build
+pnpm exec vitest run
+pnpm exec tsc -p tsconfig.webview.json
+pnpm exec tsc -p tsconfig.extension.json --noEmit
+node --check desktop/main.cjs
 ```
 
-### 2. Start Watch Mode
-Open a terminal and run:
+The full `pnpm test` script also runs Playwright browser tests. Those tests may need browser/runtime dependencies installed for your environment.
+
+## Launch the desktop app
+
 ```bash
-npm run watch
+pnpm install --frozen-lockfile
+pnpm run build:webview
+cd desktop
+npm install
+npm start
 ```
-**Keep this terminal open!** It will automatically rebuild when you make changes.
 
-### 3. Launch Extension
-- Open the Run and Debug panel (`Cmd+Shift+D` / `Ctrl+Shift+D`)
-- Select "Run Extension" from dropdown
-- Press F5 or click the green play button
+Axiom opens a native folder picker, starts its local OpenCode runtime for the selected project, and loads the standalone workspace. If runtime startup fails, inspect the error dialog and verify the local runtime dependency was installed correctly.
 
-### 4. Find Your Extension
-In the Extension Development Host window:
-- Look for OpenCode icon in the Activity Bar (left side)
-- Click it to open the sidebar panel
+## Build the Windows installer
 
----
+Run from the repository root:
 
-## 🔍 Troubleshooting
+```bash
+pnpm run build:webview
+cd desktop
+npm install
+npm run dist
+```
 
-### I pressed F5 but nothing happened
-1. Check if the terminal shows "Starting incremental compilation..." - if not, `npm run watch` isn't running
-2. Try the manual steps above instead
+The Windows x64 installer is written to `desktop/release/`. The release workflow runs this packaging on a Windows GitHub Actions runner.
 
-### The Extension Development Host opened but I don't see the OpenCode icon
-1. Check the Debug Console: View > Debug Console
-2. Look for "OpenCode extension is now active!" message
-3. If not there, check that `dist/extension.js` exists
-4. Try: Developer: Reload Window (in Command Palette)
+## Troubleshooting
 
-### I see the icon but the sidebar is blank
-1. Open Developer Tools: Command Palette > "Developer: Toggle Developer Tools"
-2. Check Console for errors
-3. Verify `out/main.js` and `out/main.css` exist
-4. Try rebuilding: `npm run clean && npm run build`
+### The desktop window does not open
 
-### Hot reload isn't working
-**For extension code changes:**
-- Save your file
-- In Extension Development Host, press `Cmd+R` (Mac) or `Ctrl+R` (Windows/Linux)
-- Or: Command Palette > "Developer: Reload Window"
+- Confirm `out/src/webview/standalone.html` exists after running `pnpm run build:webview`.
+- Run `node --check desktop/main.cjs` to catch launcher syntax errors.
+- Start with `npm start` from `desktop/` and inspect terminal output.
 
-**For webview (React) changes:**
-- Should reload automatically
-- If not, check that watch mode is running
-- Check terminal for Vite errors
+### The local runtime fails to start
 
----
+- Verify the bundled `opencode-ai` package installed without errors in `desktop/node_modules`.
+- Check that the selected project folder is readable and writable.
+- Confirm the local runtime can bind to a loopback port and that endpoint security software is not blocking it.
 
-## 🎨 What You Should See
+### Agent tasks or quality checks fail
 
-When everything works:
+- Confirm Git is installed and the project is inside a Git repository for worktree isolation.
+- Make sure dependencies can be installed in the target project.
+- Read the exact quality-gate command output; do not treat an agent completion message as proof that checks passed.
 
-1. **Main VSCode/Cursor window**:
-   - Terminal shows watch mode running
-   - Debug Console shows compilation messages
+## Useful locations
 
-2. **Extension Development Host window**:
-   - OpenCode icon in Activity Bar (left side)
-   - Click icon → Sidebar opens
-   - Shows "Hello from Opencode"
-
-3. **Debug Console** (in Extension Development Host):
-   ```
-   OpenCode extension is now active!
-   OpenCode webview provider registered
-   ```
-
----
-
-## 💡 Tips
-
-- **First time?** Run `./start-dev.sh` - it does everything for you
-- **Developing?** Keep watch mode running, just press `Cmd+R` in Extension Development Host when you change extension code
-- **React changes?** Just save - they hot reload automatically!
-- **Stuck?** See TROUBLESHOOTING.md for detailed help
-
----
-
-## 📚 Files to Edit
-
-- `src/extension.ts` - Extension entry point
-- `src/OpenCodeViewProvider.ts` - Webview provider logic  
-- `src/webview/App.tsx` - React UI
-- `src/webview/App.css` - Styles
-
-After editing extension code, press `Cmd+R` in Extension Development Host.
-After editing webview code, changes auto-reload!
+- `desktop/main.cjs`: Electron launcher, workspace selection, and local runtime lifecycle
+- `desktop/package.json`: desktop dependencies and installer configuration
+- `src/webview/standalone.html`: desktop UI entry point
+- `src/webview/App.tsx`: primary workspace UI
+- `src/webview/components/WorktreeReviewPanel.tsx`: task review and selective integration
+- `src/shared/axiomWorkflow.ts`: shared workflow helpers and tests
+- `.github/workflows/axiom-ci.yml`: automated CI
+- `.github/workflows/release.yml`: standalone Windows release packaging

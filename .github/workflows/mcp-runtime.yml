@@ -1,0 +1,24 @@
+name: MCP runtime checks
+
+on:
+  push:
+    branches:
+      - axiom/product-rebuild
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test MCP catalog, credentials, runtime diagnostics, and worker probe
+        working-directory: desktop
+        run: node --test mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs

@@ -67,4 +67,50 @@ test.describe("Session Management", () => {
     // Verify that at least one session list API call was made after clicking
     expect(sessionRequests.length).toBeGreaterThan(0);
   });
+
+  test("shows refresh failure and retries loading sessions", async ({ openWebview }) => {
+    const page = await openWebview();
+
+    // Let the initial app bootstrap finish before installing the failure route.
+    // Otherwise opening the dropdown can reuse an in-flight bootstrap request.
+    const switcher = page.getByRole("button", { name: "Switch session" });
+    await switcher.click();
+    const dropdown = page.locator(".session-dropdown");
+    await expect(dropdown.locator(".session-item").first()).toBeVisible();
+    await switcher.click();
+
+    let refreshAttempts = 0;
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+
+      // Only fail the collection endpoint; `/session/status` and
+      // `/session/:id` are separate requests used during bootstrap.
+      if (request.method() !== "GET" || !url.pathname.endsWith("/session")) {
+        await route.continue();
+        return;
+      }
+
+      refreshAttempts++;
+      if (refreshAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary session-list failure" }),
+        });
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await switcher.click();
+    await expect(dropdown.getByRole("alert")).toContainText("Couldn't load sessions.");
+    const retry = dropdown.getByRole("button", { name: "Retry" });
+    await retry.click();
+
+    await expect(dropdown.getByRole("alert")).toBeHidden();
+    await expect(dropdown.locator(".session-item").first()).toBeVisible();
+    expect(refreshAttempts).toBeGreaterThanOrEqual(2);
+  });
 });

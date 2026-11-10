@@ -32,7 +32,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "pnpm dev:webview --port 5199 --strictPort",
-    url: "http://localhost:5199/src/webview/index.html",
+    url: "http://localhost:5199/src/webview/standalone.html",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },

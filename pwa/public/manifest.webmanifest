@@ -1,0 +1,12 @@
+{
+  "name": "Axiom AI Command Center",
+  "short_name": "Axiom",
+  "description": "A mobile-first local AI workspace",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": [{ "src": "/axiom.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
