@@ -52,8 +52,8 @@ function applyCors(req, res, origins) {
   if (origin && origins.has(origin)) {
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('vary', 'Origin');
-    res.setHeader('access-control-allow-headers', 'authorization, content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id');
-    res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('access-control-allow-headers', 'authorization, apikey, content-type, accept, prefer, range, accept-profile, content-profile, mcp-session-id, mcp-protocol-version, last-event-id');
+    res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS');
     res.setHeader('access-control-max-age', '600');
   }
   return !origin || origins.has(origin);
@@ -136,7 +136,11 @@ export function createAxiomGateway({
         sendJson(res, error.status || 400, { error: error.message }); return null;
       });
       if (body === null) return;
-      const target = new URL('/repos/' + requestedRepo + '/contents/' + githubMatch[3] + url.search, 'https://api.github.com');
+      const contentPath = decodeURIComponent(githubMatch[3]);
+      if (contentPath.split('/').some(segment => segment === '.' || segment === '..') || contentPath.includes('\\\\')) {
+        return sendJson(res, 400, { error: 'Invalid GitHub content path.' });
+      }
+      const target = new URL('/repos/' + requestedRepo + '/contents/' + contentPath + url.search, 'https://api.github.com');
       try {
         const upstream = await fetchImpl(target, {
           method: req.method,
@@ -158,6 +162,15 @@ export function createAxiomGateway({
     if (url.pathname.startsWith(supabasePrefix)) {
       const key = env.SUPABASE_PUBLISHABLE_KEY || '';
       if (!env.SUPABASE_URL || !key) return sendJson(res, 503, { error: 'Supabase publishable-key upstream is not configured.' });
+      if (key.startsWith('sb_secret_')) return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY must not be a secret key.' });
+      if (key.startsWith('eyJ')) {
+        try {
+          const claims = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString('utf8'));
+          if (claims.role !== 'anon') return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY must be an anon-role JWT, never service_role.' });
+        } catch {
+          return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY is not a valid publishable key.' });
+        }
+      }
       if (!['GET', 'POST', 'PATCH', 'DELETE', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'Supabase method not allowed.' });
       const supabaseBase = new URL(env.SUPABASE_URL);
       if (!['http:', 'https:'].includes(supabaseBase.protocol) || supabaseBase.username || supabaseBase.password) {
