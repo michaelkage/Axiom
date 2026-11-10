@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH } = require("./worker-state.cjs");
+const { createWorkerStateStore, MAX_LOG_LINES, MAX_LOG_LINE_LENGTH, MAX_LOG_TOTAL_LENGTH, MAX_TITLE_LENGTH, MAX_DIAGNOSTIC_LENGTH, MAX_ERROR_LENGTH, MAX_RESULT_LENGTH } = require("./worker-state.cjs");
 
 test("worker records persist bounded titles, diagnostics, errors, and recent logs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-bounds-"));
@@ -68,6 +68,45 @@ test("worker records discard unrecognized fields before persistence", async () =
     const files = await fs.readdir(path.join(root, "worker-state"));
     const persisted = JSON.parse(await fs.readFile(path.join(root, "worker-state", files[0]), "utf8"));
     assert.equal(Object.hasOwn(persisted.tasks[0], "arbitraryPayload"), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("worker results are bounded and non-serializable values are represented safely", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worker-result-bounds-"));
+  try {
+    const store = createWorkerStateStore(root, path.join(root, "workspace"));
+    const oversized = { payload: "R".repeat(MAX_RESULT_LENGTH + 100) };
+    const large = await store.record({
+      taskId: "large-result",
+      title: "Large result",
+      status: "succeeded",
+      result: oversized
+    });
+    assert.equal(large.result.truncated, true);
+    assert.equal(large.result.preview.length, MAX_RESULT_LENGTH);
+    assert.match(large.result.preview, /^\{"payload":"/);
+    assert.ok(large.result.preview.includes("payload"));
+    assert.ok(large.result.preview.includes("R".repeat(20)));
+
+    const circular = { label: "circular" };
+    circular.self = circular;
+    const unavailable = await store.record({
+      taskId: "circular-result",
+      title: "Circular result",
+      status: "failed",
+      result: circular
+    });
+    assert.deepEqual(unavailable.result, {
+      unavailable: true,
+      reason: "Worker result was not JSON-serializable."
+    });
+
+    const listed = await store.list();
+    assert.deepEqual(listed.find(task => task.taskId === "large-result").result, large.result);
+    assert.deepEqual(listed.find(task => task.taskId === "circular-result").result, unavailable.result);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

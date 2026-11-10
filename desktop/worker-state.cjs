@@ -39,6 +39,10 @@ function normalizeTask(task) {
   return normalized;
 }
 function normalizeResult(result) {
+  // A persisted truncation envelope is already normalized; do not truncate it recursively on read.
+  if (result && typeof result === "object" && result.truncated === true && typeof result.preview === "string") {
+    return { truncated: true, preview: result.preview.slice(0, MAX_RESULT_LENGTH) };
+  }
   let serialized;
   try { serialized = JSON.stringify(result); }
   catch { return { unavailable: true, reason: "Worker result was not JSON-serializable." }; }
