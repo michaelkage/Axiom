@@ -324,3 +324,36 @@ test("cleanup remains forbidden for persistent or unconfirmed workspaces", async
   await assert.rejects(() => cleanupRemoteWorkspace(job), /Refusing cleanup/);
   assert.equal(job.status, "pushed");
 });
+
+test("cancellation during verification prevents commit and push while preserving edits", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cancel-verify-"));
+  const remote = path.join(root, "remote.git");
+  const workspacePath = path.join(root, "workspace");
+  try {
+    await git(root, ["init", "--bare", remote]);
+    await makeCheckout(workspacePath, { remote, branch: "main" });
+    await git(workspacePath, ["push", "-u", "origin", "main"]);
+    const initialSha = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
+    await fs.writeFile(path.join(workspacePath, "pending.txt"), "keep this edit\n");
+    const job = {
+      mode: "temporary-full", repositoryUrl: remote, branch: "main",
+      workspacePath, temporaryRoot: root, workspaceOwnership: "axiom-job",
+      status: "ready", verificationPassed: false, pushSucceeded: false,
+      remoteCommitConfirmed: false
+    };
+    const controller = new AbortController();
+    await assert.rejects(() => commitAndPushWorkspace(job, {
+      signal: controller.signal,
+      verify: async (_directory, signal) => {
+        assert.equal(signal, controller.signal);
+        controller.abort();
+        return true;
+      }
+    }), error => error.name === "AbortError" && /cancelled/.test(error.message));
+    assert.equal((await git(workspacePath, ["rev-parse", "HEAD"])).stdout, initialSha);
+    assert.equal((await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout, initialSha);
+    assert.equal(await fs.readFile(path.join(workspacePath, "pending.txt"), "utf8"), "keep this edit\n");
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
