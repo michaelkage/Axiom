@@ -2,7 +2,7 @@
 const path = require("node:path");
 
 const WORKSPACE_MODES = Object.freeze(["persistent", "temporary-full", "temporary-selective"]);
-const TERMINAL_SUCCESS = new Set(["verified", "committed", "pushed"]);
+const TERMINAL_SUCCESS = new Set(["verified", "committed", "pushed", "cleaning", "cleanup-interrupted"]);
 
 function validateRepositoryUrl(repositoryUrl) {
   if (typeof repositoryUrl !== "string" || !repositoryUrl.trim() || /[\s\\\0]/.test(repositoryUrl)) {
@@ -70,7 +70,7 @@ function restoreRemoteWorkspaceJob(job, managedRoot) {
   try {
     if (!job || typeof job !== "object" || typeof job.id !== "string" || !/^[0-9a-f-]{36}$/i.test(job.id)) return null;
     const request = validateRemoteWorkspaceRequest({ mode: job.mode, repositoryUrl: job.repositoryUrl, branch: job.branch, paths: job.paths ?? [] });
-    const statuses = new Set(["ready", "verified", "pushed", "failed"]);
+    const statuses = new Set(["ready", "verified", "pushed", "failed", "cleaning", "cleanup-interrupted", "cleaned"]);
     if (!statuses.has(job.status)) return null;
     if (typeof job.workspacePath !== "string" || !job.workspacePath.trim()) return null;
     const workspacePath = path.resolve(job.workspacePath);
