@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, git } = require("./remote-workspace-runner.cjs");
+const { safeRemoteUrl, createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, git } = require("./remote-workspace-runner.cjs");
 
 test("remote workspace runner rejects embedded credentials", () => {
   assert.throws(() => safeRemoteUrl("https://user:token@example.com/org/repo.git"), /embedded credentials/);
@@ -254,5 +254,27 @@ test("refuses reconciliation when uncommitted changes or origin mismatch exist",
     const mismatch = await reconcileRemoteWorkspace(job);
     assert.equal(mismatch.state, "conflict");
     assert.match(mismatch.reason, /origin does not match/);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+
+test("pushes a recovered local commit only after fresh verification", async () => {
+  const fixture = await makeRecoveryFixture("axiom-reconcile-push-");
+  const { root, remote, workspacePath, job } = fixture;
+  try {
+    await fs.writeFile(path.join(workspacePath, "recovered.txt"), "recover me\n");
+    await git(workspacePath, ["add", "--all"]);
+    await git(workspacePath, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "commit before crash"]);
+    const localSha = (await git(workspacePath, ["rev-parse", "HEAD"])).stdout;
+    await assert.rejects(() => pushReconciledWorkspace(job, { verify: async () => false }), /verification did not pass/);
+    assert.equal((await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout !== localSha, true);
+    const result = await pushReconciledWorkspace(job, {
+      verify: async directory => (await fs.readFile(path.join(directory, "recovered.txt"), "utf8")) === "recover me\n"
+    });
+    assert.equal(result.state, "pushed");
+    assert.equal(result.commitSha, localSha);
+    assert.equal((await git(root, ["--git-dir", remote, "rev-parse", "refs/heads/main"])).stdout, localSha);
+    assert.equal(job.remoteCommitConfirmed, true);
+    assert.equal(job.status, "pushed");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
