@@ -17,7 +17,7 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
       throw error;
     }
     if (!data || typeof data !== "object" || Array.isArray(data) || data.schemaVersion !== 1 ||
-        data.workspaceRoot !== resolvedRoot || !Array.isArray(data.tasks) || !data.tasks.every(isValidTask)) {
+        data.workspaceRoot !== resolvedRoot || !Array.isArray(data.tasks) || !data.tasks.every(isValidTask) || new Set(data.tasks.map(task => task.taskId)).size !== data.tasks.length) {
       throw new Error("Worker state file has an invalid schema or task record; refusing to overwrite persisted task history.");
     }
     return data.tasks.slice(-MAX_TASKS);
