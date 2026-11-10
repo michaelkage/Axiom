@@ -14,8 +14,8 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
-const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
-const { restoreRemoteWorkspaceJob, recoverInterruptedRemoteWorkspaceOperation } = require("./remote-workspace.cjs");
+const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, discardInterruptedCloneWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
+const { validateRemoteWorkspaceRequest, restoreRemoteWorkspaceJob, recoverInterruptedRemoteWorkspaceOperation } = require("./remote-workspace.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
 let runtimeProcess;
@@ -67,7 +67,7 @@ function persistRemoteWorkspaceJobs() {
       workspaceOwnership: job.workspaceOwnership, status: job.status,
       remoteCommitConfirmed: job.remoteCommitConfirmed === true,
       verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true,
-      commitSha: job.commitSha || null, operation: job.operation || null,
+      commitSha: job.commitSha || null, error: job.error || null, operation: job.operation || null,
       interruptedOperation: job.interruptedOperation || null, lastActivityAt: job.lastActivityAt || null
     }));
     await fs.promises.mkdir(path.dirname(file), { recursive: true });
@@ -92,6 +92,17 @@ async function restoreRemoteWorkspaceJobs() {
       }
       const recovered = recoverInterruptedRemoteWorkspaceOperation({ ...job, operation: persistedJob.operation || null });
       Object.assign(job, recovered);
+      if (job.interruptedOperation?.kind === "clone" && job.mode !== "persistent") {
+        try {
+          const cleanup = await discardInterruptedCloneWorkspace(job);
+          await appendRuntimeLog("Recovered interrupted temporary clone " + job.id + ": " + (cleanup.removed ? "partial checkout removed." : "partial checkout already absent."));
+        } catch (error) {
+          job.error = "Interrupted clone could not be safely removed: " + String(error.message || error).slice(0, 300);
+          await appendRuntimeLog("Could not clean interrupted clone " + job.id + ": " + job.error);
+        }
+      } else if (job.interruptedOperation?.kind === "clone" && job.mode === "persistent") {
+        job.error = "Persistent clone was interrupted. Its destination was preserved; inspect it before retrying.";
+      }
       job.lastActivityAt = Number(persistedJob.lastActivityAt) || null;
       remoteWorkspaceJobs.set(job.id, job);
     }
@@ -797,13 +808,41 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
 
 ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  const temporaryRoot = path.join(app.getPath("userData"), "remote-workspaces");
-  const job = await createRemoteWorkspace(request, { temporaryRoot });
+  const validated = validateRemoteWorkspaceRequest(request);
+  const temporaryRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
   const id = require("node:crypto").randomUUID();
-  job.id = id;
-  job.lastActivityAt = Date.now();
+  const workspacePath = validated.mode === "persistent"
+    ? path.resolve(request.persistentPath || "")
+    : path.join(temporaryRoot, id);
+  const job = {
+    id, ...validated, workspacePath,
+    temporaryRoot: validated.mode === "persistent" ? null : temporaryRoot,
+    workspaceOwnership: validated.mode === "persistent" ? "user" : "axiom-job",
+    status: "creating", remoteCommitConfirmed: false,
+    verificationPassed: false, pushSucceeded: false,
+    error: null, lastActivityAt: Date.now()
+  };
   remoteWorkspaceJobs.set(id, job);
   await persistRemoteWorkspaceJobs();
+  // Return the job immediately so the renderer can expose cancellation while
+  // Git is cloning. The operation lease and destination are durable first.
+  void runRemoteWorkspaceOperation(job, "clone", async signal => {
+    try {
+      const created = await createRemoteWorkspace(request, {
+        temporaryRoot, workspacePath, signal
+      });
+      Object.assign(job, created, { id, error: null, interruptedOperation: null });
+      return { id, status: job.status };
+    } catch (error) {
+      job.status = error && error.name === "AbortError" ? "clone-interrupted" : "failed";
+      job.error = String(error.message || error).slice(0, 500);
+      throw error;
+    } finally {
+      await persistRemoteWorkspaceJobs();
+    }
+  }).catch(error => {
+    void appendRuntimeLog("Remote workspace clone " + id + " ended: " + String(error.message || error).slice(0, 500));
+  });
   return { id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath, status: job.status, paths: job.paths };
 });
 
@@ -811,7 +850,7 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return [...remoteWorkspaceJobs.values()].map(job => ({
     id: job.id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath,
-    status: job.status, paths: job.paths, commitSha: job.commitSha || null,
+    status: job.status, paths: job.paths, commitSha: job.commitSha || null, error: job.error || null, operation: job.operation || null,
     remoteCommitConfirmed: job.remoteCommitConfirmed === true,
     verificationPassed: job.verificationPassed === true, pushSucceeded: job.pushSucceeded === true,
     interruptedOperation: job.interruptedOperation || null, lastActivityAt: job.lastActivityAt || null
