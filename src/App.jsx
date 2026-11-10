@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
 import { consumeNdjsonStream } from './lib/ndjson.js';
-import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
+import { runOllamaToolChat } from './lib/ollamaChat.js';
+import { executeTool, listTools, registerTool, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
 import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
@@ -82,37 +83,24 @@ export default function App(){
   try{
    const availableTools=toOllamaTools();
    if(availableTools.length){
-    let conversation=[...priorMessages,userMsg].map(m=>({role:m.role,content:m.content}));
-    let completedToolLoop=false;
-    for(let turn=0;turn<5;turn++){
-     const payload={model:state.model,messages:conversation,tools:availableTools,stream:true};
-     log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn,stream:true},null,2));
-     const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal});
-     if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-     let turnContent='',thinking='';const calls=[];
-     await consumeNdjsonStream(response,chunk=>{
-      const part=chunk.message||{};
-      if(part.thinking)thinking+=part.thinking;
-      if(part.content){turnContent+=part.content;answer+=part.content;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);}
-      if(part.tool_calls?.length)calls.push(...part.tool_calls);
-     },{signal});
-     conversation.push({role:'assistant',thinking,content:turnContent,tool_calls:calls});
-     if(!calls.length){completedToolLoop=true;break;}
-     for(const call of calls){
-      const name=call.function?.name;let args=call.function?.arguments||{};
-      if(typeof args==='string'){try{args=JSON.parse(args);}catch{throw new Error('Tool arguments for '+name+' were not valid JSON');}}
-      log('request','Tool: '+name,JSON.stringify(args,null,2));
-      const toolMeta=listTools().find(tool=>tool.name===name);
-      if(toolMeta?.requiresApproval&&!window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?')){
-       conversation.push({role:'tool',tool_name:name,content:JSON.stringify({cancelled:true,message:'User declined this action.'})});
-       log('info','Tool action declined: '+name);
-       continue;
-      }
-      try{const result=await executeTool(name,args,{signal});const serialized=serializeToolResult(result);conversation.push({role:'tool',tool_name:name,content:serialized});log('success','Tool completed: '+name,serialized);}
-      catch(error){if(signal.aborted)throw error;conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
+    answer=(await runOllamaToolChat({
+     baseUrl:base,
+     model:state.model,
+     messages:[...priorMessages,userMsg],
+     tools:availableTools,
+     signal,
+     executeTool,
+     getToolMeta:name=>listTools().find(tool=>tool.name===name),
+     confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?'),
+     onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
+     onEvent:event=>{
+      if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
+      else if(event.type==='tool.request')log('request','Tool: '+event.name,JSON.stringify(event.args,null,2));
+      else if(event.type==='tool.completed')log('success','Tool completed: '+event.name,event.result);
+      else if(event.type==='tool.failed')log('error','Tool failed: '+event.name,event.error);
+      else if(event.type==='tool.declined')log('info','Tool action declined: '+event.name);
      }
-    }
-    if(!completedToolLoop)throw new Error('Tool execution reached the five-turn safety limit before the model finished. Review the tool results and send a follow-up if needed.');
+    })).answer;
    }else{
     const payload={model:state.model,prompt,stream:true};
     log('request','Ollama /api/generate',JSON.stringify(payload,null,2));
