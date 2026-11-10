@@ -85,7 +85,7 @@ test("clears execution logs using the labelled mobile action", async ({ page }) 
   await page.route("**/api/chat", route => route.fulfill({
     status: 200,
     contentType: "application/x-ndjson",
-    body: JSON.stringify({ message: { role: "assistant", content: "Log this reply" }, done: true }) + "\\n",
+    body: JSON.stringify({ message: { role: "assistant", content: "Log this reply" }, done: true }) + "\n",
   }));
   await page.goto("/");
   await page.getByRole("textbox", { name: "Message your local model" }).fill("Create execution events");
