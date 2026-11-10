@@ -14,7 +14,7 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
-const { createRemoteWorkspace, commitAndPushWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
+const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
 const { restoreRemoteWorkspaceJob } = require("./remote-workspace.cjs");
 const execFileAsync = promisify(execFile);
 let selectedWorkspace;
@@ -793,6 +793,18 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   } finally {
     // Persist intermediate failure state too: a push or remote-SHA check can fail
     // after the local commit has already been created. Recovery must not forget it.
+    await persistRemoteWorkspaceJobs();
+  }
+});
+
+ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = remoteWorkspaceJobs.get(id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  try {
+    const result = await reconcileRemoteWorkspace(job);
+    return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
+  } finally {
     await persistRemoteWorkspaceJobs();
   }
 });
