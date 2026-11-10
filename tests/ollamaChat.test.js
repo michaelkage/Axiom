@@ -138,3 +138,16 @@ test('reports HTTP errors before attempting to parse a stream', async () => {
   const harness = setup([new Response('unavailable', { status: 503 })]);
   await assert.rejects(harness.run(), /HTTP 503/);
 });
+
+test('supports ordinary multi-turn chat without registering tools', async () => {
+  const history = [
+    { role: 'user', content: 'My project is called Axiom.' },
+    { role: 'assistant', content: 'Got it.' },
+    { role: 'user', content: 'What is my project called?' }
+  ];
+  const harness = setup([streamResponse([assistant('Axiom')])]);
+  const result = await harness.run({ tools: [], messages: history });
+  assert.equal(result.answer, 'Axiom');
+  assert.deepEqual(harness.requests[0].payload.messages, history);
+  assert.equal(Object.hasOwn(harness.requests[0].payload, 'tools'), false);
+});
