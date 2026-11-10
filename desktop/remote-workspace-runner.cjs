@@ -113,6 +113,10 @@ async function createRemoteWorkspace(input, options = {}) {
         }
       }
     }
+    if (error && error.name === "AbortError") {
+      if (error.cleanupError) error.message += " Cleanup warning: " + error.cleanupError;
+      throw error;
+    }
     throw new Error("Could not create remote workspace. Check repository access and configured Git credentials. " + String(error.message || error).replace(/https?:\/\/[^\s]+/g, "[repository URL redacted]").slice(0, 500) + (error.cleanupError ? " Cleanup warning: " + error.cleanupError : ""));
   }
 }
