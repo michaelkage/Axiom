@@ -1,0 +1,31 @@
+name: Mobile PWA build
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pwa/**"
+      - ".github/workflows/mobile-pwa.yml"
+  pull_request:
+    paths:
+      - "pwa/**"
+      - ".github/workflows/mobile-pwa.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - run: npm run build
+      - name: Install Chromium for mobile browser tests
+        run: npx playwright install --with-deps chromium
+      - name: Run mobile browser tests
+        run: npm run test:e2e:mobile
