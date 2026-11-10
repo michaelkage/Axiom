@@ -4,6 +4,7 @@ type RemoteJob = {
   id: string; mode: string; branch: string; workspacePath: string; status: string;
   paths?: string[]; commitSha?: string | null; remoteCommitConfirmed?: boolean;
   verificationPassed?: boolean; pushSucceeded?: boolean;
+  interruptedOperation?: { kind: string; startedAt: number | null } | null; lastActivityAt?: number | null;
 };
 type ReconcileResult = {
   id: string; state: string; reason?: string; localSha?: string; remoteSha?: string;
@@ -113,6 +114,11 @@ export function RemoteWorkspaceRecoveryPanel() {
                   <span class="text-xs">{result()?.state || job.status}</span>
                 </div>
                 <Show when={result()?.reason}><p class="mt-2 text-sm text-muted">{result()!.reason}</p></Show>
+                <Show when={job.interruptedOperation}>
+                  <p class="mt-2 text-sm text-amber-500">
+                    Previous {job.interruptedOperation!.kind} operation was interrupted when Axiom closed. Check recovery before retrying.
+                  </p>
+                </Show>
                 <Show when={result()?.localSha}>
                   <div class="mt-2 grid gap-1 text-xs text-muted">
                     <div>Local: <code>{result()!.localSha}</code></div>
