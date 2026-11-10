@@ -4,7 +4,7 @@ import { consumeNdjsonStream } from './lib/ndjson.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
-import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
 
 const STORE = 'axiom.mobile.v1';
 const defaults = { baseUrl:'http://localhost:11434', model:'qwen2.5:1.5b', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:''} };
@@ -30,6 +30,7 @@ export default function App(){
  const [serverToken,setServerToken]=useState('');
  const [notice,setNotice]=useState('');
  const bottomRef=useRef(null);
+ const activeRunRef=useRef(null);
  const integrationCleanup=useRef({});
  const mcpCleanup=useRef({});
  const mcpAttempts=useRef({});
@@ -56,8 +57,17 @@ export default function App(){
   }
  },[]);
 
+ function stopGeneration(){
+  const controller=activeRunRef.current;
+  if(!controller||controller.signal.aborted)return;
+  controller.abort(new DOMException('Stopped by user','AbortError'));
+  log('info','Generation stopped','The active request and cooperative tool operations were cancelled.');
+ }
  async function sendMessage(){
   const prompt=draft.trim(); if(!prompt||busy)return;
+  const controller=new AbortController();
+  activeRunRef.current=controller;
+  const signal=controller.signal;
   setDraft(''); setBusy(true);
   const userMsg={id:uid(),role:'user',content:prompt,time:stamp()};
   const priorMessages=currentChat?.messages||[];
@@ -75,7 +85,7 @@ export default function App(){
     for(let turn=0;turn<5;turn++){
      const payload={model:state.model,messages:conversation,tools:availableTools,stream:true};
      log('request','Ollama /api/chat',JSON.stringify({model:payload.model,toolCount:availableTools.length,turn,stream:true},null,2));
-     const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+     const response=await fetch(base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal});
      if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
      let turnContent='',thinking='';const calls=[];
      await consumeNdjsonStream(response,chunk=>{
@@ -96,7 +106,7 @@ export default function App(){
        log('info','Tool action declined: '+name);
        continue;
       }
-      try{const result=await executeTool(name,args);const serialized=serializeToolResult(result);conversation.push({role:'tool',tool_name:name,content:serialized});log('success','Tool completed: '+name,serialized);}
+      try{const result=await executeTool(name,args,{signal});const serialized=serializeToolResult(result);conversation.push({role:'tool',tool_name:name,content:serialized});log('success','Tool completed: '+name,serialized);}
       catch(error){conversation.push({role:'tool',tool_name:name,content:JSON.stringify({error:error.message})});log('error','Tool failed: '+name,error.message);}
      }
     }
@@ -104,7 +114,7 @@ export default function App(){
    }else{
     const payload={model:state.model,prompt,stream:true};
     log('request','Ollama /api/generate',JSON.stringify(payload,null,2));
-    const response=await fetch(base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const response=await fetch(base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal});
     if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
     await consumeNdjsonStream(response,part=>{
      answer+=part.response||'';
@@ -112,8 +122,8 @@ export default function App(){
     });
    }
    log('success','Generation complete',state.model);
-  }catch(e){patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}
-  finally{setBusy(false);}
+  }catch(e){if(signal.aborted){log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m));log('error','Generation failed',e.message);}}
+  finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
  }
  function toggleIntegration(id){
   if(integrationCleanup.current[id]){integrationCleanup.current[id]();delete integrationCleanup.current[id];update({tools:state.tools.map(t=>t.id===id?{...t,enabled:false}:t)});log('info',id+' tools disabled');return;}
@@ -189,7 +199,7 @@ export default function App(){
    {tab==='logs'&&<section><div className="flex items-center justify-between"><div><p className="text-xs text-lime-300 font-semibold tracking-widest uppercase">Observability</p><h1 className="text-2xl font-semibold mt-1">Execution logs</h1></div><button onClick={()=>update({logs:[]})} className="p-2 rounded-xl bg-white/[.05] text-slate-400"><Trash2 size={17}/></button></div><p className="text-sm text-slate-500 mt-2 mb-6">Live request traces, tool activity, and responses.</p>{state.logs.length===0?<div className="text-center py-16 text-slate-500"><Terminal size={28} className="mx-auto mb-3 opacity-50"/><p className="text-sm">No execution events yet.</p></div>:<div className="space-y-2">{state.logs.map(l=><div key={l.id} className="rounded-xl border border-white/[.07] bg-white/[.025] overflow-hidden"><button onClick={()=>setExpanded(s=>({...s,[l.id]:!s[l.id]}))} className="w-full p-3 flex items-center gap-3 text-left"><span className={'w-2 h-2 rounded-full '+(l.kind==='success'?'bg-lime-400':l.kind==='error'?'bg-red-400':l.kind==='request'?'bg-sky-400':'bg-slate-500')}/><span className="text-xs flex-1 font-medium">{l.title}</span><span className="text-[10px] text-slate-600">{l.time}</span>{expanded[l.id]?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>{expanded[l.id]&&<pre className="p-3 pt-0 text-[11px] text-slate-400 whitespace-pre-wrap break-words">{l.detail||'No additional details.'}</pre>}</div>)}</div>}</section>}
   </main>
   <div className="fixed bottom-0 left-0 right-0 z-40 max-w-3xl mx-auto">
-   {tab==='chat'&&<div className="px-3 pb-2"><div className="glass border border-white/[.12] rounded-2xl p-2 shadow-2xl"><textarea value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}} rows={2} placeholder="Message your local model…" className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-600"/><div className="flex items-center justify-between px-1"><span className="text-[10px] text-slate-600">Enter to send · Shift + Enter for newline</span><button onClick={sendMessage} disabled={!draft.trim()||busy} className="w-10 h-10 rounded-xl bg-lime-300 text-slate-950 grid place-items-center disabled:opacity-30 active:scale-95"><ArrowUp size={19}/></button></div></div></div>}
+   {tab==='chat'&&<div className="px-3 pb-2"><div className="glass border border-white/[.12] rounded-2xl p-2 shadow-2xl"><textarea value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}} rows={2} placeholder="Message your local model…" className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-600"/><div className="flex items-center justify-between px-1"><span className="text-[10px] text-slate-600">Enter to send · Shift + Enter for newline</span>{busy?<button onClick={stopGeneration} aria-label="Stop generation" title="Stop generation" className="w-10 h-10 rounded-xl bg-red-400 text-slate-950 grid place-items-center active:scale-95"><Square size={16} fill="currentColor"/></button>:<button onClick={sendMessage} disabled={!draft.trim()} aria-label="Send message" className="w-10 h-10 rounded-xl bg-lime-300 text-slate-950 grid place-items-center disabled:opacity-30 active:scale-95"><ArrowUp size={19}/></button>}</div></div></div>}
    <nav className="glass border-t border-white/[.09] safe-bottom grid grid-cols-4 px-2 pt-2">{nav.map(n=>{const I=n.icon;return <button key={n.id} onClick={()=>setTab(n.id)} className={'flex flex-col items-center gap-1 py-2 rounded-xl transition '+(tab===n.id?'text-lime-300':'text-slate-500')}><I size={19} strokeWidth={tab===n.id?2.4:1.8}/><span className="text-[10px] font-medium">{n.label}</span>{tab===n.id&&<span className="w-1 h-1 rounded-full bg-lime-300"/>}</button>})}</nav>
   </div>
   {showSettings&&<div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={()=>setShowSettings(false)}><div onClick={e=>e.stopPropagation()} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#11151d] p-5 pb-9 max-h-[88vh] overflow-auto"><div className="flex items-center justify-between mb-5"><div><div className="text-xs text-lime-300 tracking-widest uppercase">Configuration</div><h2 className="text-xl font-semibold mt-1">Settings</h2></div><button onClick={()=>setShowSettings(false)} className="p-2 rounded-xl bg-white/[.06]"><X size={18}/></button></div><label className="text-xs text-slate-400">Ollama API base URL</label><input value={state.baseUrl} onChange={e=>update({baseUrl:e.target.value})} className="w-full mt-2 mb-4 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><label className="text-xs text-slate-400">Default model</label><input value={state.model} onChange={e=>update({model:e.target.value})} placeholder="qwen2.5:1.5b" className="w-full mt-2 mb-4 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><div className="border-t border-white/[.08] my-5 pt-5"><div className="text-sm font-semibold mb-3">GitHub integration</div><label className="text-xs text-slate-400">Personal access token</label><input type="password" autoComplete="off" value={state.settings?.githubToken||''} onChange={e=>update({settings:{...state.settings,githubToken:e.target.value}})} placeholder="github_pat_…" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><label className="text-xs text-slate-400">Repository</label><input value={state.settings?.githubRepo||'michaelkage/Axiom'} onChange={e=>update({settings:{...state.settings,githubRepo:e.target.value}})} className="w-full mt-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><div className="text-sm font-semibold mt-5 mb-3">Supabase integration</div><label className="text-xs text-slate-400">Project URL</label><input value={state.settings?.supabaseUrl||''} onChange={e=>update({settings:{...state.settings,supabaseUrl:e.target.value}})} placeholder="https://project.supabase.co" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><label className="text-xs text-slate-400">Publishable / anon key only</label><input type="password" autoComplete="off" value={state.settings?.supabaseKey||''} onChange={e=>update({settings:{...state.settings,supabaseKey:e.target.value}})} placeholder="sb_publishable_…" className="w-full mt-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/></div><button onClick={()=>{checkOllama();}} className="w-full p-3 rounded-xl bg-lime-300 text-slate-950 text-sm font-semibold">Test Ollama connection</button><div className="mt-5 p-3 rounded-xl bg-amber-300/[.06] border border-amber-300/10 text-xs text-amber-200/80 leading-relaxed"><Shield size={14} className="inline mr-2"/>LocalStorage persists your configuration and conversations on this device. It is not encrypted. Avoid storing production secrets or high-privilege tokens here. Browser access to localhost also requires Ollama CORS configuration; HTTPS pages may be blocked from calling an HTTP localhost endpoint by browser security rules.</div><div className="mt-5 text-xs text-slate-600">Axiom PWA · 1.0.0 · Mobile-first preview</div></div></div>}
