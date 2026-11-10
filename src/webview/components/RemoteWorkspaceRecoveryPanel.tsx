@@ -14,6 +14,7 @@ type RemoteWorkspaceApi = {
   reconcile: (id: string) => Promise<ReconcileResult>;
   pushRecovered: (request: { id: string }) => Promise<{ state: string; commitSha: string }>;
   cleanup: (id: string) => Promise<{ cleaned: boolean; commitSha: string }>;
+  cancel: (id: string) => Promise<boolean>;
 };
 declare global {
   interface Window { axiomDesktop?: { remoteWorkspace?: RemoteWorkspaceApi } }
@@ -44,6 +45,18 @@ export function RemoteWorkspaceRecoveryPanel() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Recovery check failed.");
     } finally { setBusy(null); }
+  };
+
+  const cancel = async (job: RemoteJob) => {
+    if (!api()) return;
+    try {
+      const requested = await api()!.cancel(job.id);
+      setNotice(requested
+        ? "Cancellation requested. Axiom will stop at the next safe Git operation boundary."
+        : "No cancellable operation is currently running for this workspace.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not cancel this operation.");
+    }
   };
 
   const cleanup = async (job: RemoteJob) => {
@@ -107,6 +120,11 @@ export function RemoteWorkspaceRecoveryPanel() {
                   </div>
                 </Show>
                 <div class="mt-3 flex flex-wrap gap-2">
+                  <Show when={busy() === job.id}>
+                    <button class="workflow-plan__secondary" onClick={() => void cancel(job)}>
+                      Cancel operation
+                    </button>
+                  </Show>
                   <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void reconcile(job.id)}>
                     {busy() === job.id ? "Checking…" : "Check recovery"}
                   </button>
