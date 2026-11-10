@@ -53,7 +53,8 @@ function createWorkerStateStore(userDataPath, workspaceRoot) {
         } : {}),
         updatedAt: new Date().toISOString()
       };
-      if (index >= 0) tasks[index] = next; else tasks.push(next);
+      if (index >= 0) tasks.splice(index, 1);
+      tasks.push(next);
       await write(tasks); return next;
     });
   }
