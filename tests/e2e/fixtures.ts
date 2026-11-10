@@ -1,5 +1,6 @@
 import { test as base, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "child_process";
+import { createServer } from "http";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -107,7 +108,106 @@ async function waitForServerReady(url: string, timeout = 10000): Promise<void> {
   throw new Error(`Server at ${url} did not become ready within ${timeout}ms`);
 }
 
-async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServer> {
+async function startMockModelServer(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/v1/models") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ object: "list", data: [{ id: "mock", object: "model", created: 0, owned_by: "axiom-e2e" }] }));
+      return;
+    }
+    if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Not found" } }));
+      return;
+    }
+    let body = "";
+    for await (const chunk of request) body += chunk.toString();
+    let payload: { model?: string; stream?: boolean } = {};
+    try {
+      payload = JSON.parse(body || "{}");
+    } catch {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Invalid JSON request" } }));
+      return;
+    }
+    const id = "chatcmpl-axiom-e2e-" + Date.now();
+    const created = Math.floor(Date.now() / 1000);
+    const model = payload.model || "mock";
+    const message = "Axiom E2E mock response.";
+    if (payload.stream === false) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        id, object: "chat.completion", created, model,
+        choices: [{ index: 0, message: { role: "assistant", content: message }, finish_reason: "stop" }],
+      }));
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
+    });
+    response.write("data: " + JSON.stringify({
+      id, object: "chat.completion.chunk", created, model,
+      choices: [{ index: 0, delta: { role: "assistant", content: message }, finish_reason: null }],
+    }) + "\n\n");
+    response.write("data: " + JSON.stringify({
+      id, object: "chat.completion.chunk", created, model,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    }) + "\n\n");
+    response.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw new Error("Could not determine mock model server address");
+  }
+  return {
+    url: "http://127.0.0.1:" + address.port,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    }),
+  };
+}
+
+async function startOpenCodeServer(workspaceRoot: string, modelServerUrl: string): Promise<OpenCodeServer> {
+  // E2E inference is deterministic and does not depend on external credentials.
+  const testConfig = {
+    "$schema": "https://opencode.ai/config.json",
+    share: "disabled",
+    model: "axiom-e2e/mock",
+    provider: {
+      "axiom-e2e": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Axiom E2E",
+        options: { baseURL: modelServerUrl + "/v1", apiKey: "axiom-e2e" },
+        models: { mock: { name: "Axiom E2E Mock" } },
+      },
+    },
+    agent: {
+      main: { description: "Primary coding agent" },
+      build: { disable: true },
+      plan: { disable: true },
+    },
+    permission: {
+      bash: {
+        "*": "allow",
+        "*DB_TARGET=production*": "ask",
+        "*NODE_ENV=production*": "ask",
+      },
+    },
+    mcp: {},
+  };
+  fs.writeFileSync(path.join(workspaceRoot, "opencode.json"), JSON.stringify(testConfig, null, 2));
+
   return new Promise((resolve, reject) => {
     console.log(`[fixture] Spawning opencode serve in ${workspaceRoot}`);
     
@@ -242,8 +342,10 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
         fs.mkdirSync(workspaceRoot, { recursive: true });
       }
       
+      console.log(`[fixture] Starting deterministic E2E model server`);
+      const modelServer = await startMockModelServer();
       console.log(`[fixture] Starting OpenCode server in ${workspaceRoot}`);
-      const server = await startOpenCodeServer(workspaceRoot);
+      const server = await startOpenCodeServer(workspaceRoot, modelServer.url);
       console.log(`[fixture] OpenCode server started at ${server.url}`);
       
       // Wait for server to be fully ready
@@ -254,6 +356,7 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
       // Cleanup: kill the server after tests
       console.log(`[fixture] Stopping OpenCode server`);
       server.process.kill("SIGTERM");
+      await modelServer.close();
     },
     { scope: "worker" },
   ],
