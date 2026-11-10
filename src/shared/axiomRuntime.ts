@@ -111,6 +111,8 @@ export interface TaskBatchExecutionOptions {
   signal?: AbortSignal;
   /** Per-task wall-clock limit. Timed-out runners may continue if they ignore the signal. */
   timeoutMs?: number;
+  /** Maximum number of independent workers allowed to run at the same time. Defaults to 3. */
+  maxConcurrency?: number;
 }
 export class TaskBatchExecutionError extends Error {
   constructor(
@@ -133,6 +135,18 @@ export async function executeTaskBatches<T>(
   const completedContext: CompletedTaskContext[] = [];
   const emit = (record: TaskExecutionRecord) => { try { onOutcome?.(record); } catch { /* observers must not break task execution */ } };
   const batches = createIndependentTasks(tasks);
+  const maxConcurrency = Number.isInteger(options.maxConcurrency) && (options.maxConcurrency ?? 0) > 0
+    ? Math.min(options.maxConcurrency!, Math.max(tasks.length, 1)) : 3;
+  let activeWorkers = 0;
+  const workerWaiters: Array<() => void> = [];
+  const acquireWorkerSlot = async () => {
+    if (activeWorkers >= maxConcurrency) await new Promise<void>(resolve => workerWaiters.push(resolve));
+    activeWorkers++;
+  };
+  const releaseWorkerSlot = () => {
+    activeWorkers--;
+    workerWaiters.shift()?.();
+  };
   const outcomeById = new Map<string, TaskExecutionStatus>();
   for (const task of tasks) { outcomeById.set(task.id, "queued"); emit({ taskId: task.id, title: task.title, status: "queued" }); }
 
@@ -177,6 +191,7 @@ export async function executeTaskBatches<T>(
   for (const batch of batches) {
     if (options.signal?.aborted) finishFailure([], "Task execution cancelled before the next batch.", "cancelled");
     const settled = await Promise.allSettled(batch.map(async task => {
+      await acquireWorkerSlot();
       const startedAt = Date.now();
       const controller = new AbortController();
       const abortFromParent = () => controller.abort(options.signal?.reason);
@@ -242,6 +257,7 @@ export async function executeTaskBatches<T>(
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         options.signal?.removeEventListener("abort", abortFromParent);
+        releaseWorkerSlot();
       }
     }));
     for (const entry of settled) if (entry.status === "fulfilled") {
