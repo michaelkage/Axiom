@@ -38,6 +38,11 @@ async function runRemoteWorkspaceOperation(job, kind, operation) {
   try {
     await persistRemoteWorkspaceJobs();
     return await operation(controller.signal);
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      job.interruptedOperation = { kind, startedAt: job.operation.startedAt };
+    }
+    throw error;
   } finally {
     remoteWorkspaceOperations.delete(job.id);
     job.operation = null;
