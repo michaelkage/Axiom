@@ -92,7 +92,7 @@ export default function App(){
      executeTool,
      serializeToolResult,
      getToolMeta:name=>listTools().find(tool=>tool.name===name),
-     confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?'),
+     confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\n\nArguments:\n'+JSON.stringify(args,null,2)+'\n\nAllow this action?'),
      onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
      onEvent:event=>{
       if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
