@@ -226,3 +226,23 @@ test("renders assistant Markdown headings, lists, inline formatting, links and f
   await expect(page.locator(".markdown-content script")).toHaveCount(0);
   expect(await page.evaluate(() => window.markdownXss)).toBeUndefined();
 });
+
+
+test("copies a complete assistant response from its message actions", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const response = "## Copy-ready answer\n\nKeep every line intact.";
+  await page.route("**/api/chat", route => route.fulfill({
+    status: 200,
+    contentType: "application/x-ndjson",
+    body: JSON.stringify({ message: { role: "assistant", content: response }, done: true }) + "\\n",
+  }));
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Give me a response to copy");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("heading", { name: "Copy-ready answer" })).toBeVisible();
+  await page.getByRole("button", { name: "Copy assistant response" }).click();
+
+  await expect(page.getByText("Assistant response copied.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(response);
+});
