@@ -65,6 +65,29 @@ test("exposes integration switches and reports missing credentials", async ({ pa
   await expect(supabase).toHaveAttribute("aria-checked", "false");
 });
 
+
+test("copies the custom tool starter as readable multiline source", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await page.getByRole("button", { name: "Copy custom tool template" }).click();
+
+  const expected = [
+    "import { registerTool } from './lib/toolRegistry.js';",
+    "",
+    "registerTool({",
+    "  name: 'my_custom_tool',",
+    "  description: 'Describe what this tool does',",
+    "  inputSchema: { type: 'object', properties: {}, additionalProperties: false }",
+    "}, async (input) => {",
+    "  // Implement your async capability here",
+    "  return { ok: true };",
+    "});",
+  ].join("\\n");
+  await expect(page.getByText("Custom tool template copied.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
+});
+
 test("adds and removes an MCP endpoint from the mobile server manager", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "MCP", exact: true }).click();
