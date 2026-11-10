@@ -86,6 +86,32 @@ describe("Axiom runtime helpers", () => {
     ])).toThrow(/unsafe workspace-relative target path/);
   });
 
+  it("retries only transient failures and records the successful attempt", async () => {
+    const tasks = parseSubTasks([
+      { id: "retry", title: "Retry", scope: "transient failure", targetFiles: ["retry.ts"], dependsOn: [], acceptanceCriteria: ["Eventually succeeds"] },
+    ]);
+    let calls = 0;
+    const outcomes: Array<{ status: string; attempt?: number }> = [];
+    const result = await executeTaskBatches(tasks, async () => {
+      calls++;
+      if (calls === 1) throw new Error("ECONNRESET");
+      return "recovered";
+    }, record => outcomes.push(record));
+    expect(result[0]?.result).toBe("recovered");
+    expect(calls).toBe(2);
+    expect(outcomes.filter(item => item.status === "running").map(item => item.attempt)).toEqual([undefined, 1, 2]);
+    expect(outcomes.find(item => item.status === "succeeded")?.attempt).toBe(2);
+  });
+
+  it("enforces a total execution-attempt budget across tasks", async () => {
+    const tasks = parseSubTasks(["a", "b"].map(id => ({
+      id, title: id, scope: "budget", targetFiles: [id + ".ts"], dependsOn: [], acceptanceCriteria: ["Budget enforced"],
+    })));
+    let calls = 0;
+    await expect(executeTaskBatches(tasks, async () => { calls++; return "ok"; }, undefined, { maxTotalAttempts: 1 })).rejects.toThrow(/attempt budget exhausted/);
+    expect(calls).toBe(1);
+  });
+
   it("caps concurrent workers while allowing the rest of a safe batch to finish", async () => {
     const tasks = parseSubTasks(["a", "b", "c", "d", "e"].map(id => ({
       id, title: id.toUpperCase(), scope: "independent", targetFiles: [id + ".ts"], dependsOn: [], acceptanceCriteria: ["Task completes"],
