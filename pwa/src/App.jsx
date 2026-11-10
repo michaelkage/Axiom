@@ -202,6 +202,7 @@ export default function App(){
   }catch(e){if(mcpAttempts.current[id]!==attempt)return;setState(current=>({...current,servers:current.servers.map(s=>s.id===id?{...s,status:'error'}:s)}));log('error','MCP discovery failed',e.message+' — browser CORS and server transport support may require a local proxy.');}
  }
  useEffect(()=>{if(mcpRestoreStarted.current)return;mcpRestoreStarted.current=true;for(const server of state.servers.filter(s=>s.status==='connected'))discoverServer(server.id);},[]);
+ useEffect(()=>{const reconnect=()=>{if(document.visibilityState!=='visible'||!navigator.onLine)return;for(const server of state.servers.filter(item=>item.status==='error'))discoverServer(server.id);};window.addEventListener('online',reconnect);document.addEventListener('visibilitychange',reconnect);return()=>{window.removeEventListener('online',reconnect);document.removeEventListener('visibilitychange',reconnect);};},[state.servers]);
  const nav=[{id:'chat',label:'Chat',icon:MessageSquare},{id:'tools',label:'Tools',icon:Wrench},{id:'mcp',label:'MCP',icon:NetworkIcon},{id:'logs',label:'Logs',icon:Activity}];
  return <div className="min-h-[100dvh] text-slate-100 flex flex-col max-w-3xl mx-auto relative">
   <header className="safe-top sticky top-0 z-30 glass border-b border-white/[.07]">
