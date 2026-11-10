@@ -67,7 +67,7 @@ export function RemoteWorkspaceRecoveryPanel() {
     const result = results()[job.id];
     if (!result || result.state !== "local-commit-pending-push") return;
     const confirmed = window.confirm(
-      "Axiom will freshly verify this existing local commit and push it only if the remote branch has not changed. No new commit will be created. Continue?"
+      "Axiom will run Git's whitespace/error check (git diff --check), then push this existing commit only if the local checkout and remote branch remain unchanged. This does not run the project's test suite. No new commit will be created. Continue?"
     );
     if (!confirmed || !api()) return;
     setBusy(job.id); setNotice("");
@@ -117,7 +117,7 @@ export function RemoteWorkspaceRecoveryPanel() {
                   </Show>
                   <Show when={result()?.state === "local-commit-pending-push"}>
                     <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void pushRecovered(job)}>
-                      Verify & push existing commit
+                      Check diff & push existing commit
                     </button>
                   </Show>
                 </div>
