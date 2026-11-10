@@ -483,3 +483,14 @@ test("interrupted clone recovery refuses symlinks and paths outside the managed 
     await fs.rm(outside, { recursive: true, force: true });
   }
 });
+
+
+test("interrupted clone recovery tolerates a managed root that was never created", async () => {
+  const root = path.join(os.tmpdir(), "axiom-never-created-" + Date.now() + "-" + process.pid);
+  const result = await discardInterruptedCloneWorkspace({
+    mode: "temporary-full", workspaceOwnership: "axiom-job",
+    temporaryRoot: root, workspacePath: path.join(root, "job-1")
+  });
+  assert.deepEqual(result, { removed: false, alreadyAbsent: true });
+  await assert.rejects(() => fs.lstat(root), { code: "ENOENT" });
+});
