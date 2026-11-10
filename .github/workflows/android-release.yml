@@ -1,0 +1,65 @@
+name: Android APK release
+on:
+  push:
+    tags:
+      - "android-v*"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-android:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install dependencies
+        run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+      - name: Run unit tests
+        run: npm test
+      - name: Build web application
+        run: npm run build
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+      - name: Build installable Android APK
+        working-directory: pwa/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+      - name: Prepare APK
+        working-directory: .
+        run: |
+          mkdir -p release
+          cp pwa/android/app/build/outputs/apk/debug/app-debug.apk release/Axiom-Android-universal-debug.apk
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Axiom-Android-${{ github.ref_name }}
+          path: release/Axiom-Android-universal-debug.apk
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Axiom Android ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/Axiom-Android-universal-debug.apk
+          fail_on_unmatched_files: true
