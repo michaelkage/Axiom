@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Environment
 import android.util.Base64
 import com.getcapacitor.*
+import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.File
 import java.io.FileInputStream
 import java.security.KeyStore
