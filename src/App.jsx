@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
-import { consumeNdjsonStream } from './lib/ndjson.js';
 import { runOllamaToolChat } from './lib/ollamaChat.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
