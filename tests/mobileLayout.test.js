@@ -26,6 +26,9 @@ test('mobile composer has a touch-sized target and a screen-reader label', () =>
   assert.match(app, /enterKeyHint="send"/);
   assert.match(app, /min-h-\[44px\] max-h-32 overflow-y-auto/);
   assert.match(app, /!e\.nativeEvent\.isComposing/);
+  assert.match(app, /w-11 h-11 rounded-xl bg-lime-300 text-slate-950 grid place-items-center/);
+  assert.match(app, /w-11 h-11 rounded-xl bg-red-400 text-slate-950 grid place-items-center/);
+  assert.match(app, /min-h-11 flex items-center gap-1\.5 text-sm rounded-xl/);
 });
 
 test('chat messages constrain width and wrap long unbroken content', () => {
