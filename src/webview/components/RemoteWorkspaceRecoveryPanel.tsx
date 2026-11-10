@@ -16,6 +16,7 @@ type RemoteWorkspaceApi = {
   pushRecovered: (request: { id: string }) => Promise<{ state: string; commitSha: string }>;
   cleanup: (id: string) => Promise<{ cleaned: boolean; commitSha: string }>;
   cancel: (id: string) => Promise<boolean>;
+  retryClone: (id: string) => Promise<{ id: string; status: string }>;
 };
 declare global {
   interface Window { axiomDesktop?: { remoteWorkspace?: RemoteWorkspaceApi } }
@@ -62,6 +63,19 @@ export function RemoteWorkspaceRecoveryPanel() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not cancel this operation.");
     }
+  };
+
+  const retryClone = async (job: RemoteJob) => {
+    if (job.mode === "persistent" || job.status !== "clone-interrupted" || !api()) return;
+    setBusy(job.id); setNotice("");
+    try {
+      await api()!.retryClone(job.id);
+      setNotice("Retrying the interrupted temporary clone…");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not retry the interrupted clone.");
+      await refresh();
+    } finally { setBusy(null); }
   };
 
   const cleanup = async (job: RemoteJob) => {
@@ -139,6 +153,11 @@ export function RemoteWorkspaceRecoveryPanel() {
                   </div>
                 </Show>
                 <div class="mt-3 flex flex-wrap gap-2">
+                  <Show when={job.mode !== "persistent" && job.status === "clone-interrupted"}>
+                    <button class="workflow-plan__secondary" disabled={busy() === job.id || !!job.operation} onClick={() => void retryClone(job)}>
+                      Retry clone
+                    </button>
+                  </Show>
                   <Show when={busy() === job.id || !!job.operation}>
                     <button class="workflow-plan__secondary" onClick={() => void cancel(job)}>
                       Cancel {job.operation?.kind || "operation"}
