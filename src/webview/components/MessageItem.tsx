@@ -122,7 +122,13 @@ export function MessageItem(props: MessageItemProps) {
               </div>
             </Show>
             <Show when={userText()}>
-              <div class="message-text user-message-text">{userText()}</div>
+              <Streamdown
+                mode="static"
+                components={messageMarkdownComponents}
+                class="message-text user-message-text"
+              >
+                {userText()}
+              </Streamdown>
             </Show>
           </Show>
           <Show

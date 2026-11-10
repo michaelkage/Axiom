@@ -177,3 +177,24 @@ See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_P
 ## Contributing
 
 Trace how existing infrastructure is used before replacing it. Keep task scopes explicit, define acceptance criteria for user-visible behavior, and prefer verifiable outcomes over claims in agent summaries. Changes to desktop startup or runtime lifecycle should include a smoke test on the target operating system.
+
+
+## Mobile PWA
+
+The Android-first React PWA lives in [`pwa/`](pwa/), separate from the standalone desktop application.
+
+```bash
+cd pwa
+npm install
+npm run dev
+```
+
+Run its unit tests, production build, and mobile-browser tests from that directory:
+
+```bash
+npm test
+npm run build
+npm run test:e2e:mobile
+```
+
+See [the mobile PWA architecture](docs/MOBILE_PWA_ARCHITECTURE.md) for its runtime adapters, security boundaries, and remaining delivery work.

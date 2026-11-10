@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const [manifestText, worker, html, entry] = await Promise.all([
+  readFile(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'),
+  readFile(new URL('../public/sw.js', import.meta.url), 'utf8'),
+  readFile(new URL('../index.html', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main.jsx', import.meta.url), 'utf8')
+]);
+const manifest = JSON.parse(manifestText);
+
+test('PWA manifest declares a standalone, portrait-first mobile app', () => {
+  assert.equal(manifest.name, 'Axiom AI Command Center');
+  assert.equal(manifest.short_name, 'Axiom');
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.scope, '/');
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.orientation, 'portrait-primary');
+  assert.ok(manifest.icons.some(icon => icon.src === '/axiom.svg' && icon.purpose.includes('maskable')));
+});
+
+test('document exposes install metadata and a viewport that supports display cutouts', () => {
+  assert.match(html, /name="viewport"[^>]*viewport-fit=cover/);
+  assert.match(html, /name="theme-color"/);
+  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(entry, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+});
+
+test('service worker precaches the app shell and removes obsolete cache versions', () => {
+  assert.match(worker, /const CACHE = 'axiom-shell-v\d+'/);
+  assert.match(worker, /const SHELL = \['\/', '\/index\.html', '\/manifest\.webmanifest', '\/axiom\.svg'\]/);
+  assert.match(worker, /keys\.filter\(key => key !== CACHE\)/);
+  assert.match(worker, /cache\.addAll\(SHELL\)/);
+});
+
+test('service worker limits caching to same-origin GET app resources', () => {
+  assert.match(worker, /request\.method !== 'GET'/);
+  assert.match(worker, /new URL\(request\.url\)\.origin !== self\.location\.origin/);
+  assert.match(worker, /url\.pathname\.startsWith\('\/assets\/'\)/);
+  assert.match(worker, /if \(!isNavigation && !isStaticAsset\) return/);
+});
+
+test('offline navigation falls back to the cached application document', () => {
+  assert.match(worker, /const response = await fetch\(request\)/);
+  assert.match(worker, /return \(await caches\.match\('\/index\.html'\)\) \|\| Response\.error\(\)/);
+  assert.match(worker, /cache\.put\('\/index\.html', response\.clone\(\)\)/);
+});

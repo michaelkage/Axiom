@@ -367,6 +367,28 @@ async function createWindow() {
     }
   });
 
+  // Capture the failure modes that commonly produce a blank packaged window.
+  // Strip query/hash data because loadFile query parameters can contain workspace paths.
+  const diagnosticUrl = value => {
+    try { const parsed = new URL(value); parsed.search = ""; parsed.hash = ""; return parsed.toString(); }
+    catch { return String(value || "").split(/[?#]/, 1)[0].slice(0, 500); }
+  };
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    void appendRuntimeLog(
+      `Renderer load failed (code=${errorCode}, mainFrame=${Boolean(isMainFrame)}): ${String(errorDescription || "unknown").slice(0, 300)}; URL=${diagnosticUrl(validatedURL)}`
+    );
+  });
+  mainWindow.webContents.on("console-message", (_event, detailsOrLevel, message, line, sourceId) => {
+    // Electron changed this event from positional arguments to a details object.
+    const details = detailsOrLevel && typeof detailsOrLevel === "object"
+      ? detailsOrLevel
+      : { level: detailsOrLevel, message, lineNumber: line, sourceId };
+    const text = String(details.message || "").replace(/[\\r\\n\\t]+/g, " ").slice(0, 800);
+    if (!text) return;
+    void appendRuntimeLog(
+      `Renderer console (level=${details.level ?? "unknown"}): ${text} at ${diagnosticUrl(details.sourceId || "")}:${details.lineNumber ?? details.line ?? 0}`
+    );
+  });
   mainWindow.webContents.once("did-finish-load", () => {
     void appendRuntimeLog("Axiom renderer loaded.");
     // A loaded HTML document can still be a black window if the bundled UI assets
