@@ -42,3 +42,13 @@ Do not expose the raw Node gateway port to the public internet. It is a single-u
 3. The tagged release workflow runs `npm ci`, the production dependency audit, unit tests, build, and mobile browser tests.
 4. Download the `axiom-mobile-mobile-v1.1.0` workflow artifact and publish its `dist/` contents to the HTTPS static host.
 5. Complete [ANDROID_VALIDATION.md](./ANDROID_VALIDATION.md) on a physical Android device before declaring the release Android-verified.
+
+## Android APK download
+
+The Android workflow builds an installable universal debug APK from the production PWA bundle.
+
+- Run it manually from **Actions → Android APK release → Run workflow** to get a downloadable workflow artifact.
+- Or create and push an `android-v1.1.0` tag to build the APK and publish it as a GitHub Release.
+- Download `Axiom-Android-universal-debug.apk` from the workflow artifact or the GitHub Release assets, then open it on the Android device and allow installation from that source when Android prompts.
+
+This debug-signed APK is intended for direct sideloading and testing. It is not signed with a private production upload key and is not the Play Store release package. A production Play Store release requires a privately managed signing key and Android App Bundle (AAB) configuration.
