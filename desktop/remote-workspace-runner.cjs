@@ -176,10 +176,36 @@ async function reconcileRemoteWorkspace(job, options = {}) {
   }
   return { state: "diverged", reason: "Local and remote branches have diverged; manual conflict resolution is required.", localSha, remoteSha, dirty: !!dirty };
 }
+/** Explicitly push a previously committed, single-commit recovery after fresh verification. */
+async function pushReconciledWorkspace(job, options = {}) {
+  if (typeof options.verify !== "function") throw new Error("A fresh verification callback is required before pushing a recovered commit.");
+  const state = await reconcileRemoteWorkspace(job, options);
+  if (state.state !== "local-commit-pending-push") throw new Error("Recovered commit is not safely pushable: " + state.state + ".");
+  if (await options.verify(job.workspacePath) !== true) throw new Error("Workspace verification did not pass; refusing to push the recovered commit.");
+  const currentRemote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
+    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
+  });
+  const remoteSha = currentRemote.stdout.trim().split(/\s+/)[0] || "";
+  if (remoteSha !== state.remoteSha) throw new Error("Remote branch changed during recovery verification; refusing to push.");
+  await git(job.workspacePath, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000 });
+  const confirmed = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
+    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
+  });
+  const confirmedSha = confirmed.stdout.trim().split(/\s+/)[0] || "";
+  if (confirmedSha !== state.localSha) throw new Error("Push did not confirm the recovered commit SHA; workspace retained for manual recovery.");
+  job.commitSha = state.localSha;
+  job.verificationPassed = true;
+  job.pushSucceeded = true;
+  job.remoteCommitConfirmed = true;
+  job.status = "pushed";
+  return { state: "pushed", commitSha: state.localSha, branch: job.branch };
+}
 async function cleanupRemoteWorkspace(job) {
   if (!mayCleanupRemoteWorkspace(job)) throw new Error("Refusing cleanup: remote commit, verification, push, and job-owned temporary workspace must all be confirmed.");
   await fs.rm(job.workspacePath, { recursive: true, force: false });
   job.status = "cleaned";
   return { cleaned: true, commitSha: job.commitSha };
 }
-module.exports = { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
+module.exports = { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, safeRemoteUrl, git };
