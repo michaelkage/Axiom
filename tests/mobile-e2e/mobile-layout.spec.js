@@ -83,7 +83,7 @@ test("copies the custom tool starter as readable multiline source", async ({ pag
     "  // Implement your async capability here",
     "  return { ok: true };",
     "});",
-  ].join("\\n");
+  ].join("\n");
   await expect(page.getByText("Custom tool template copied.")).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
 });
