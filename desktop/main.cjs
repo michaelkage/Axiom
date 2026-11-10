@@ -849,6 +849,34 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   return { id, mode: job.mode, branch: job.branch, workspacePath: job.workspacePath, status: job.status, paths: job.paths };
 });
 
+ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = remoteWorkspaceJobs.get(id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  if (job.mode === "persistent" || job.workspaceOwnership !== "axiom-job" ||
+      job.status !== "clone-interrupted" || job.interruptedOperation?.kind !== "clone") {
+    throw new Error("Only an interrupted Axiom-owned temporary clone can be retried automatically. Persistent destinations are preserved for manual inspection.");
+  }
+  return runRemoteWorkspaceOperation(job, "clone", async signal => {
+    job.status = "creating";
+    job.error = null;
+    await persistRemoteWorkspaceJobs();
+    try {
+      await discardInterruptedCloneWorkspace(job);
+      const created = await createRemoteWorkspace({
+        mode: job.mode, repositoryUrl: job.repositoryUrl,
+        branch: job.branch, paths: job.paths
+      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal });
+      Object.assign(job, created, { id: job.id, error: null, interruptedOperation: null });
+      return { id: job.id, status: job.status };
+    } catch (error) {
+      job.status = error && error.name === "AbortError" ? "clone-interrupted" : "failed";
+      job.error = String(error.message || error).slice(0, 500);
+      throw error;
+    } finally { await persistRemoteWorkspaceJobs(); }
+  });
+});
+
 ipcMain.handle("axiom:remote-workspace-list", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return [...remoteWorkspaceJobs.values()].map(job => ({
