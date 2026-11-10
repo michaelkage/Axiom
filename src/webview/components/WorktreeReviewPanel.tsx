@@ -16,8 +16,8 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
   const [repairing, setRepairing] = createSignal(false);
   const [forceAcknowledged, setForceAcknowledged] = createSignal(false);
   const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
-  const [criteriaDone, setCriteriaDone] = createSignal<string[]>([]);
-  const criteriaComplete = createMemo(() => (props.acceptanceCriteria ?? []).length === 0 || (props.acceptanceCriteria ?? []).every(item => criteriaDone().includes(item)));
+  const [criteriaEvidence, setCriteriaEvidence] = createSignal<Record<string, string>>({});
+  const criteriaComplete = createMemo(() => (props.acceptanceCriteria ?? []).length === 0 || (props.acceptanceCriteria ?? []).every(item => (criteriaEvidence()[item] ?? "").trim().length > 0));
   const effectiveStatus = createMemo(() => gate()?.status === "Ready to review" && !criteriaComplete() ? "Needs fixes" : gate()?.status);
 
   const inspect = () => {
@@ -80,10 +80,16 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
         <Show when={(item.changedFiles?.length ?? 0) > 0}>
         <Show when={(props.acceptanceCriteria ?? []).length > 0}>
           <strong>Acceptance criteria</strong>
-          <p>Mark a criterion complete only after reviewing the diff and evidence.</p>
+          <p>Record the evidence you reviewed for each criterion. A criterion remains outstanding until its evidence note is provided.</p>
           <For each={props.acceptanceCriteria}>{criterion => <label class="worktree-review__file">
-            <input type="checkbox" checked={criteriaDone().includes(criterion)} onChange={event => setCriteriaDone(old => event.currentTarget.checked ? [...new Set([...old, criterion])] : old.filter(item => item !== criterion))} />
-            {criterion}
+            <span>{criterion}</span>
+            <textarea
+              aria-label={"Evidence for: " + criterion}
+              value={criteriaEvidence()[criterion] ?? ""}
+              placeholder="Reference the changed file, diff, test, or observed behavior…"
+              rows={2}
+              onInput={event => setCriteriaEvidence(old => ({ ...old, [criterion]: event.currentTarget.value }))}
+            />
           </label>}</For>
           <Show when={!criteriaComplete()}><p class="worktree-review__note">Outstanding criteria: {(props.acceptanceCriteria ?? []).filter(item => !criteriaDone().includes(item)).length}</p></Show>
         </Show>
