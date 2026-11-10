@@ -121,6 +121,10 @@ async function commitAndPushWorkspace(job, options = {}) {
   await git(directory, ["add", "--all"], { signal: options.signal });
   await git(directory, ["-c", "user.name=" + identityName, "-c", "user.email=" + identityEmail, "commit", "-m", options.message || "Apply changes with Axiom"], { signal: options.signal });
   const localSha = (await git(directory, ["rev-parse", "HEAD"], { signal: options.signal })).stdout;
+  // Record the durable local commit before any cancellable push phase.
+  job.commitSha = localSha;
+  job.pushSucceeded = false;
+  job.remoteCommitConfirmed = false;
   throwIfAborted(options.signal);
   await git(directory, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000, signal: options.signal });
   job.pushSucceeded = true;
@@ -208,7 +212,7 @@ async function pushReconciledWorkspace(job, options = {}) {
   throwIfAborted(options.signal);
   await git(job.workspacePath, ["push", "origin", "HEAD:refs/heads/" + job.branch], { timeout: options.pushTimeout ?? 120000, signal: options.signal });
   const confirmed = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
-    timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
   });
   const confirmedSha = confirmed.stdout.trim().split(/\s+/)[0] || "";
