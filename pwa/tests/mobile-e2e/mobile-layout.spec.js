@@ -55,16 +55,16 @@ test("exposes integration switches and reports missing credentials", async ({ pa
   const github = page.getByRole("switch", { name: "Enable GitHub integration" });
   await expect(github).toHaveAttribute("aria-checked", "false");
   await github.click();
-  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toBeVisible();
+  await expect(page.getByText("Connect the authenticated gateway in Settings before enabling integrations.")).toBeVisible();
   await expect(github).toHaveAttribute("aria-checked", "false");
 
   const supabase = page.getByRole("switch", { name: "Enable Supabase integration" });
   await expect(supabase).toHaveAttribute("aria-checked", "false");
   await supabase.click();
-  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toBeVisible();
+  await expect(page.getByText("Connect the authenticated gateway in Settings before enabling integrations.")).toBeVisible();
   await expect(supabase).toHaveAttribute("aria-checked", "false");
   await page.getByRole("button", { name: "Dismiss notification" }).click();
-  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toHaveCount(0);
+  await expect(page.getByText("Connect the authenticated gateway in Settings before enabling integrations.")).toHaveCount(0);
 });
 
 
@@ -353,6 +353,7 @@ test("gateway credentials remain session-only and are not persisted", async ({ p
   const token = page.getByRole("textbox", { name: "Gateway bearer token" });
   await token.fill("a".repeat(48));
   await expect(token).toHaveValue("a".repeat(48));
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("axiom.mobile.v1"))).not.toBeNull();
   const stored = await page.evaluate(() => localStorage.getItem("axiom.mobile.v1"));
   expect(stored).not.toContain("aaaaaaaa");
   await page.reload();
