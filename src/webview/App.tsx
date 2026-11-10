@@ -10,6 +10,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
+const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
@@ -1885,6 +1886,7 @@ function App() {
         </Show>
         <VerificationPanel results={verificationResults()} />
         <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
+        <RemoteWorkspaceRecoveryPanel />
         
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
