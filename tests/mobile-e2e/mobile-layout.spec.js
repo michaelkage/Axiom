@@ -84,3 +84,67 @@ test("cancels an in-flight mobile chat request from the stop control", async ({ 
   await expect(page.getByText("This should not arrive")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
 });
+
+
+test("keeps streamed output attached to its originating chat when history changes", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("axiom.mobile.v1", JSON.stringify({
+      activeTab: "chat",
+      chats: [
+        { id: "chat-running", title: "Running conversation", messages: [] },
+        { id: "chat-other", title: "Other conversation", messages: [
+          { id: "other-message", role: "user", content: "This is another chat", time: "10:00" }
+        ] }
+      ]
+    }));
+  });
+  await page.route("**/api/chat", async route => {
+    await new Promise(resolve => setTimeout(resolve, 350));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: JSON.stringify({ message: { role: "assistant", content: "Reply belongs to running chat" }, done: true }) + "\\n",
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Keep this response with this chat");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: /Other conversation/ }).click();
+  await expect(page.getByText("This is another chat")).toBeVisible();
+  await expect(page.getByText("Reply belongs to running chat")).toHaveCount(0);
+
+  await expect(page.getByRole("button", { name: "History" })).toBeVisible();
+  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: /Running conversation/ }).click();
+  await expect(page.getByText("Reply belongs to running chat")).toBeVisible();
+});
+
+test("keeps generation cancellation available after navigating away from chat", async ({ page }) => {
+  await page.route("**/api/chat", async route => {
+    await new Promise(resolve => setTimeout(resolve, 700));
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/x-ndjson",
+        body: JSON.stringify({ message: { role: "assistant", content: "Late response must stay cancelled" }, done: true }) + "\\n",
+      });
+    } catch {
+      // Stop may abort the browser request before the mock response is fulfilled.
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Start then navigate");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tool registry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Stop generation" }).first().click();
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  await expect(page.getByText("Generation stopped.")).toBeVisible();
+  await expect(page.getByText("Late response must stay cancelled")).toHaveCount(0);
+});
