@@ -86,6 +86,23 @@ describe("Axiom runtime helpers", () => {
     ])).toThrow(/unsafe workspace-relative target path/);
   });
 
+  it("caps concurrent workers while allowing the rest of a safe batch to finish", async () => {
+    const tasks = parseSubTasks(["a", "b", "c", "d", "e"].map(id => ({
+      id, title: id.toUpperCase(), scope: "independent", targetFiles: [id + ".ts"], dependsOn: [], acceptanceCriteria: ["Task completes"],
+    })));
+    let active = 0;
+    let peak = 0;
+    await executeTaskBatches(tasks, async task => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 8));
+      active--;
+      return task.id;
+    }, undefined, { maxConcurrency: 2 });
+    expect(peak).toBe(2);
+    expect(active).toBe(0);
+  });
+
   it("executes safe batches concurrently and waits between dependency layers", async () => {
     const order: string[] = [];
     const tasks = parseSubTasks([
