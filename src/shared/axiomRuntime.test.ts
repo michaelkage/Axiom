@@ -94,7 +94,7 @@ describe("Axiom runtime helpers", () => {
     const outcomes: Array<{ status: string; attempt?: number }> = [];
     const result = await executeTaskBatches(tasks, async () => {
       calls++;
-      if (calls === 1) throw new Error("ECONNRESET");
+      if (calls === 1) throw new Error("ECONNRESET: connection reset");
       return "recovered";
     }, record => outcomes.push(record));
     expect(result[0]?.result).toBe("recovered");
