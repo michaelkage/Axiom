@@ -82,36 +82,25 @@ export default function App(){
   let answer='';
   try{
    const availableTools=toOllamaTools();
-   if(availableTools.length){
-    answer=(await runOllamaToolChat({
-     baseUrl:base,
-     model:state.model,
-     messages:[...priorMessages,userMsg],
-     tools:availableTools,
-     signal,
-     executeTool,
-     serializeToolResult,
-     getToolMeta:name=>listTools().find(tool=>tool.name===name),
-     confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\n\nArguments:\n'+JSON.stringify(args,null,2)+'\n\nAllow this action?'),
-     onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
-     onEvent:event=>{
-      if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
-      else if(event.type==='tool.request')log('request','Tool: '+event.name,JSON.stringify(event.args,null,2));
-      else if(event.type==='tool.completed')log('success','Tool completed: '+event.name,event.result);
-      else if(event.type==='tool.failed')log('error','Tool failed: '+event.name,event.error);
-      else if(event.type==='tool.declined')log('info','Tool action declined: '+event.name);
-     }
-    })).answer;
-   }else{
-    const payload={model:state.model,prompt,stream:true};
-    log('request','Ollama /api/generate',JSON.stringify(payload,null,2));
-    const response=await fetch(base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal});
-    if(!response.ok)throw new Error('Ollama returned HTTP '+response.status);
-    await consumeNdjsonStream(response,part=>{
-     answer+=part.response||'';
-     patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);
-    },{signal});
-   }
+   answer=(await runOllamaToolChat({
+    baseUrl:base,
+    model:state.model,
+    messages:[...priorMessages,userMsg],
+    tools:availableTools,
+    signal,
+    executeTool,
+    serializeToolResult,
+    getToolMeta:name=>listTools().find(tool=>tool.name===name),
+    confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\\n\\nArguments:\\n'+JSON.stringify(args,null,2)+'\\n\\nAllow this action?'),
+    onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
+    onEvent:event=>{
+     if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
+     else if(event.type==='tool.request')log('request','Tool: '+event.name,JSON.stringify(event.args,null,2));
+     else if(event.type==='tool.completed')log('success','Tool completed: '+event.name,event.result);
+     else if(event.type==='tool.failed')log('error','Tool failed: '+event.name,event.error);
+     else if(event.type==='tool.declined')log('info','Tool action declined: '+event.name);
+    }
+   })).answer;
    log('success','Generation complete',state.model);
   }catch(e){if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m),chatId);log('error','Generation failed',e.message);}}
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
