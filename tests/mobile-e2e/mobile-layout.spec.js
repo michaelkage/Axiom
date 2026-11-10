@@ -59,3 +59,28 @@ test("sends a chat turn through the streaming Ollama endpoint", async ({ page })
   await expect(page.getByText("Browser test reply")).toBeVisible();
   await expect(page.getByText("Say hello")).toBeVisible();
 });
+
+test("cancels an in-flight mobile chat request from the stop control", async ({ page }) => {
+  await page.route("**/api/chat", async route => {
+    await new Promise(resolve => setTimeout(resolve, 600));
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/x-ndjson",
+        body: JSON.stringify({ message: { role: "assistant", content: "This should not arrive" }, done: true }) + "\\n",
+      });
+    } catch {
+      // The browser may already have aborted the request after Stop was pressed.
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Message your local model" }).fill("Start a long response");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Stop generation" }).first().click();
+
+  await expect(page.getByText("Generation stopped.")).toBeVisible();
+  await expect(page.getByText("This should not arrive")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+});
