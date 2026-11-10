@@ -1,13 +1,12 @@
 name: Android APK release
 on:
   push:
-    tags:
-      - "android-v*"
-  push:
     branches: [main]
     paths:
       - "pwa/**"
       - ".github/workflows/android-release.yml"
+    tags:
+      - "android-v*"
   workflow_dispatch:
 permissions:
   contents: write
