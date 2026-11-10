@@ -55,16 +55,16 @@ test("exposes integration switches and reports missing credentials", async ({ pa
   const github = page.getByRole("switch", { name: "Enable GitHub integration" });
   await expect(github).toHaveAttribute("aria-checked", "false");
   await github.click();
-  await expect(page.getByText("A GitHub Personal Access Token is required.")).toBeVisible();
+  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toBeVisible();
   await expect(github).toHaveAttribute("aria-checked", "false");
 
   const supabase = page.getByRole("switch", { name: "Enable Supabase integration" });
   await expect(supabase).toHaveAttribute("aria-checked", "false");
   await supabase.click();
-  await expect(page.getByText("A Supabase project URL and API key are required.")).toBeVisible();
+  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toBeVisible();
   await expect(supabase).toHaveAttribute("aria-checked", "false");
   await page.getByRole("button", { name: "Dismiss notification" }).click();
-  await expect(page.getByText("A Supabase project URL and API key are required.")).toHaveCount(0);
+  await expect(page.getByText("Configure the authenticated gateway token in Settings before enabling integrations.")).toHaveCount(0);
 });
 
 
