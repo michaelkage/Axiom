@@ -1,0 +1,109 @@
+import { createSignal, onMount, For, Show } from "solid-js";
+
+type RemoteJob = {
+  id: string; mode: string; branch: string; workspacePath: string; status: string;
+  paths?: string[]; commitSha?: string | null; remoteCommitConfirmed?: boolean;
+  verificationPassed?: boolean; pushSucceeded?: boolean;
+};
+type ReconcileResult = {
+  id: string; state: string; reason?: string; localSha?: string; remoteSha?: string;
+  status?: string; remoteCommitConfirmed?: boolean; pushAllowed?: boolean;
+};
+type RemoteWorkspaceApi = {
+  list: () => Promise<RemoteJob[]>;
+  reconcile: (id: string) => Promise<ReconcileResult>;
+  pushRecovered: (request: { id: string }) => Promise<{ state: string; commitSha: string }>;
+};
+declare global {
+  interface Window { axiomDesktop?: { remoteWorkspace?: RemoteWorkspaceApi } }
+}
+
+export function RemoteWorkspaceRecoveryPanel() {
+  const [jobs, setJobs] = createSignal<RemoteJob[]>([]);
+  const [results, setResults] = createSignal<Record<string, ReconcileResult>>({});
+  const [busy, setBusy] = createSignal<string | null>(null);
+  const [notice, setNotice] = createSignal("");
+  const api = () => window.axiomDesktop?.remoteWorkspace;
+
+  const refresh = async () => {
+    if (!api()) return;
+    try { setJobs(await api()!.list()); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Could not load remote workspaces."); }
+  };
+  onMount(() => { void refresh(); });
+
+  const reconcile = async (id: string) => {
+    if (!api()) return;
+    setBusy(id); setNotice("");
+    try {
+      const result = await api()!.reconcile(id);
+      setResults(previous => ({ ...previous, [id]: result }));
+      await refresh();
+      setNotice(result.reason || ("Recovery check: " + result.state));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Recovery check failed.");
+    } finally { setBusy(null); }
+  };
+
+  const pushRecovered = async (job: RemoteJob) => {
+    const result = results()[job.id];
+    if (!result || result.state !== "local-commit-pending-push") return;
+    const confirmed = window.confirm(
+      "Axiom will freshly verify this existing local commit and push it only if the remote branch has not changed. No new commit will be created. Continue?"
+    );
+    if (!confirmed || !api()) return;
+    setBusy(job.id); setNotice("");
+    try {
+      const pushed = await api()!.pushRecovered({ id: job.id });
+      setNotice("Recovered commit pushed and remotely confirmed: " + pushed.commitSha);
+      setResults(previous => ({ ...previous, [job.id]: { ...result, state: pushed.state, localSha: pushed.commitSha, remoteSha: pushed.commitSha } }));
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Recovered push failed; workspace retained.");
+      await reconcile(job.id);
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <section class="workflow-plan workflow-plan--combos" aria-label="Remote workspace recovery">
+      <div class="workflow-plan__eyebrow">REMOTE WORKSPACES <span>RECOVERY & PUSH SAFETY</span></div>
+      <Show when={notice()}><p role="status" class="text-sm">{notice()}</p></Show>
+      <Show when={jobs().length > 0} fallback={<p class="text-sm text-muted">No remote workspace jobs are currently saved.</p>}>
+        <div class="flex flex-col gap-3">
+          <For each={jobs()}>{job => {
+            const result = () => results()[job.id];
+            return (
+              <article class="rounded-lg border border-[var(--border)] p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="font-medium">{job.branch} <span class="text-xs text-muted">· {job.mode}</span></div>
+                    <div class="truncate text-xs text-muted" title={job.workspacePath}>{job.workspacePath}</div>
+                  </div>
+                  <span class="text-xs">{result()?.state || job.status}</span>
+                </div>
+                <Show when={result()?.reason}><p class="mt-2 text-sm text-muted">{result()!.reason}</p></Show>
+                <Show when={result()?.localSha}>
+                  <div class="mt-2 grid gap-1 text-xs text-muted">
+                    <div>Local: <code>{result()!.localSha}</code></div>
+                    <div>Remote: <code>{result()!.remoteSha || "unavailable"}</code></div>
+                  </div>
+                </Show>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void reconcile(job.id)}>
+                    {busy() === job.id ? "Checking…" : "Check recovery"}
+                  </button>
+                  <Show when={result()?.state === "local-commit-pending-push"}>
+                    <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void pushRecovered(job)}>
+                      Verify & push existing commit
+                    </button>
+                  </Show>
+                </div>
+              </article>
+            );
+          }}</For>
+        </div>
+      </Show>
+      <Show when={api()}><button class="workflow-plan__secondary mt-3" onClick={() => void refresh()}>Refresh workspaces</button></Show>
+    </section>
+  );
+}
