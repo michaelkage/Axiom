@@ -20,7 +20,7 @@ Axiom includes an Android-first React PWA in `pwa/`, alongside the standalone de
 7. Persistence: chats, endpoint registrations, preferences, and credentials are stored in LocalStorage.
 
 ## Security boundaries
-- LocalStorage is not encrypted. This branch stores credentials locally as requested for the prototype, but production and high-privilege secrets must stay in a trusted backend.
+- LocalStorage is not encrypted. Conversations and preferences are persisted, while integration and gateway credentials are kept in memory only. The authenticated Node gateway holds GitHub and MCP credentials and the Supabase publishable key.
 - Never expose Supabase service-role or secret keys in browser code. Use publishable keys and least-privilege database grants/RLS.
 - Supabase SQL and schema introspection require a project-owned, permission-controlled RPC. The app does not create or authorize that function. Do not expose an unrestricted SQL executor or a broadly executable SECURITY DEFINER function.
 - GitHub write operations, SQL execution, and MCP tools without explicit read-only annotations require user approval.
@@ -28,7 +28,7 @@ Axiom includes an Android-first React PWA in `pwa/`, alongside the standalone de
 - Browser-to-Ollama requests require CORS permission and correct Android localhost routing.
 
 ## Remaining delivery work
-- Add an authenticated local gateway for secret isolation and reliable cross-origin MCP.
-- Generate and commit the npm lockfile for the pinned direct dependencies.
+- Complete physical Android verification and validate the gateway on the actual host/network topology.
+- Generate and commit the npm lockfile for the pinned direct dependencies (a manual GitHub Actions workflow is provided).
 - Run CI build and automated tests, then install and verify on Android Chrome.
 - Improve Markdown rendering, conversation management, and explicit tool approval UX.
