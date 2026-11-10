@@ -12,6 +12,10 @@ AXIOM_GATEWAY_TOKEN="$(openssl rand -hex 32)" \
 OLLAMA_BASE_URL="http://127.0.0.1:11434" \
 AXIOM_ALLOWED_ORIGINS="https://your-pwa.example" \
 MCP_SERVERS_JSON='{"filesystem":{"url":"http://127.0.0.1:3001/mcp","token":"SERVER_SIDE_MCP_TOKEN"}}' \
+GITHUB_TOKEN="github_pat_..." \
+GITHUB_REPOSITORY="michaelkage/Axiom" \
+SUPABASE_URL="https://your-project.supabase.co" \
+SUPABASE_PUBLISHABLE_KEY="sb_publishable_..." \
 npm run gateway
 ```
 
