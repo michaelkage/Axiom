@@ -46,7 +46,7 @@ export default function App(){
  const registeredTools=listTools();
  const messages=currentChat?.messages||[];
  const update=(patch)=>setState(s=>({...s,...patch}));
- useEffect(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));localStorage.setItem(STORE,JSON.stringify({...state,settings,servers,activeTab:tab}));},[state,tab]);
+ useEffect(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));const chats=(state.chats||[]).slice(0,40).map(chat=>({...chat,messages:(chat.messages||[]).slice(-300)}));const persisted={...state,chats,logs:(state.logs||[]).slice(0,100),settings,servers,activeTab:tab};try{localStorage.setItem(STORE,JSON.stringify(persisted));}catch(error){setNotice('Local storage is full. Export or remove older conversations to keep saving new messages.');}},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
