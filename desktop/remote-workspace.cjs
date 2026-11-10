@@ -97,4 +97,22 @@ function restoreRemoteWorkspaceJob(job, managedRoot) {
   }
 }
 
-module.exports = { WORKSPACE_MODES, validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob };
+
+/** Convert a persisted operation lease from a previous app process into an explicit recoverable interruption. */
+function recoverInterruptedRemoteWorkspaceOperation(job) {
+  if (!job || !job.operation || typeof job.operation !== "object") return job;
+  const allowed = new Set(["commit-push", "reconcile", "push-recovered", "cleanup"]);
+  if (!allowed.has(job.operation.kind)) return { ...job, operation: null };
+  const startedAt = Number(job.operation.startedAt);
+  return {
+    ...job,
+    operation: null,
+    interruptedOperation: {
+      kind: job.operation.kind,
+      startedAt: Number.isFinite(startedAt) && startedAt > 0 ? startedAt : null
+    },
+    status: job.status === "cleaning" ? "cleanup-interrupted" : job.status
+  };
+}
+
+module.exports = { WORKSPACE_MODES, validateRemoteWorkspaceRequest, normalizeRepositoryPath, mayCleanupRemoteWorkspace, restoreRemoteWorkspaceJob, recoverInterruptedRemoteWorkspaceOperation };
