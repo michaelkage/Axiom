@@ -247,7 +247,12 @@ async function discardInterruptedCloneWorkspace(job) {
   const root = path.resolve(job.temporaryRoot);
   const workspace = path.resolve(job.workspacePath);
   if (path.dirname(workspace) !== root) throw new Error("Refusing interrupted clone cleanup: workspace is not a direct child of its managed root.");
-  const rootStat = await fs.lstat(root);
+  let rootStat;
+  try { rootStat = await fs.lstat(root); }
+  catch (error) {
+    if (error && error.code === "ENOENT") return { removed: false, alreadyAbsent: true };
+    throw error;
+  }
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("Refusing interrupted clone cleanup: managed root is not a real directory.");
   let stat;
   try { stat = await fs.lstat(workspace); }
