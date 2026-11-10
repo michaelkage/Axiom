@@ -401,3 +401,26 @@ test("cleanup rejects nested paths and similarly prefixed sibling roots", async 
     await fs.rm(sibling, { recursive: true, force: true });
   }
 });
+
+
+test("cleanup retry completes when a prior process removed the directory before persisting", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-cleanup-crash-after-remove-"));
+  const workspacePath = path.join(root, "job-1");
+  const states = [];
+  try {
+    await fs.mkdir(workspacePath, { recursive: true });
+    const job = {
+      mode: "temporary-full", workspaceOwnership: "axiom-job",
+      temporaryRoot: root, workspacePath, status: "cleaning",
+      remoteCommitConfirmed: true, verificationPassed: true,
+      pushSucceeded: true, commitSha: "e".repeat(40)
+    };
+    await fs.rm(workspacePath, { recursive: true, force: true });
+    const result = await cleanupRemoteWorkspace(job, { onState: async current => states.push(current.status) });
+    assert.equal(result.cleaned, true);
+    assert.equal(job.status, "cleaned");
+    assert.deepEqual(states, ["cleaned"]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
