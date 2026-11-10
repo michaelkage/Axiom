@@ -30,7 +30,7 @@ jobs:
         run: npm run test:e2e:mobile
       - name: Package release bundle
         run: |
-          tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md ANDROID_VALIDATION.md package.json package-lock.json
+          tar -czf axiom-mobile-${GITHUB_REF_NAME}.tar.gz dist gateway README.md ANDROID_VALIDATION.md RELEASE_NOTES.md package.json package-lock.json
       - uses: actions/upload-artifact@v4
         with:
           name: axiom-mobile-${{ github.ref_name }}
