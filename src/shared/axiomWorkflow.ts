@@ -44,15 +44,28 @@ export interface PlannedTask {
 }
 export interface TaskOutcome { taskId: string; status: "succeeded" | "failed" | "blocked"; summary?: string; }
 export function validateTaskPlan(tasks: PlannedTask[]): PlannedTask[] {
-  if (!tasks.length) throw new Error("Task plan cannot be empty.");
+  if (!Array.isArray(tasks) || !tasks.length) throw new Error("Task plan cannot be empty.");
   const byId = new Map<string, PlannedTask>();
   for (const task of tasks) {
-    if (!task.id.trim() || byId.has(task.id)) throw new Error(`Duplicate or empty task id: ${task.id}`);
-    if (!task.title.trim() || !task.scope.trim()) throw new Error(`Task ${task.id} needs a title and scope.`);
-    if (!task.acceptanceCriteria.length || task.acceptanceCriteria.some(c => !c.id.trim() || !c.description.trim())) throw new Error(`Task ${task.id} needs explicit acceptance criteria.`);
-    for (const file of task.targetFiles) {
-      const path = normalizePath(file);
-      if (!path || path === ".." || path.startsWith("../") || path.startsWith("/")) throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
+    if (!task || typeof task !== "object" || typeof task.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(task.id) || byId.has(task.id)) {
+      throw new Error(`Duplicate, empty, or invalid task id: ${task?.id ?? "(missing)"}`);
+    }
+    if (typeof task.title !== "string" || !task.title.trim() || typeof task.scope !== "string" || !task.scope.trim()) throw new Error(`Task ${task.id} needs a title and scope.`);
+    if (!Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn) || !Array.isArray(task.acceptanceCriteria)) throw new Error(`Task ${task.id} has an invalid task-plan shape.`);
+    if (!task.acceptanceCriteria.length || task.acceptanceCriteria.some(c => !c || typeof c.id !== "string" || !c.id.trim() || typeof c.description !== "string" || !c.description.trim())) throw new Error(`Task ${task.id} needs explicit acceptance criteria.`);
+    const criterionIds = task.acceptanceCriteria.map(c => c.id);
+    if (new Set(criterionIds).size !== criterionIds.length) throw new Error(`Task ${task.id} contains duplicate acceptance-criterion ids.`);
+    const normalizedFiles = task.targetFiles.map(file => {
+      if (typeof file !== "string" || !file.trim() || file.includes("\\0")) throw new Error(`Unsafe target path in task ${task.id}: ${String(file)}`);
+      const normalized = normalizePath(file.trim());
+      if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/") || /^[a-z]:($|\/)/i.test(normalized)) {
+        throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
+      }
+      return normalized;
+    });
+    if (new Set(normalizedFiles).size !== normalizedFiles.length) throw new Error(`Task ${task.id} contains duplicate target paths.`);
+    if (task.dependsOn.some(dep => typeof dep !== "string" || !dep.trim()) || new Set(task.dependsOn).size !== task.dependsOn.length) {
+      throw new Error(`Task ${task.id} contains an invalid or duplicate dependency.`);
     }
     byId.set(task.id, task);
   }
