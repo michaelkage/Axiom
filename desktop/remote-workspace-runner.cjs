@@ -182,6 +182,9 @@ async function pushReconciledWorkspace(job, options = {}) {
   const state = await reconcileRemoteWorkspace(job, options);
   if (state.state !== "local-commit-pending-push") throw new Error("Recovered commit is not safely pushable: " + state.state + ".");
   if (await options.verify(job.workspacePath) !== true) throw new Error("Workspace verification did not pass; refusing to push the recovered commit.");
+  const verifiedLocalSha = (await git(job.workspacePath, ["rev-parse", "HEAD"])).stdout;
+  const verifiedStatus = (await git(job.workspacePath, ["status", "--porcelain"])).stdout;
+  if (verifiedLocalSha !== state.localSha || verifiedStatus) throw new Error("The local checkout changed during verification; refusing to push.");
   const currentRemote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, maxBuffer: 1024 * 1024, windowsHide: true,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
