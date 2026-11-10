@@ -18,7 +18,7 @@ test('chat runtime receives tool execution, cancellation and streamed UI callbac
   assert.match(app, /Permission required/);
   assert.match(app, /Approve tool execution/);
   assert.match(app, /Allow once/);
-  assert.match(app, /confirmTool:\\(name,args/);
+  assert.match(app, /confirmTool:\(name,args/);
 });
 
 test('partial output and cancellation are retained against the originating chat', () => {
