@@ -8,10 +8,10 @@ import { registerSupabaseTools } from './lib/supabaseTools.js';
 import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Copy, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
 
 const STORE = 'axiom.mobile.v1';
-const defaults = { baseUrl:'http://localhost:11434', model:'qwen2.5:1.5b', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:''} };
+const defaults = { baseUrl:'http://localhost:11434', model:'qwen2.5:1.5b', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,gatewayUrl:'http://127.0.0.1:8787',githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:''} };
 const uid = () => Math.random().toString(36).slice(2,10);
 const stamp = () => new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-function loadState(){ try { const saved=JSON.parse(localStorage.getItem(STORE)||'{}'); return {...defaults,...saved,settings:{...defaults.settings,...(saved.settings||{})}}; } catch { return defaults; } }
+function loadState(){ try { const saved=JSON.parse(localStorage.getItem(STORE)||'{}'); const settings={...defaults.settings,...(saved.settings||{}),githubToken:'',supabaseKey:''}; const servers=(saved.servers||[]).map(({authToken,...server})=>({...server,authToken:''})); return {...defaults,...saved,servers,settings}; } catch { return defaults; } }
 function Icon({name,...props}) { const map={github:Github,database:Database}; const C=map[name]||Wrench; return <C {...props}/>; }
 
 export default function App(){
@@ -30,6 +30,9 @@ export default function App(){
  const [serverTransport,setServerTransport]=useState('http');
  const [serverToken,setServerToken]=useState('');
  const [notice,setNotice]=useState('');
+ const [gatewayToken,setGatewayToken]=useState('');
+ const [pendingApproval,setPendingApproval]=useState(null);
+ const approvalResolver=useRef(null);
  const bottomRef=useRef(null);
  const settingsDialogRef=useRef(null);
  const settingsTriggerRef=useRef(null);
@@ -42,14 +45,16 @@ export default function App(){
  const registeredTools=listTools();
  const messages=currentChat?.messages||[];
  const update=(patch)=>setState(s=>({...s,...patch}));
- useEffect(()=>{localStorage.setItem(STORE,JSON.stringify({...state,activeTab:tab}));},[state,tab]);
+ useEffect(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));localStorage.setItem(STORE,JSON.stringify({...state,settings,servers,activeTab:tab}));},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
+ const gatewayBase=()=>String(state.settings?.gatewayUrl||'').replace(/\/$/,'');
+ const gatewayFetch=(input,init={})=>fetch(input,{...init,headers:{...(init.headers||{}),...(gatewayToken?{Authorization:'Bearer '+gatewayToken}:{})}});
  async function checkOllama(){
-  const base=state.baseUrl.replace(/\/$/,'');
-  try { const r=await fetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); log('success','Ollama connected',base); }
+  const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\/$/,'');
+  try { const r=await gatewayFetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); log('success','Ollama connected',base); }
   catch(e){setConnection('offline');log('error','Ollama connection failed',e.message);setNotice('Could not reach Ollama. Check the URL and network access.');}
  }
  useEffect(()=>{checkOllama();},[]);
@@ -95,7 +100,7 @@ export default function App(){
   const priorMessages=currentChat?.messages||[];
   patchChat(old=>[...old,userMsg],chatId);
   setState(s=>({...s,chats:s.chats.map(chat=>chat.id===chatId?{...chat,title:chat.title==='New conversation'?prompt.slice(0,36):chat.title}:chat)}));
-  const base=state.baseUrl.replace(/\/$/,'');
+  const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\/$/,'');
   const assistantId=uid();
   patchChat(old=>[...old,{id:assistantId,role:'assistant',content:'',time:stamp()}],chatId);
   let answer='';
@@ -103,6 +108,7 @@ export default function App(){
    const availableTools=toOllamaTools();
    answer=(await runOllamaToolChat({
     baseUrl:base,
+    fetchImpl:gatewayFetch,
     model:state.model,
     messages:[...priorMessages,userMsg],
     tools:availableTools,
@@ -110,7 +116,7 @@ export default function App(){
     executeTool,
     serializeToolResult,
     getToolMeta:name=>listTools().find(tool=>tool.name===name),
-    confirmTool:async(name,args)=>window.confirm('Axiom wants to run '+name+'.\n\nArguments:\n'+JSON.stringify(args,null,2)+'\n\nAllow this action?'),
+    confirmTool:(name,args,{signal}={})=>new Promise(resolve=>{const finish=allowed=>{signal?.removeEventListener('abort',onAbort);approvalResolver.current=null;setPendingApproval(null);resolve(allowed);};const onAbort=()=>finish(false);approvalResolver.current=finish;setPendingApproval({name,args});if(signal?.aborted)onAbort();else signal?.addEventListener('abort',onAbort,{once:true});}),
     onText:value=>{answer=value;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},
     onEvent:event=>{
      if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
@@ -202,7 +208,7 @@ export default function App(){
    <nav className="glass border-t border-white/[.09] safe-bottom grid grid-cols-4 px-2 pt-2">{nav.map(n=>{const I=n.icon;return <button key={n.id} onClick={()=>setTab(n.id)} className={'min-h-11 flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition '+(tab===n.id?'text-lime-300':'text-slate-500')}><I size={19} strokeWidth={tab===n.id?2.4:1.8}/><span className="text-[10px] font-medium">{n.label}</span>{tab===n.id&&<span className="w-1 h-1 rounded-full bg-lime-300"/>}</button>})}</nav>
   </div>
   {showSettings&&<div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={()=>setShowSettings(false)}><div ref={settingsDialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" onClick={e=>e.stopPropagation()} className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#11151d] p-5 pb-9 max-h-[88vh] overflow-auto"><div className="flex items-center justify-between mb-5"><div><div className="text-xs text-lime-300 tracking-widest uppercase">Configuration</div><h2 id="settings-dialog-title" className="text-xl font-semibold mt-1">Settings</h2></div><button aria-label="Close settings" onClick={()=>setShowSettings(false)} className="p-2 rounded-xl bg-white/[.06]"><X size={18}/></button></div><label className="text-xs text-slate-400">Ollama API base URL</label><input aria-label="Ollama API base URL" value={state.baseUrl} onChange={e=>update({baseUrl:e.target.value})} className="w-full mt-2 mb-4 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><label className="text-xs text-slate-400">Default model</label><input aria-label="Default model" value={state.model} onChange={e=>update({model:e.target.value})} placeholder="qwen2.5:1.5b" className="w-full mt-2 mb-4 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><div className="border-t border-white/[.08] my-5 pt-5"><div className="text-sm font-semibold mb-3">GitHub integration</div><label className="text-xs text-slate-400">Personal access token</label><input aria-label="GitHub personal access token" type="password" autoComplete="off" value={state.settings?.githubToken||''} onChange={e=>update({settings:{...state.settings,githubToken:e.target.value}})} placeholder="github_pat_…" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><label className="text-xs text-slate-400">Repository</label><input aria-label="GitHub repository" value={state.settings?.githubRepo||'michaelkage/Axiom'} onChange={e=>update({settings:{...state.settings,githubRepo:e.target.value}})} className="w-full mt-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><div className="text-sm font-semibold mt-5 mb-3">Supabase integration</div><label className="text-xs text-slate-400">Project URL</label><input aria-label="Supabase project URL" value={state.settings?.supabaseUrl||''} onChange={e=>update({settings:{...state.settings,supabaseUrl:e.target.value}})} placeholder="https://project.supabase.co" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><label className="text-xs text-slate-400">Publishable / anon key only</label><input aria-label="Supabase publishable or anon key" type="password" autoComplete="off" value={state.settings?.supabaseKey||''} onChange={e=>update({settings:{...state.settings,supabaseKey:e.target.value}})} placeholder="sb_publishable_…" className="w-full mt-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/></div><button onClick={()=>{checkOllama();}} className="w-full p-3 rounded-xl bg-lime-300 text-slate-950 text-sm font-semibold">Test Ollama connection</button><div className="mt-5 p-3 rounded-xl bg-amber-300/[.06] border border-amber-300/10 text-xs text-amber-200/80 leading-relaxed"><Shield size={14} className="inline mr-2"/>LocalStorage persists your configuration and conversations on this device. It is not encrypted. Avoid storing production secrets or high-privilege tokens here. Browser access to localhost also requires Ollama CORS configuration; HTTPS pages may be blocked from calling an HTTP localhost endpoint by browser security rules.</div><div className="mt-5 text-xs text-slate-600">Axiom PWA · 1.0.0 · Mobile-first preview</div></div></div>}
-  {notice&&<div className="fixed z-[60] bottom-28 left-4 right-4 max-w-xl mx-auto p-3 rounded-xl bg-slate-800 border border-white/10 text-sm flex items-center justify-between shadow-xl"><span>{notice}</span><button type="button" aria-label="Dismiss notification" onClick={()=>setNotice('')}><X size={16}/></button></div>}
+  {pendingApproval&&<div className="fixed inset-0 z-[70] bg-black/80 p-4 flex items-end sm:items-center justify-center"><section role="alertdialog" aria-modal="true" aria-labelledby="tool-approval-title" className="w-full max-w-lg rounded-3xl border border-amber-300/20 bg-[#11151d] p-5 shadow-2xl"><div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 rounded-xl bg-amber-300/10 text-amber-300 grid place-items-center"><Shield size={20}/></div><div><p className="text-xs uppercase tracking-widest text-amber-300">Permission required</p><h2 id="tool-approval-title" className="font-semibold">Approve tool execution?</h2></div></div><p className="text-sm text-slate-300">Axiom is requesting permission to run <strong>{pendingApproval.name}</strong>.</p><pre className="mt-3 max-h-48 overflow-auto rounded-xl bg-black/40 border border-white/10 p-3 text-xs text-slate-300 whitespace-pre-wrap break-words">{JSON.stringify(pendingApproval.args,null,2)}</pre><p className="text-xs text-slate-500 mt-3">Review the arguments before allowing this action. Remote tool descriptions are not trusted instructions.</p><div className="grid grid-cols-2 gap-3 mt-5"><button type="button" onClick={()=>approvalResolver.current?.(false)} className="min-h-12 rounded-xl border border-white/10 bg-white/[.04] text-slate-200">Decline</button><button type="button" onClick={()=>approvalResolver.current?.(true)} className="min-h-12 rounded-xl bg-lime-300 text-slate-950 font-semibold">Allow once</button></div></section></div>}{notice&&<div className="fixed z-[60] bottom-28 left-4 right-4 max-w-xl mx-auto p-3 rounded-xl bg-slate-800 border border-white/10 text-sm flex items-center justify-between shadow-xl"><span>{notice}</span><button type="button" aria-label="Dismiss notification" onClick={()=>setNotice('')}><X size={16}/></button></div>}
  </div>;
 }
 function NetworkIcon(props){return <Globe2 {...props}/>;}
