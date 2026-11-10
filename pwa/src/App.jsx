@@ -60,14 +60,13 @@ export default function App(){
   try { const r=await gatewayFetch(base+'/api/tags'); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); setModels((data.models||[]).map(m=>m.name)); setConnection('online'); if(previous!=='online')log('success','Ollama connected',base); }
   catch(e){setConnection('offline');if(previous!=='offline')log('error','Ollama connection failed',e.message);if(!silent)setNotice('Could not reach Ollama. Check the gateway, URL, and network access.');}
  }
- useEffect(()=>{checkOllama({silent:true});},[]);
+ useEffect(()=>{checkOllama({silent:true});},[state.baseUrl,state.settings?.gatewayUrl,gatewayToken]);
  useEffect(()=>{
-  let timer;
   const retry=()=>{if(document.visibilityState==='visible')checkOllama({silent:true});};
-  const interval=setInterval(()=>{if(connection!=='online'&&document.visibilityState==='visible')retry();},10000);
+  const interval=setInterval(retry,connection==='online'?30000:8000);
   window.addEventListener('online',retry);
   document.addEventListener('visibilitychange',retry);
-  return()=>{clearInterval(interval);clearTimeout(timer);window.removeEventListener('online',retry);document.removeEventListener('visibilitychange',retry);};
+  return()=>{clearInterval(interval);window.removeEventListener('online',retry);document.removeEventListener('visibilitychange',retry);};
  },[connection,state.baseUrl,state.settings?.gatewayUrl,gatewayToken]);
  useEffect(()=>{if(!pendingApproval)return;const previous=document.activeElement;const dialog=approvalDialogRef.current;dialog?.querySelector('button')?.focus();const onKeyDown=event=>{if(event.key==='Escape'){event.preventDefault();approvalResolver.current?.(false);}};window.addEventListener('keydown',onKeyDown);return()=>{window.removeEventListener('keydown',onKeyDown);previous?.focus?.();};},[pendingApproval]);
  useEffect(()=>{
