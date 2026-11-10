@@ -3,7 +3,7 @@
  * Handles UTF-8 characters split across network chunks and a final record
  * without a trailing newline.
  */
-export async function consumeNdjsonStream(response, onRecord) {
+export async function consumeNdjsonStream(response, onRecord, { signal } = {}) {
   if (!response?.body?.getReader) {
     throw new Error('Streaming response body unavailable');
   }
@@ -11,7 +11,10 @@ export async function consumeNdjsonStream(response, onRecord) {
     throw new TypeError('onRecord must be a function');
   }
 
+  if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');
   const reader = response.body.getReader();
+  const onAbort = () => { reader.cancel(signal.reason).catch(() => {}); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   const decoder = new TextDecoder();
   let buffer = '';
   let lineNumber = 0;
@@ -31,6 +34,7 @@ export async function consumeNdjsonStream(response, onRecord) {
   try {
     while (true) {
       const { done, value } = await reader.read();
+      if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -45,6 +49,7 @@ export async function consumeNdjsonStream(response, onRecord) {
     try { await reader.cancel(error); } catch {}
     throw error;
   } finally {
+    signal?.removeEventListener('abort', onAbort);
     reader.releaseLock();
   }
 }
