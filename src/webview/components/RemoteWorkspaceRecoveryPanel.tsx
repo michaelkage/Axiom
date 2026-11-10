@@ -13,6 +13,7 @@ type RemoteWorkspaceApi = {
   list: () => Promise<RemoteJob[]>;
   reconcile: (id: string) => Promise<ReconcileResult>;
   pushRecovered: (request: { id: string }) => Promise<{ state: string; commitSha: string }>;
+  cleanup: (id: string) => Promise<{ cleaned: boolean; commitSha: string }>;
 };
 declare global {
   interface Window { axiomDesktop?: { remoteWorkspace?: RemoteWorkspaceApi } }
@@ -42,6 +43,23 @@ export function RemoteWorkspaceRecoveryPanel() {
       setNotice(result.reason || ("Recovery check: " + result.state));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Recovery check failed.");
+    } finally { setBusy(null); }
+  };
+
+  const cleanup = async (job: RemoteJob) => {
+    if (job.mode === "persistent" || !job.remoteCommitConfirmed || !job.verificationPassed || !job.pushSucceeded) return;
+    const confirmed = window.confirm(
+      "Delete this Axiom-owned temporary checkout? Its pushed commit is already confirmed on the remote branch. User-owned persistent workspaces are never deleted."
+    );
+    if (!confirmed || !api()) return;
+    setBusy(job.id); setNotice("");
+    try {
+      const result = await api()!.cleanup(job.id);
+      setNotice("Temporary workspace cleaned. Confirmed commit: " + result.commitSha);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Cleanup failed; workspace metadata was retained.");
+      await refresh();
     } finally { setBusy(null); }
   };
 
@@ -92,6 +110,11 @@ export function RemoteWorkspaceRecoveryPanel() {
                   <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void reconcile(job.id)}>
                     {busy() === job.id ? "Checking…" : "Check recovery"}
                   </button>
+                  <Show when={job.mode !== "persistent" && job.remoteCommitConfirmed && job.verificationPassed && job.pushSucceeded && job.status !== "cleaned"}>
+                    <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void cleanup(job)}>
+                      {busy() === job.id ? "Cleaning…" : "Clean temporary workspace"}
+                    </button>
+                  </Show>
                   <Show when={result()?.state === "local-commit-pending-push"}>
                     <button class="workflow-plan__secondary" disabled={busy() === job.id} onClick={() => void pushRecovered(job)}>
                       Verify & push existing commit
