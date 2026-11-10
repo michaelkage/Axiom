@@ -15,9 +15,9 @@ Axiom includes an Android-first React PWA in `pwa/`, alongside the standalone de
 2. Tool registry: async handlers, JSON-schema-shaped input validation, tool discovery, and execution lifecycle events.
 3. GitHub adapter: Octokit-based file reads, file creation, and file updates/commits.
 4. Supabase adapter: table listing/column inspection through an explicitly project-configured `exec_sql` RPC, row selection through the Data API, and optional SQL RPC calls.
-5. MCP transports: Streamable HTTP session initialization and legacy SSE event transport; discovered tool schemas are injected into Ollama chat.
+5. MCP transports: gateway-managed Streamable HTTP and legacy direct SSE; discovered tool schemas are injected into Ollama chat.
 6. Event log: request, approval, execution, result, and error records.
-7. Persistence: chats, endpoint registrations, preferences, and credentials are stored in LocalStorage.
+7. Persistence: bounded chat history, endpoint registrations, preferences, and logs are stored in LocalStorage; integration credentials are session-only in the browser.
 
 ## Security boundaries
 - LocalStorage is not encrypted. Conversations and preferences are persisted, while integration and gateway credentials are kept in memory only. The authenticated Node gateway holds GitHub and MCP credentials and the Supabase publishable key.
@@ -29,6 +29,5 @@ Axiom includes an Android-first React PWA in `pwa/`, alongside the standalone de
 
 ## Remaining delivery work
 - Complete physical Android verification and validate the gateway on the actual host/network topology.
-- Generate and commit the npm lockfile for the pinned direct dependencies (a manual GitHub Actions workflow is provided).
-- Run CI build and automated tests, then install and verify on Android Chrome.
-- Improve Markdown rendering, conversation management, and explicit tool approval UX.
+- Generate and commit the npm lockfile through the manifest-triggered GitHub Actions workflow.
+- Complete the tagged release workflow and configure a trusted HTTPS static host for distribution.
