@@ -91,6 +91,11 @@ export function createAxiomGateway({
       return sendJson(res, 401, { error: 'Unauthorized.' });
     }
 
+    const requestController = new AbortController();
+    req.on('aborted', () => requestController.abort(new Error('Client request aborted.')));
+    res.on('close', () => { if (!res.writableEnded) requestController.abort(new Error('Client disconnected.')); });
+    const upstreamSignal = timeoutMs => AbortSignal.any([requestController.signal, AbortSignal.timeout(timeoutMs)]);
+
     if (url.pathname.startsWith('/api/ollama/')) {
       const upstreamPath = url.pathname.slice('/api/ollama'.length);
       if (!OLLAMA_PATHS.has(upstreamPath) || !['GET', 'POST'].includes(req.method)) return sendJson(res, 404, { error: 'Ollama route not allowed.' });
@@ -104,7 +109,7 @@ export function createAxiomGateway({
           method: req.method,
           headers: upstreamHeaders(req),
           body,
-          signal: AbortSignal.timeout(120000)
+          signal: upstreamSignal(120000)
         });
         res.writeHead(upstream.status, {
           'content-type': upstream.headers.get('content-type') || 'application/octet-stream',
@@ -146,7 +151,7 @@ export function createAxiomGateway({
           method: req.method,
           headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
           body,
-          signal: AbortSignal.timeout(60000)
+          signal: upstreamSignal(60000)
         });
         res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
         if (!upstream.body) return res.end();
@@ -184,7 +189,7 @@ export function createAxiomGateway({
       const target = new URL(suffix + url.search, supabaseBase);
       const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
       try {
-        const upstream = await fetchImpl(target, { method: req.method, headers, body, signal: AbortSignal.timeout(60000) });
+        const upstream = await fetchImpl(target, { method: req.method, headers, body, signal: upstreamSignal(60000) });
         const responseHeaders = { 'cache-control': 'no-store' };
         for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
           const value = upstream.headers.get(name);
