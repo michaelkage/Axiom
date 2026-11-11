@@ -89,6 +89,6 @@ The response reports configuration, reachability, authentication acceptance, HTT
 
 ## Model library and Hugging Face
 
-The Models tab lists models installed in the configured Ollama runtime and can start/cancel no pulls currently; model downloads are streamed through Ollama's `POST /api/pull` endpoint. Hugging Face search filters for GGUF repositories and installs compatible repositories through Ollama's `hf.co/<owner>/<repo>:<quantization>` model reference. Downloads occur on the machine running Ollama, not in the PWA browser. Verify each model card, license, quantization, and memory requirements before installing.
+The Models tab lists installed models and streams downloads through Ollama's `POST /api/pull` endpoint. Hugging Face search filters for GGUF repositories and installs compatible repositories through Ollama's `hf.co/<owner>/<repo>:<quantization>` model reference. Downloads occur on the machine running Ollama, not in the PWA browser. Verify each model card, license, quantization, and memory requirements before installing.
 
 A standard desktop Ollama daemon is not an Android-native service. On Android, the app can manage an Ollama runtime reachable through the configured gateway, but cannot silently install or run the desktop Ollama binary inside the APK. Fully offline, on-device inference requires a separate Android-native inference engine and is not claimed by this release.
