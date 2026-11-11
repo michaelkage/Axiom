@@ -47,7 +47,7 @@ function insertBlock(sourceText, blockName, addition) {
   throw new Error('Unbalanced Gradle block: ' + blockName);
 }
 if (!gradle.includes("abiFilters 'arm64-v8a'")) gradle = insertBlock(gradle, 'defaultConfig', "\n        ndk { abiFilters 'arm64-v8a' }");
-if (/minSdkVersion\\s+[^\\n]+/.test(gradle)) gradle = gradle.replace(/minSdkVersion\\s+[^\\n]+/, 'minSdkVersion 24');
+if (/minSdkVersion\s+[^\n]+/.test(gradle)) gradle = gradle.replace(/minSdkVersion\s+[^\n]+/, 'minSdkVersion 24');
 else gradle = insertBlock(gradle, 'defaultConfig', '\n        minSdkVersion 24');
 if (!gradle.includes('src/main/cpp/CMakeLists.txt')) {
   gradle = insertBlock(gradle, 'defaultConfig', "\n        externalNativeBuild { cmake { cppFlags '-std=c++17' } }");
