@@ -1,3 +1,17 @@
+# Axiom Android 1.1.4
+
+Axiom Android 1.1.4 removes the phantom default model and requires a confirmed installed model before chat can run.
+
+## 1.1.4 changes
+
+- Removes the hardcoded `qwen2.5:1.5b` startup model.
+- Validates a saved model against the connected Ollama host before showing or using it; stale selections are cleared when the model is no longer installed.
+- Shows an explicit empty-library state instead of inventing an active model.
+- Prevents chat requests until an installed Ollama model or loaded native model is available.
+- Removes the editable default-model field, so chat selection comes only from the installed-model list.
+- Starts the native Hugging Face model search with an empty query instead of pre-filling a Qwen search.
+- Distinguishes an empty Ollama library from an unreachable runtime.
+
 # Axiom Android 1.1.3
 
 Axiom Android 1.1.3 fixes Ollama model selection after downloads and adds secure in-app GitHub and Supabase credential management.
