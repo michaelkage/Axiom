@@ -20,15 +20,15 @@ If the token is lost or compromised, stop the gateway, replace `~/.config/axiom/
 2. Create a token restricted to only the repository Axiom should access.
 3. Grant Repository permissions: Contents read/write if Axiom should edit files, or Contents read for read-only use. Metadata read is required.
 4. Set an expiry, generate the token, and copy it immediately.
-5. Set it as `GITHUB_TOKEN` in the gateway process environment. Do not paste it into Axiom or commit it.
+5. Open Axiom Settings → Provider credentials, paste the PAT into the GitHub field, enter the exact `owner/repo`, and save. Do not paste it into chat or commit it.
 
-Set `GITHUB_REPOSITORY` to the exact `owner/repo`. Axiom's Repository field must match this value. The gateway restricts GitHub content operations to this repository.
+Axiom stores the token and repository in `~/.config/axiom/provider-credentials.json` with owner-only permissions. The gateway restricts GitHub content operations to this repository. Environment variables remain supported for headless deployments and override the saved file.
 
 ## 3. Get the Supabase URL and publishable key
 
 1. Open the [Supabase Dashboard](https://supabase.com/dashboard) and select your project.
 2. Open the project's **Connect** dialog to copy the Project URL and publishable key, or use **Settings → API Keys**.
-3. Set the URL as `SUPABASE_URL` and the `sb_publishable_...` key as `SUPABASE_PUBLISHABLE_KEY` in the gateway environment.
+3. Open Axiom Settings → Provider credentials, enter the Project URL and `sb_publishable_...` key, then save. The app does not receive the key back.
 
 A legacy `anon` key is also supported for compatibility. Never use `sb_secret_...` or `service_role`. Publishable keys are low-privilege by design; table grants and Row Level Security policies still control data access. Tables must also be exposed through the Data API. Supabase SQL/schema tools require a project-owned, permission-controlled `exec_sql` RPC. Do not expose an unrestricted SQL function.
 
@@ -36,9 +36,18 @@ A legacy `anon` key is also supported for compatibility. Never use `sb_secret_..
 
 If an MCP server requires a bearer token, place it in that server's `token` field inside `MCP_SERVERS_JSON` on the gateway host. The app selects the configured server by ID; the upstream token remains server-side.
 
-## 5. Run
+## 5. Configure credentials from Axiom
 
-Node.js 20+ is required. From the `pwa` directory, after setting the variables above:
+After pairing the gateway, open **Settings → Provider credentials**:
+
+- GitHub: enter a fine-grained PAT and the exact `owner/repo`.
+- Supabase: enter the project URL and publishable key (or legacy anon key).
+- Use the Remove controls to delete saved credentials.
+
+The authenticated `GET /provider-config` endpoint returns only configured flags and non-secret identifiers. `PUT /provider-config` updates credentials on the gateway host. Secrets are stored atomically in `~/.config/axiom/provider-credentials.json`; the directory is mode `0700` and the file is mode `0600`. Secrets are never returned to the client or written to browser storage. Environment variables take precedence over the saved file.
+## 6. Run
+
+Node.js 20+ is required. From the `pwa` directory, optional environment variables can still be used for headless deployments. For the Android Termux setup, enter GitHub and Supabase credentials in Axiom Settings:
 
 ```bash
 OLLAMA_BASE_URL="http://127.0.0.1:11434" \
