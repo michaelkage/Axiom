@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 
@@ -320,8 +320,10 @@ async function ensureGatewayToken(env = process.env, logger = console) {
   const directory = join(homedir(), '.config', 'axiom');
   const tokenFile = join(directory, 'gateway-token');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
   try {
     const existing = (await readFile(tokenFile, 'utf8')).trim();
+    await chmod(tokenFile, 0o600);
     if (existing.length >= 64) {
       env.AXIOM_GATEWAY_TOKEN = existing;
       return existing;
