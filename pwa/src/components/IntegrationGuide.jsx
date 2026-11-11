@@ -13,13 +13,10 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
       <span className={'text-[10px] rounded-full px-2 py-1 border '+(paired?'text-lime-300 border-lime-300/20':'text-amber-200 border-amber-200/20')}>{paired?'PAIRED':'NOT PAIRED'}</span>
     </div>
     <div className="mt-4 rounded-xl border border-lime-300/15 bg-lime-300/[.035] p-3">
-      <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound size={15}/> 1. Gateway token: you create this one</div>
-      <p className="text-xs text-slate-300 mt-2"><code>AXIOM_GATEWAY_TOKEN</code> is Axiom's private password between the app and your gateway. GitHub and Supabase do not issue it. Generate a random 32-byte value on the device where the gateway runs.</p>
-      <p className="text-[11px] text-slate-400 mt-2">In Termux or any terminal with Node.js 20+, run:</p>
-      <pre className="text-[10px] text-sky-100 bg-black/35 rounded-lg p-2 mt-2 overflow-x-auto whitespace-pre-wrap break-all">{gatewayCommand}</pre>
-      <p className="text-[11px] text-slate-400 mt-2">Keep the generated value private. Set it in the same shell before running <code>npm run gateway</code>. If you open a new shell, load the same value again from your private environment configuration. Never commit it.</p>
-      <p className="text-[11px] text-slate-300 mt-2"><strong>Where it goes:</strong> paste the exact value into Android Settings → Secure gateway pairing. In browser/PWA mode, paste it into Gateway bearer token. The app uses it to register temporary session tokens.</p>
-      <p className="text-[10px] text-amber-200/80 mt-2">The generated gateway token is not the session token. Axiom creates session tokens automatically; you never generate those yourself.</p>
+      <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound size={15}/> 1. Gateway pairing: generated automatically</div>
+      <p className="text-xs text-slate-300 mt-2"><code>AXIOM_GATEWAY_TOKEN</code> is a private pairing password between Axiom and your gateway. It is not issued by GitHub or Supabase, and you no longer need to generate it yourself.</p>
+      <p className="text-xs text-slate-300 mt-2">On first gateway startup, Axiom generates a cryptographically random 256-bit token, saves it in <code>~/.config/axiom/gateway-token</code> with owner-only permissions, and prints it once. Copy it at that moment. The gateway will not display it again on later starts.</p>
+      <p className="text-[11px] text-slate-400 mt-2">Paste the one-time value into Android Settings → Secure gateway pairing. Android stores it encrypted with Keystore. Temporary session tokens are generated and renewed automatically. If you lose the pairing token, rotate it deliberately by replacing the private gateway token file and restarting the gateway, then pair again.</p>
     </div>
     <div className="mt-3 rounded-xl bg-black/20 p-3">
       <div className="flex items-center gap-2 text-sm font-semibold"><TerminalSquare size={15}/> 2. Gateway and Ollama address</div>
@@ -57,7 +54,7 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
     <div className="mt-3 rounded-xl border border-white/[.08] bg-black/20 p-3">
       <div className="text-sm font-semibold">Quick reference: where each value comes from</div>
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2 mt-3 text-[11px]">
-        <span className="text-slate-400">AXIOM_GATEWAY_TOKEN</span><span>Generate it yourself in the gateway terminal</span>
+        <span className="text-slate-400">AXIOM_GATEWAY_TOKEN</span><span>Generated once by the gateway at first startup</span>
         <span className="text-slate-400">GITHUB_TOKEN</span><span>GitHub fine-grained personal access token</span>
         <span className="text-slate-400">GITHUB_REPOSITORY</span><span>Type <code>owner/repo</code> yourself</span>
         <span className="text-slate-400">SUPABASE_URL</span><span>Supabase project Connect dialog</span>
