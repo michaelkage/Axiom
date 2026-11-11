@@ -170,7 +170,7 @@ test('explains Ollama model-not-installed 404 responses instead of hiding the up
   })]);
   await assert.rejects(harness.run(), error => {
     assert.match(error.message, /Ollama model is not installed/);
-    assert.match(error.message, /qwen2\\.5:1\\.5b/);
+    assert.ok(error.message.includes('qwen2.5:1.5b'));
     assert.match(error.message, /Open Model Store/);
     return true;
   });
