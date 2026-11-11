@@ -52,14 +52,73 @@ jobs:
         run: npm run test:e2e:mobile
 
   publish:
-    name: Publish public GitHub release
+    name: Build and publish Android APK
     needs: verify
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out release notes
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Create Android GitHub Release
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android NDK and CMake
+        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Install Vulkan build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev glslc spirv-headers
+
+      - name: Locate host SPIR-V headers CMake package
+        run: |
+          config="$(find /usr -name SPIRV-HeadersConfig.cmake -print -quit)"
+          test -n "$config" || { echo "SPIRV-Headers CMake package was not installed"; exit 1; }
+          echo "SPIRV_HEADERS_CMAKE_DIR=$(dirname "$config")" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        working-directory: pwa
+        run: npm ci
+
+      - name: Build web application
+        working-directory: pwa
+        run: npm run build
+
+      - name: Generate Android project
+        working-directory: pwa
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Install Axiom native runtime
+        working-directory: pwa
+        run: node scripts/install-android-native.mjs
+
+      - name: Build installable Android APK
+        working-directory: pwa/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Prepare APK
+        run: |
+          mkdir -p release
+          cp pwa/android/app/build/outputs/apk/debug/app-debug.apk release/Axiom-Android-arm64-debug.apk
+
+      - name: Attach APK to public GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v1.1.0
@@ -68,3 +127,5 @@ jobs:
           body_path: pwa/RELEASE_NOTES.md
           draft: false
           prerelease: false
+          files: release/Axiom-Android-arm64-debug.apk
+          fail_on_unmatched_files: true
