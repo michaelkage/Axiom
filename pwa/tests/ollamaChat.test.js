@@ -59,8 +59,9 @@ test('reports first-token latency and Ollama prompt/generation throughput', asyn
     assistant('Measured response'),
     { ...assistant(), done: true, prompt_eval_count: 120, prompt_eval_duration: 500_000_000, eval_count: 80, eval_duration: 2_000_000_000, load_duration: 250_000_000, total_duration: 2_900_000_000 }
   ])]);
-  await harness.run();
+  const result = await harness.run();
   const metrics = harness.events.find(event => event.type === 'metrics')?.metrics;
+  const summary = result.metrics;
   assert.ok(metrics);
   assert.ok(metrics.firstTokenMs >= 0);
   assert.equal(metrics.promptTokens, 120);
@@ -70,9 +71,11 @@ test('reports first-token latency and Ollama prompt/generation throughput', asyn
   assert.equal(metrics.tokensPerSecond, 40);
   assert.equal(metrics.modelLoadMs, 250);
   assert.equal(metrics.modelReportedTotalMs, 2900);
-  assert.equal(metrics.modelTurns, 1);
-  assert.equal(metrics.promptTokensPerSecond, 240);
-  assert.ok(metrics.wallTimeMs >= metrics.firstTokenMs);
+  assert.equal(summary.modelTurns, 1);
+  assert.equal(summary.modelLoadMs, 250);
+  assert.equal(summary.modelReportedTotalMs, 2900);
+  assert.equal(summary.promptTokensPerSecond, 240);
+  assert.ok(summary.wallTimeMs >= summary.firstTokenMs);
 });
 
 test('executes tool calls sequentially and sends serialized results back to Ollama', async () => {
