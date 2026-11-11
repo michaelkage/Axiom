@@ -270,6 +270,7 @@ class AxiomRuntimePlugin : Plugin() {
                 val secret = decrypt(Base64.decode(bootstrap, Base64.NO_WRAP))
                 val token = sessionToken ?: ByteArray(32).also(random::nextBytes).let { Base64.encodeToString(it, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) }.also { sessionToken = it }
                 val connection = URL("$gatewayUrl/session/register").openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
