@@ -25,7 +25,11 @@ test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU
 
 test('native model files stay in private storage and use resumable verified installation', () => {
   assert.match(plugin, /File\(context\.filesDir, "models"\)/);
-  assert.match(plugin, /setRequestProperty\("Range", "bytes=\$existing-"\)/);
+  assert.match(plugin, /setRequestProperty\("Range", range\)/);
+  assert.match(plugin, /HTTP_REQUESTED_RANGE_NOT_SATISFIABLE/);
+  assert.match(plugin, /activeDownloads\.putIfAbsent/);
+  assert.match(plugin, /identityHash/);
+  assert.match(plugin, /Never forward the Hub credential to a signed CDN redirect/);
   assert.match(plugin, /MessageDigest\.getInstance\("SHA-256"\)/);
   assert.match(plugin, /android\.system\.Os\.rename\(partial\.absolutePath, target\.absolutePath\)/);
   assert.match(plugin, /expectedSha\.isNotEmpty\(\).*digest\.equals/);
@@ -67,6 +71,7 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(app, /runNativeValidation/);
   assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /gateway:token/);
+  assert.match(app, /prints the existing private token once in your terminal/);
   assert.match(app, /prints the existing private token once in your terminal/);
 });
 
