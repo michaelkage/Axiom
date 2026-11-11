@@ -263,7 +263,7 @@ export default function App(){
        <div className="flex gap-3"><span className="w-7 h-7 shrink-0 rounded-lg bg-violet-300/10 text-violet-200 grid place-items-center text-xs font-bold">3</span><div><div className="text-sm font-medium">Enable the tools you want</div><p className="text-xs text-slate-500 mt-1">Open Tools, follow the guide, enable GitHub or Supabase, then ask for the task in chat. Axiom asks before protected writes.</p></div></div>
       </div>
       <div className="grid grid-cols-2 gap-2 mt-4">
-       <button type="button" onClick={()=>setShowSettings(true)} className="min-h-11 rounded-xl bg-lime-300 text-slate-950 text-xs font-semibold">Open Settings</button>
+       <button type="button" onClick={()=>setShowSettings(true)} className="min-h-11 rounded-xl bg-lime-300 text-slate-950 text-xs font-semibold">Configure integrations</button>
        <button type="button" onClick={()=>setTab('tools')} className="min-h-11 rounded-xl border border-sky-200/20 bg-sky-200/[.06] text-sky-100 text-xs font-semibold">Integration guide</button>
       </div>
      </div>
