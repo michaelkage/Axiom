@@ -11,6 +11,34 @@
 
 #define AXIOM_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "AxiomLLM", __VA_ARGS__)
 
+static size_t valid_utf8_prefix(const std::string & value) {
+    size_t i = 0;
+    while (i < value.size()) {
+        const unsigned char lead = static_cast<unsigned char>(value[i]);
+        size_t count = 0;
+        if (lead <= 0x7f) count = 1;
+        else if (lead >= 0xc2 && lead <= 0xdf) count = 2;
+        else if (lead >= 0xe0 && lead <= 0xef) count = 3;
+        else if (lead >= 0xf0 && lead <= 0xf4) count = 4;
+        else return i;
+        if (i + count > value.size()) return i;
+        for (size_t j = 1; j < count; ++j) {
+            const unsigned char next = static_cast<unsigned char>(value[i + j]);
+            if ((next & 0xc0) != 0x80) return i;
+        }
+        if (count == 3) {
+            const unsigned char second = static_cast<unsigned char>(value[i + 1]);
+            if ((lead == 0xe0 && second < 0xa0) || (lead == 0xed && second >= 0xa0)) return i;
+        }
+        if (count == 4) {
+            const unsigned char second = static_cast<unsigned char>(value[i + 1]);
+            if ((lead == 0xf0 && second < 0x90) || (lead == 0xf4 && second >= 0x90)) return i;
+        }
+        i += count;
+    }
+    return i;
+}
+
 static std::mutex g_model_mutex;
 static llama_model * g_model = nullptr;
 static llama_context * g_context = nullptr;
@@ -186,6 +214,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
     jmethodID token_method = env->GetMethodID(callback_class, "onToken", "(Ljava/lang/String;)V");
     jmethodID cancelled_method = env->GetMethodID(callback_class, "isCancelled", "()Z");
     std::string output;
+    size_t emitted_bytes = 0;
     char piece[256];
     for (int generated = 0; generated < generation_limit; ++generated) {
         if (env->CallBooleanMethod(callback, cancelled_method) == JNI_TRUE) break;
@@ -196,10 +225,15 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
         if (piece_size > 0) {
             std::string part(piece, static_cast<size_t>(piece_size));
             output += part;
-            jstring chunk = env->NewStringUTF(part.c_str());
-            if (chunk) {
-                env->CallVoidMethod(callback, token_method, chunk);
-                env->DeleteLocalRef(chunk);
+            const size_t safe_bytes = valid_utf8_prefix(output);
+            if (safe_bytes > emitted_bytes) {
+                const std::string safe_chunk = output.substr(emitted_bytes, safe_bytes - emitted_bytes);
+                jstring chunk = env->NewStringUTF(safe_chunk.c_str());
+                if (chunk) {
+                    env->CallVoidMethod(callback, token_method, chunk);
+                    env->DeleteLocalRef(chunk);
+                }
+                emitted_bytes = safe_bytes;
             }
         }
         batch.n_tokens = 1;
