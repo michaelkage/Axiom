@@ -42,8 +42,15 @@ if(ANDROID AND TARGET ggml-vulkan)
     NO_CMAKE_FIND_ROOT_PATH
     REQUIRED
   )
+  # CMake/Clang may discard /usr/include as an implicit system path when
+  # cross-compiling with the Android sysroot. Stage Vulkan headers under the
+  # build tree so the include directory is explicit in the NDK compile command.
+  set(AXIOM_VULKAN_STAGED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/axiom-vulkan-headers")
+  file(COPY "${AXIOM_VULKAN_HPP_INCLUDE_DIR}/vulkan"
+    DESTINATION "${AXIOM_VULKAN_STAGED_INCLUDE_DIR}"
+  )
   target_include_directories(ggml-vulkan SYSTEM BEFORE PRIVATE
-    "${AXIOM_VULKAN_HPP_INCLUDE_DIR}"
+    "${AXIOM_VULKAN_STAGED_INCLUDE_DIR}"
   )
 endif()
 
