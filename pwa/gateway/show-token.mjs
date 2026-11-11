@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const token = process.env.AXIOM_GATEWAY_TOKEN?.trim();
-if (token && token.length >= 64) {
+if (token && token.length >= 32) {
   process.stdout.write(token + '\n');
   process.exit(0);
 }
@@ -11,7 +11,7 @@ if (token && token.length >= 64) {
 const tokenFile = join(homedir(), '.config', 'axiom', 'gateway-token');
 try {
   const stored = (await readFile(tokenFile, 'utf8')).trim();
-  if (!/^[a-f0-9]{64}$/i.test(stored)) throw new Error('Stored gateway token is invalid.');
+  if (stored.length < 32) throw new Error('Stored gateway token is invalid.');
   process.stdout.write(stored + '\n');
 } catch (error) {
   if (error.code === 'ENOENT') {
