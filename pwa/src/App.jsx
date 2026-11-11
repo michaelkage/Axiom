@@ -319,6 +319,11 @@ export default function App(){
 
  async function saveProviderCredentials(provider) {
   if(!gatewayToken||!gatewayBase()){setNotice('Pair the gateway before saving provider credentials.');return;}
+  try {
+   const target=new URL(gatewayBase());
+   const loopback=['localhost','127.0.0.1','[::1]'].includes(target.hostname);
+   if(target.protocol!=='https:'&&!loopback)throw new Error('Provider secrets require an HTTPS gateway. Plain HTTP is allowed only for localhost.');
+  } catch(error) {setNotice(error.message||'Enter a valid gateway URL.');return;}
   const payload={};
   if(provider==='github'){
    if(githubTokenInput.trim())payload.githubToken=githubTokenInput.trim();
