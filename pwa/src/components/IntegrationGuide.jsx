@@ -23,6 +23,12 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
       <p className="text-[11px] text-slate-400 mt-2">If Ollama runs in the same Termux environment, use <code>OLLAMA_BASE_URL=http://127.0.0.1:11434</code>. If Ollama runs on another machine, use its reachable URL instead. On Android, 127.0.0.1 means the phone itself, not your laptop.</p>
       <p className="text-[11px] text-slate-400 mt-2">A gateway on another device needs a trusted HTTPS address and the app origin in <code>AXIOM_ALLOWED_ORIGINS</code>. Do not expose the gateway directly to the public internet.</p>
     </div>
+    <div className="mt-3 rounded-xl border border-white/[.08] bg-black/20 p-3">
+      <div className="flex items-center gap-2 text-sm font-semibold"><TerminalSquare size={15}/> Android local model setup</div>
+      <p className="text-xs text-slate-300 mt-2">Axiom can use a Termux-hosted Ollama runtime as a temporary bridge while native on-device inference is being built. Install Termux first, then follow the one-command bootstrap and pairing guide.</p>
+      <a className="inline-flex mt-3 text-xs text-lime-200 underline underline-offset-4" href="https://github.com/michaelkage/Axiom/blob/main/pwa/TERMUX_SETUP.md" target="_blank" rel="noreferrer">Open Android Termux setup guide <ArrowUpRight size={13}/></a>
+      <p className="text-[10px] text-amber-200/80 mt-2">The current Android Ollama package is a third-party archived community build. This is a stopgap, not Axiom's native inference engine.</p>
+    </div>
     <div className="mt-3 rounded-xl bg-black/20 p-3">
       <div className="flex items-center gap-2 text-sm font-semibold"><Github size={15}/> 3. GitHub token: get this from GitHub</div>
       <ol className="list-decimal pl-4 mt-2 space-y-1 text-xs text-slate-300">
