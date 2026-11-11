@@ -2,13 +2,17 @@
 
 The gateway keeps Ollama, GitHub, Supabase, and MCP upstream access behind one authenticated local process. It also generates and securely stores its pairing credential on first run. Browser clients never receive configured GitHub PATs, Supabase publishable keys, or MCP bearer tokens.
 
-## 1. Gateway pairing token (automatic)
+## 1. Gateway pairing and authentication
 
-You no longer need to create or export `AXIOM_GATEWAY_TOKEN`. On first startup, the gateway generates a cryptographically random 256-bit token, stores it in `~/.config/axiom/gateway-token` with owner-only file permissions, and prints it once. Copy it during that first startup and paste it into Axiom's Android **Settings → Secure gateway pairing**. Later starts reuse the saved token without displaying it again.
+You do not need to create or export `AXIOM_GATEWAY_TOKEN`. On first startup, the gateway generates a cryptographically random 256-bit token and stores it in `~/.config/axiom/gateway-token` with owner-only file permissions.
 
-The Android app encrypts the pairing credential with Android Keystore. The app generates temporary 12-hour session tokens automatically. The pairing token is not a GitHub or Supabase credential.
+**Android on the same phone:** use the one-command Termux bootstrap in [TERMUX_SETUP.md](../TERMUX_SETUP.md). It sets `AXIOM_GATEWAY_SILENT_TOKEN=1`, so the pairing secret is not written to the gateway log, then hands it directly to the installed Axiom app through an explicit Android package intent. Axiom validates the credential with the gateway, immediately clears it from the launch intent, encrypts it with Android Keystore, and manages renewable 12-hour sessions. No token screen, copying, or pasting is involved.
 
-If the token is lost or compromised, stop the gateway, replace `~/.config/axiom/gateway-token` with a newly generated 64-character hex value, restart the gateway, and pair Axiom again. Do not commit this file or share its contents.
+**Gateway on another machine:** normal first startup prints the generated token once. Use the advanced remote-pairing section in Android Settings and a trusted HTTPS gateway URL. The app encrypts the bootstrap credential with Android Keystore. Browser-only PWA mode can enter the bearer token in Settings; it stays in memory and is cleared on reload.
+
+The pairing token protects gateway routes. It is not a GitHub or Supabase credential. Do not commit the token file or share its contents.
+
+If the token is lost or compromised, stop the gateway, replace `~/.config/axiom/gateway-token` with a newly generated 64-character hex value, restart the gateway, and pair Axiom again.
 
 ## 2. Get the GitHub token
 
@@ -63,6 +67,7 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 | Variable | Default | Purpose |
 |---|---|---|
 | `AXIOM_GATEWAY_TOKEN` | auto-generated | Optional override for the random 32-byte pairing secret; otherwise stored under `~/.config/axiom/` |
+| `AXIOM_GATEWAY_SILENT_TOKEN` | `0` | Set to `1` in managed bootstrap environments to suppress first-run secret output |
 | `AXIOM_GATEWAY_HOST` | `127.0.0.1` | Bind address |
 | `AXIOM_GATEWAY_PORT` | `8787` | Listen port |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Fixed Ollama upstream |
@@ -91,4 +96,4 @@ The response reports configuration, reachability, authentication acceptance, HTT
 
 The Models tab lists installed models and streams downloads through Ollama's `POST /api/pull` endpoint. Hugging Face search filters for GGUF repositories and installs compatible repositories through Ollama's `hf.co/<owner>/<repo>:<quantization>` model reference. Downloads occur on the machine running Ollama, not in the PWA browser. Verify each model card, license, quantization, and memory requirements before installing.
 
-A standard desktop Ollama daemon is not an Android-native service. On Android, the app can manage an Ollama runtime reachable through the configured gateway, but cannot silently install or run the desktop Ollama binary inside the APK. Fully offline, on-device inference requires a separate Android-native inference engine and is not claimed by this release.
+Axiom's Android APK also includes a separate native llama.cpp inference engine for on-device GGUF models. That engine does not require this gateway, Termux, or Ollama. The Termux bridge remains an optional compatibility path for Ollama-hosted models and gateway-managed integrations.
