@@ -1,6 +1,6 @@
-# Axiom Android 1.1.0
+# Axiom Android 1.1.1
 
-Axiom Android 1.1.0 brings the native local-model runtime into the mobile app, alongside the existing secure gateway and mobile-first workspace.
+Axiom Android 1.1.1 builds on the native local-model runtime into the mobile app, alongside the existing secure gateway and mobile-first workspace.
 
 ## Highlights
 
@@ -19,14 +19,16 @@ Axiom Android 1.1.0 brings the native local-model runtime into the mobile app, a
 **Hardware note:** Vulkan support is compiled into this build, but actual GPU execution and performance depend on the Android device and driver. Physical-device GPU, thermal, and memory-pressure validation has not yet been completed.
 
 ### Security and integrations
-- Added authenticated gateway pairing and renewable short-lived sessions.
+- Added automatic Termux-to-Android gateway pairing through an explicit package-scoped intent; the bootstrap credential is validated, immediately removed from the launch intent, encrypted with Android Keystore, and exchanged for renewable short-lived sessions.
+- Suppressed first-run gateway credential output in the Termux bootstrap so secrets are not written to its gateway log.
+- Restricted native gateway authentication to HTTPS or same-device loopback HTTP and disabled redirects on credential-bearing requests.
 - Kept GitHub and Supabase integration credentials on the gateway host rather than persisting them in browser storage.
 - Added encrypted Android storage for gateway pairing credentials and Hugging Face read tokens using Android Keystore.
 - Added server-side MCP proxying and repository-scoped GitHub/Supabase gateway routes.
-- Added first-run setup guidance and a persistent setup-guide entry point, including recovery instructions for the gateway token.
+- Added first-run setup guidance and a persistent setup-guide entry point with a one-command Termux bootstrap and automatic Android pairing.
 
 ### Mobile experience and reliability
-- Added the native interactive terminal runtime, PTY input/output, resize handling, cancellation controls, and app-private workspace support.
+- Added the native interactive terminal runtime, PTY input/output, resize handling, cancellation controls, and app-private workspace support. The terminal is explicitly documented as an Android developer shell, not a Termux/Linux distribution; unsupported tools are not presented as available.
 - Added foreground-service support for long-running native work, with optional wake-lock behavior.
 - Added connection recovery, bounded conversation persistence, and improved error handling.
 - Refined the mobile interface with a higher-contrast neo-brutalist visual system.
@@ -45,7 +47,7 @@ Automated CI does not replace testing on physical Android hardware. The device v
 1. Download `Axiom-Android-arm64-debug.apk` from the Assets section below.
 2. Open the APK on an ARM64 Android device.
 3. Allow installation from the browser or file manager if Android prompts.
-4. Launch Axiom and complete gateway pairing from the setup guide.
+4. Launch Axiom. If you want the optional Termux/Ollama gateway, run the one-command bootstrap from the in-app setup guide. It pairs the app automatically without displaying or copying a token.
 
 ## Release details
 
