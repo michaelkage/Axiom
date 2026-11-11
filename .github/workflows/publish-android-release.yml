@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/publish-android-release.yml"
       - "pwa/RELEASE_NOTES.md"
+      - "pwa/tests/mobile-e2e/**"
 
 permissions:
   contents: write
