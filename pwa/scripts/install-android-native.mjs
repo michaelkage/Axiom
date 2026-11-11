@@ -22,6 +22,15 @@ await writeFile(manifestPath, manifest);
 const gradlePath = join(app, 'build.gradle');
 if (!existsSync(gradlePath)) throw new Error('Expected Groovy app/build.gradle; Kotlin DSL is not supported.');
 let gradle = await readFile(gradlePath, 'utf8');
+const appVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
+const versionMatch = String(appVersion).match(/^(\\d+)\\.(\\d+)\\.(\\d+)$/);
+if (!versionMatch) throw new Error('PWA package version must use MAJOR.MINOR.PATCH before building Android.');
+const androidVersionCode = Number(versionMatch[1]) * 10000 + Number(versionMatch[2]) * 100 + Number(versionMatch[3]);
+if (!/versionCode\\s+\\d+/.test(gradle) || !/versionName\\s+['"][^'"]+['"]/.test(gradle)) {
+  throw new Error('Could not locate Android versionCode and versionName in generated Gradle configuration.');
+}
+gradle = gradle.replace(/versionCode\\s+\\d+/, 'versionCode ' + androidVersionCode);
+gradle = gradle.replace(/versionName\\s+['"][^'"]+['"]/, "versionName '" + appVersion + "'");
 if (!gradle.includes('org.jetbrains.kotlin.android')) {
   if (gradle.startsWith('plugins {')) gradle = gradle.replace('plugins {', "plugins {\n    id 'org.jetbrains.kotlin.android' version '2.1.20'");
   else {
