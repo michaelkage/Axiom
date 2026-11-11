@@ -1,6 +1,6 @@
 # Android local AI setup (Termux bridge)
 
-This is the compatibility path for Android devices until Axiom ships its own native inference runtime. It installs a community-built ARM64 Ollama distribution inside Termux and runs Axiom's Node gateway beside it. It does **not** install Ollama into the Axiom APK.
+This is the compatibility path for Android devices until Axiom ships its own native inference runtime. It installs a community-built ARM64 Ollama distribution inside Termux and runs Axiom's Node gateway beside it. It does **not** install Ollama into the Axiom APK.\n\n> **Important: Android has two separate shells here.** Axiom's built-in Terminal runs `/system/bin/sh` inside Axiom's private app storage. It is intentionally isolated and does not include Node.js, npm, pip, apt, or access to Termux files. Run the commands in this guide in the separate **Termux app**, not in Axiom → Terminal. The two apps do not share their home directories.
 
 ## 1. Install Termux
 
