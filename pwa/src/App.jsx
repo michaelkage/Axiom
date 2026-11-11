@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { connectMcpHttp, connectMcpSse } from './lib/mcpClient.js';
 import { runOllamaToolChat } from './lib/ollamaChat.js';
+import { runNativeToolChat } from './lib/nativeChat.js';
+import NativeModelStore from './components/NativeModelStore.jsx';
+import { getNativeDeviceCapabilities, listNativeModels, getNativeHuggingFaceFiles, downloadNativeModel, deleteNativeModel, loadNativeModel as loadNativeModelFile, unloadNativeModel, addNativeModelListener } from './lib/nativeModels.js';
 import MarkdownMessage from './components/MarkdownMessage.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
 import RuntimeControls from './components/RuntimeControls.jsx';
@@ -27,6 +30,11 @@ export default function App(){
  const [models,setModels]=useState([]);
  const [pullingModel,setPullingModel]=useState('');
  const [pullProgress,setPullProgress]=useState(null);
+ const [nativeModels,setNativeModels]=useState([]);
+ const [nativeCapabilities,setNativeCapabilities]=useState(null);
+ const [nativeLoadedModel,setNativeLoadedModel]=useState('');
+ const [nativeProgress,setNativeProgress]=useState(null);
+ const [nativeBusy,setNativeBusy]=useState(false);
  const [connection,setConnection]=useState('unknown');
  const [diagnostics,setDiagnostics]=useState(null);
  const [diagnosticsBusy,setDiagnosticsBusy]=useState(false);
@@ -71,6 +79,71 @@ export default function App(){
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:busy?'auto':'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
+
+ async function refreshNativeModels(){
+  if(!isNativeAndroid())return;
+  try{
+   const [capabilities,installed]=await Promise.all([getNativeDeviceCapabilities(),listNativeModels()]);
+   setNativeCapabilities(capabilities);
+   setNativeModels(installed);
+   setNativeLoadedModel(capabilities.loadedModel||'');
+  }catch(error){setNotice('Native model library could not be read: '+error.message);}
+ }
+ useEffect(()=>{
+  if(!isNativeAndroid())return;
+  let active=true;
+  let progressListener=null;
+  refreshNativeModels();
+  addNativeModelListener('modelDownloadProgress',event=>{if(active)setNativeProgress(event);}).then(listener=>{progressListener=listener;}).catch(()=>{});
+  return()=>{active=false;progressListener?.remove?.();};
+ },[]);
+ async function installNativeModel(options){
+  if(nativeBusy)return;
+  setNativeBusy(true);setNativeProgress({percent:0,status:'Preparing private download',downloadedBytes:0,totalBytes:options.sizeBytes||0});
+  try{
+   const installed=await downloadNativeModel(options);
+   await refreshNativeModels();
+   setNativeProgress({percent:100,status:'Installed',downloadedBytes:installed.sizeBytes,totalBytes:installed.sizeBytes});
+   setNotice('Model installed and SHA-256 checked: '+installed.id);
+   log('success','Native model installed',installed.id+' · SHA-256 '+installed.sha256);
+  }catch(error){setNotice('Native model download failed: '+error.message);log('error','Native model download failed',error.message);}
+  finally{setNativeBusy(false);}
+ }
+ async function activateNativeModel(id){
+  if(nativeBusy)return;
+  const model=nativeModels.find(item=>item.id===id);
+  const available=Number(nativeCapabilities?.availableRamBytes||0);
+  const estimated=Number(model?.sizeBytes||0)*1.2+384*1024*1024;
+  if(available&&estimated>available*0.9){
+   setNotice('This model is too large for the currently available RAM. Choose a smaller quantization or close other apps first.');
+   return;
+  }
+  setNativeBusy(true);
+  try{
+   const result=await loadNativeModelFile(id,{contextSize:available&&available<3*1024*1024*1024?1024:2048,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6))});
+   setNativeLoadedModel(id);
+   update({model:id});
+   await refreshNativeModels();
+   setNotice('Native model loaded. Chat will now use on-device llama.cpp inference.');
+   log('success','Native model loaded',JSON.stringify(result));
+  }catch(error){setNotice('Could not load native model: '+error.message);log('error','Native model load failed',error.message);}
+  finally{setNativeBusy(false);}
+ }
+ async function deactivateNativeModel(){
+  if(nativeBusy)return;
+  setNativeBusy(true);
+  try{await unloadNativeModel();setNativeLoadedModel('');await refreshNativeModels();setNotice('Native model unloaded and memory released.');}
+  catch(error){setNotice('Could not unload native model: '+error.message);}
+  finally{setNativeBusy(false);}
+ }
+ async function removeNativeModel(id){
+  if(nativeBusy)return;
+  setNativeBusy(true);
+  try{await deleteNativeModel(id);await refreshNativeModels();setNotice('Model removed from Axiom private storage.');}
+  catch(error){setNotice('Could not delete model: '+error.message);}
+  finally{setNativeBusy(false);}
+ }
+
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
  const gatewayBase=()=>String(state.settings?.gatewayUrl||'').replace(/\/$/,'');
  const gatewayFetch=async(input,init={})=>{let token=gatewayToken;const requestUrl=typeof input==='string'?input:(input?.url||'');const isGatewayRequest=Boolean(gatewayBase())&&requestUrl.startsWith(gatewayBase()+'/');const send=()=>{const headers=new Headers(init.headers||{});if(token)headers.set('Authorization','Bearer '+token);return fetch(input,{...init,headers});};let response=await send();if(response.status===401&&isGatewayRequest&&isNativeAndroid()){try{const session=await registerGatewaySession(gatewayBase());token=session.token;setGatewayToken(token);response=await send();}catch{}}return response;};
@@ -200,7 +273,7 @@ export default function App(){
    const runResult=await runOllamaToolChat({
     baseUrl:base,
     fetchImpl:gatewayFetch,
-    model:state.model,
+    model:nativeLoadedModel||state.model,
     messages:[...priorMessages,userMsg],
     tools:availableTools,
     signal,
@@ -210,7 +283,7 @@ export default function App(){
     confirmTool:(name,args,{signal}={})=>new Promise(resolve=>{const finish=allowed=>{signal?.removeEventListener('abort',onAbort);approvalResolver.current=null;setPendingApproval(null);resolve(allowed);};const onAbort=()=>finish(false);approvalResolver.current=finish;setPendingApproval({name,args});if(signal?.aborted)onAbort();else signal?.addEventListener('abort',onAbort,{once:true});}),
     onText:value=>{answer=value;if(streamTimerRef.current===null)streamTimerRef.current=setTimeout(()=>{streamTimerRef.current=null;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},100);},
     onEvent:event=>{
-     if(event.type==='request')log('request','Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
+     if(event.type==='request')log('request',nativeLoadedModel?'Native llama.cpp inference':'Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
      else if(event.type==='metrics')log('info','Model performance',JSON.stringify(event.metrics,null,2));
      else if(event.type==='tool.request')log('request','Tool: '+event.name,JSON.stringify(event.args,null,2));
      else if(event.type==='tool.completed')log('success','Tool completed: '+event.name,event.result);
@@ -221,7 +294,7 @@ export default function App(){
    answer=runResult.answer;
    if(streamTimerRef.current!==null){clearTimeout(streamTimerRef.current);streamTimerRef.current=null;}
    patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer,metrics:runResult.metrics||null}:m),chatId);
-   log('success','Generation complete',state.model);
+   log('success','Generation complete',(nativeLoadedModel?'Native · ':'Ollama · ')+(nativeLoadedModel||state.model));
   }catch(e){if(streamTimerRef.current!==null){clearTimeout(streamTimerRef.current);streamTimerRef.current=null;}if(answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m),chatId);log('error','Generation failed',e.message);}}
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
  }
@@ -308,7 +381,7 @@ export default function App(){
      <div className="grid grid-cols-2 gap-2 w-full mt-4">{['Explain a codebase','Draft a SQL query','Plan a project','Debug an error'].map(x=><button key={x} onClick={()=>setDraft(x)} className="text-left p-3 rounded-xl border border-white/[.08] bg-white/[.025] text-xs text-slate-300 active:bg-white/[.08]">{x}<ChevronRight size={13} className="inline ml-1 text-lime-300"/></button>)}</div>
     </div>:<div className="space-y-5 pb-5">{messages.map(m=><div key={m.id} className={'flex gap-3 '+(m.role==='user'?'flex-row-reverse':'')}><div className={'w-8 h-8 shrink-0 rounded-xl grid place-items-center '+(m.role==='user'?'bg-slate-700':'bg-lime-300/10 text-lime-300')}>{m.role==='user'?<Smartphone size={15}/>:<Bot size={17}/>}</div><div className={'max-w-[calc(100%_-_2.75rem)] sm:max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words '+(m.role==='user'?'bg-lime-300 text-slate-950 rounded-tr-sm':'bg-white/[.055] border border-white/[.06] rounded-tl-sm text-slate-200')}>{m.content?(m.role==='assistant'?<><MarkdownMessage content={m.content}/>{m.metrics&&<div className="mt-3 pt-2 border-t border-white/[.07] grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2 text-[10px] text-slate-500" aria-label="Model performance"><div><span className="block text-slate-600">First token</span><span className="text-slate-300 tabular-nums">{m.metrics.firstTokenMs==null?'n/a':m.metrics.firstTokenMs+' ms'}</span></div><div><span className="block text-slate-600">Generation</span><span className="text-slate-300 tabular-nums">{m.metrics.tokensPerSecond==null?'n/a':m.metrics.tokensPerSecond+' tok/s'}</span></div><div><span className="block text-slate-600">Model load</span><span className="text-slate-300 tabular-nums">{m.metrics.modelLoadMs==null?'n/a':m.metrics.modelLoadMs+' ms'}</span></div><div><span className="block text-slate-600">Output</span><span className="text-slate-300 tabular-nums">{m.metrics.generatedTokens==null?'n/a':m.metrics.generatedTokens+' tokens'}</span></div><div className="col-span-2 sm:col-span-4 text-slate-600">Prompt: {m.metrics.promptTokens??'n/a'} tokens · {m.metrics.promptTokensPerSecond??'n/a'} tok/s · Elapsed: {m.metrics.wallTimeMs??'n/a'} ms · Ollama: {m.metrics.modelReportedTotalMs??'n/a'} ms · {m.metrics.modelTurns||1} model turn(s)</div></div>}</>:m.content):<span className="text-slate-500">Thinking…</span>}<div className={'text-[10px] mt-2 flex items-center gap-2 '+(m.role==='user'?'text-slate-700':'text-slate-600')}><span>{m.time}</span>{m.role==='assistant'&&m.content&&<button type="button" aria-label="Copy assistant response" title="Copy response" onClick={async()=>{try{await navigator.clipboard.writeText(m.content);setNotice('Assistant response copied.');}catch{setNotice('Could not copy response. Check clipboard permissions.');}}} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-400 hover:text-lime-300 active:bg-white/10"><Copy size={12}/><span>Copy</span></button>}</div></div></div>)}{busy&&<div className="text-xs text-lime-300 flex items-center gap-2 pl-11"><LoaderCircle size={13} className="animate-spin"/> Generating locally</div>}<div ref={bottomRef}/></div>}
    </section>}
-   {tab==='models'&&<ModelStore models={models} connection={connection} onRefresh={()=>checkOllama()} onPullModel={pullModel} onSelectModel={model=>{update({model});setTab('chat');}} pullingModel={pullingModel} pullProgress={pullProgress} disabled={connection!=='online'||Boolean(pullingModel)}/>}
+   {tab==='models'&&(isNativeAndroid()?<NativeModelStore models={nativeModels} capabilities={nativeCapabilities} loadedModel={nativeLoadedModel} progress={nativeProgress} busy={nativeBusy} onRefresh={refreshNativeModels} onFiles={getNativeHuggingFaceFiles} onDownload={installNativeModel} onLoad={activateNativeModel} onUnload={deactivateNativeModel} onDelete={removeNativeModel}/>:<ModelStore models={models} connection={connection} onRefresh={()=>checkOllama()} onPullModel={pullModel} onSelectModel={model=>{update({model});setTab('chat');}} pullingModel={pullingModel} pullProgress={pullProgress} disabled={connection!=='online'||Boolean(pullingModel)}/>)}
    {tab==='terminal'&&<TerminalPanel onNotice={setNotice} terminalRows={state.settings?.terminalRows||24} terminalCols={state.settings?.terminalCols||80}/>}
    {tab==='tools'&&<section><p className="text-xs text-lime-300 font-semibold tracking-widest uppercase">SYSTEM / EXTENSIONS</p><h1 className="text-2xl font-semibold mt-1">Give Axiom tools.</h1><p className="text-sm text-slate-500 mt-2 mb-6">Connect the systems you want Axiom to work with. Nothing gets enabled behind your back.</p><IntegrationGuide gatewayUrl={state.settings?.gatewayUrl||''} paired={Boolean(gatewayToken)} onOpenSettings={()=>setShowSettings(true)}/><div className="rounded-2xl border border-lime-300/20 bg-lime-300/[.045] p-4 mb-4"><div className="flex gap-3 items-center"><div className="w-10 h-10 rounded-xl bg-lime-300/10 text-lime-300 grid place-items-center"><Layers3 size={20}/></div><div className="flex-1"><div className="font-medium text-sm">Extensible registry</div><div className="text-xs text-slate-500 mt-1">Async tools · JSON schema · local execution</div></div><badge className="hidden">Core</badge><span className="text-[10px] text-lime-300 border border-lime-300/20 rounded-full px-2 py-1">CORE</span></div></div>{state.tools.map(t=><div key={t.id} className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4 mb-3"><div className="flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-white/[.06] grid place-items-center"><Icon name={t.icon} size={20}/></div><div className="flex-1"><div className="font-medium text-sm">{t.name}</div><div className="text-xs text-slate-500 mt-1">{t.description}</div></div><button type="button" role="switch" aria-checked={t.enabled} aria-label={"Enable "+t.name+" integration"} onClick={()=>toggleIntegration(t.id)} className={'w-11 h-6 rounded-full p-1 transition '+(t.enabled?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white transition '+(t.enabled?'translate-x-5':'')}/></button></div>{t.enabled&&<div className="mt-4 pt-3 border-t border-white/[.07] text-xs text-lime-300 flex gap-2"><Check size={14}/> Registered: {listTools().filter(x=>x.name.startsWith(t.id==='github'?'github_':'supabase_')).length} runtime tools.</div>}</div>)}<button onClick={async()=>{const snippet="import { registerTool } from './lib/toolRegistry.js';\n\nregisterTool({\n  name: 'my_custom_tool',\n  description: 'Describe what this tool does',\n  inputSchema: { type: 'object', properties: {}, additionalProperties: false }\n}, async (input) => {\n  // Implement your async capability here\n  return { ok: true };\n});";try{await navigator.clipboard.writeText(snippet);setNotice('Custom tool template copied. Add it to your app code and register it at startup.');}catch{setNotice('Clipboard unavailable. Import registerTool from ./lib/toolRegistry.js to add a custom async tool.');}}} className="w-full p-4 rounded-2xl border border-dashed border-white/15 text-sm text-slate-400 flex justify-center items-center gap-2"><Plus size={16}/> Copy custom tool template</button></section>}
    {tab==='mcp'&&<section><p className="text-xs text-lime-300 font-semibold tracking-widest uppercase">SYSTEM / NETWORK</p><h1 className="text-2xl font-semibold mt-1">External endpoints.</h1><p className="text-sm text-slate-500 mt-2 mb-6">Wire in remote tool servers. Inspect what they expose before putting them to work.</p><div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4 mb-5"><div className="flex items-center gap-2 mb-4"><Server size={18} className="text-lime-300"/><span className="font-medium text-sm">Add endpoint</span></div><label className="text-xs text-slate-500">Server name</label><input aria-label="Server name" value={serverName} onChange={e=>setServerName(e.target.value)} placeholder="My MCP server" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><label className="text-xs text-slate-500">Direct endpoint URL (optional)</label><input aria-label="Endpoint URL" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} placeholder="https://example.com/mcp or /sse" className="w-full mt-1 mb-3 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none focus:border-lime-300/50"/><label className="text-xs text-slate-500">Transport</label><select aria-label="MCP transport" value={serverTransport} onChange={e=>setServerTransport(e.target.value)} className="w-full mt-1 mb-3 p-3 rounded-xl bg-[#090d14] border border-white/10 text-sm outline-none"><option value="http">Streamable HTTP</option><option value="sse">Legacy SSE (no auth header)</option></select><label className="text-xs text-slate-500">Gateway MCP server ID (recommended)</label><input aria-label="Gateway MCP server ID" value={serverGatewayId} onChange={e=>setServerGatewayId(e.target.value)} placeholder="filesystem" className="w-full mt-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm outline-none"/><p className="text-[11px] text-slate-500 mt-2">Configure this ID and its credentials in MCP_SERVERS_JSON on the gateway.</p><button onClick={addServer} className="w-full mt-3 p-3 rounded-xl bg-lime-300 text-slate-950 text-sm font-semibold">Add server</button></div>{state.servers.length===0?<div className="text-center py-12 text-slate-500"><Globe2 size={28} className="mx-auto mb-3 opacity-50"/><p className="text-sm">No MCP servers connected yet.</p></div>:state.servers.map(s=><div key={s.id} className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4 mb-3"><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl bg-white/[.06] grid place-items-center"><Radio size={18}/></div><div className="flex-1 min-w-0"><div className="font-medium text-sm">{s.name}</div><div className="text-xs text-slate-500 truncate mt-1">{s.url}</div><div className="text-[10px] mt-2 text-slate-400">{s.transport==='sse'?'Legacy SSE':'Streamable HTTP'} · {s.status} · {s.tools.length} tools</div></div><button type="button" aria-label={"Reconnect "+s.name} title="Reconnect server" onClick={()=>discoverServer(s.id)} className="p-2 rounded-lg bg-white/[.06] text-lime-300"><RefreshCw size={15}/></button><button type="button" aria-label={"Remove "+s.name} title="Remove server" onClick={()=>{mcpAttempts.current[s.id]=(mcpAttempts.current[s.id]||0)+1;mcpCleanup.current[s.id]?.();delete mcpCleanup.current[s.id];setState(current=>({...current,servers:current.servers.filter(x=>x.id!==s.id)}));log('info','MCP server removed',s.name);}} className="p-2 text-slate-500"><Trash2 size={15}/></button></div>{s.tools.map(t=><div key={t.name} className="mt-3 p-3 rounded-xl bg-black/20"><div className="text-xs font-medium">{t.name}</div><div className="text-xs text-slate-500 mt-1">{t.description}</div><pre className="text-[10px] text-slate-600 overflow-auto mt-2">{JSON.stringify(t.inputSchema||{},null,2)}</pre></div>)}</div>)}<div className="text-[11px] text-slate-600 leading-relaxed mt-5">MCP connections depend on server CORS support. Legacy SSE cannot send custom authorization headers from the browser; use a trusted same-origin proxy for authenticated production servers.</div></section>}
