@@ -43,7 +43,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
 
   const awake = async enabled => {
     setError('');
-    try { await setKeepAwake(enabled); await refresh(); }
+    try { await setKeepAwake(enabled); if (enabled && gatewaySessionToken) await startBackgroundService({ gatewayUrl, sessionToken: gatewaySessionToken }); await refresh(); }
     catch (e) { setError(e.message); }
   };
 
