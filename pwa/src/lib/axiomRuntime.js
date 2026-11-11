@@ -51,6 +51,10 @@ export async function registerGatewaySession(gatewayUrl) {
   requireNative();
   return NativeRuntime.registerGatewaySession({ gatewayUrl });
 }
+export async function consumeGatewayPairingIntent() {
+  requireNative();
+  return NativeRuntime.consumeGatewayPairingIntent();
+}
 export async function startBackgroundService(options = {}) {
   requireNative();
   return NativeRuntime.startBackgroundService(options);
