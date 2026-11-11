@@ -71,13 +71,35 @@ cd "$AXIOM_RUNTIME_DIR/pwa"
 
 info "Ollama is ready at http://127.0.0.1:11434."
 info "Starting the Axiom gateway at http://127.0.0.1:8787."
-info "On first startup, the gateway prints its one-time pairing token. Copy it into Axiom → Settings → Secure gateway pairing."
-if [[ -f "${HOME}/.config/axiom/gateway-token" ]]; then
-  info "A pairing token already exists and will not be printed again. If you need to retrieve it, run: cat ~/.config/axiom/gateway-token"
-fi
-info "Keep this Termux session running. Stop the gateway with Ctrl+C; Ollama remains in the background."
-
+command -v am >/dev/null 2>&1 || fail "Android activity manager 'am' is unavailable. Open Termux normally and retry."
 export OLLAMA_BASE_URL="http://127.0.0.1:11434"
 export AXIOM_GATEWAY_HOST="127.0.0.1"
 export AXIOM_GATEWAY_PORT="8787"
-exec node gateway/server.mjs
+
+info "Starting the Axiom gateway in the background."
+nohup node gateway/server.mjs > "${HOME}/.axiom-gateway.log" 2>&1 </dev/null &
+GATEWAY_PID=$!
+trap 'kill "$GATEWAY_PID" 2>/dev/null || true' EXIT INT TERM
+
+ready=0
+for attempt in $(seq 1 30); do
+  if curl --silent --fail --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
+    ready=1
+    break
+  fi
+  kill -0 "$GATEWAY_PID" 2>/dev/null || break
+  sleep 1
+done
+(( ready == 1 )) || {
+  tail -n 40 "${HOME}/.axiom-gateway.log" >&2 || true
+  fail "Axiom gateway did not become ready. Check ~/.axiom-gateway.log."
+}
+
+PAIRING_TOKEN="$(cat "${HOME}/.config/axiom/gateway-token")"
+[[ "${#PAIRING_TOKEN}" -eq 64 ]] || fail "The gateway pairing credential is missing or invalid."
+info "Gateway is ready. Handing pairing securely to the installed Axiom app."
+am start -n com.axiom.mobile/.MainActivity -a android.intent.action.VIEW -d "axiom://gateway-pair?token=${PAIRING_TOKEN}" >/dev/null
+unset PAIRING_TOKEN
+info "Axiom will import the credential into Android Keystore and register its session automatically."
+info "Keep Termux running while using the gateway. Stop it with Ctrl+C."
+wait "$GATEWAY_PID"
