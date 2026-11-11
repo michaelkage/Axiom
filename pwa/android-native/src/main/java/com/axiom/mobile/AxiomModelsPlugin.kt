@@ -125,6 +125,7 @@ class AxiomModelsPlugin : Plugin() {
             call.reject("The selected file could not be opened.")
             return
         }
+        var partialFile: File? = null
         Thread({
             try {
                 val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -151,6 +152,7 @@ class AxiomModelsPlugin : Plugin() {
                     } while (target.exists())
                 }
                 val partial = File(modelRoot, target.name + ".part")
+                partialFile = partial
                 val digest = MessageDigest.getInstance("SHA-256")
                 var copied = 0L
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -183,7 +185,7 @@ class AxiomModelsPlugin : Plugin() {
                         .put("sizeBytes", copied).put("sha256", sha).put("sha256Verified", true))
                 }
             } catch (error: Exception) {
-                File(modelRoot, "import-placeholder.part").delete()
+                partialFile?.delete()
                 activity.runOnUiThread { call.reject(error.message ?: "Could not import the GGUF model.") }
             }
         }, "axiom-model-import").apply { isDaemon = true }.start()
