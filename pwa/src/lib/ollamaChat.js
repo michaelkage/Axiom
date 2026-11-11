@@ -19,7 +19,7 @@ async function ollamaHttpError(response) {
   } catch {
     // Preserve the HTTP status even if the upstream error body cannot be read.
   }
-  detail = String(detail).replace(/[\\r\\n\\t]+/g, ' ').trim().slice(0, 1200);
+  detail = String(detail).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 1200);
   const modelMissing = response.status === 404 && /model.{0,100}(not found|does not exist)|(not found|does not exist).{0,100}model/i.test(detail);
   if (modelMissing) {
     return new Error(`Ollama model is not installed: ${detail}. Open Model Store, pull this model onto the Ollama host, then retry.`);
