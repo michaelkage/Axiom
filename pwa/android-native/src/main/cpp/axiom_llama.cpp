@@ -125,8 +125,6 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, js
 
     llama_backend_init();
     llama_model_params model_params = llama_model_default_params();
-    model_params.use_mmap = true;
-    model_params.use_mlock = false;
     g_model = llama_model_load_from_file(model_path.c_str(), model_params);
     if (!g_model) {
         AXIOM_LOGE("Failed to load GGUF model: %s", model_path.c_str());
