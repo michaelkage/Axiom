@@ -20,7 +20,7 @@ OLLAMA_PID="${HOME}/.axiom-ollama.pid"
 info "Updating Termux packages and installing Node.js, Git, and curl."
 pkg update -y
 pkg upgrade -y
-pkg install -y nodejs-lts git curl
+pkg install -y nodejs-lts git curl coreutils
 
 node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
 (( node_major >= 20 )) || fail "Axiom gateway requires Node.js 20+. Detected Node.js $(node --version)."
