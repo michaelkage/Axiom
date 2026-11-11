@@ -181,3 +181,34 @@ test('diagnostics reports missing provider configuration and offline upstreams',
   });
 });
 
+
+test('diagnostics distinguishes rejected GitHub and Supabase credentials', async () => {
+  await withServer({
+    env: { GITHUB_TOKEN: 'rejected-github-token', GITHUB_REPOSITORY: 'michaelkage/Axiom', SUPABASE_URL: 'https://project.example.test', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_rejected' },
+    fetchImpl: async url => new Response('{}', { status: String(url).includes('api.github.com') ? 401 : 403 })
+  }, async base => {
+    const response = await fetch(base + '/diagnostics', { headers: { authorization: 'Bearer ' + TOKEN } });
+    const data = await response.json();
+    assert.equal(data.services.github.status, 'error');
+    assert.equal(data.services.github.authenticated, false);
+    assert.match(data.services.github.message, /rejected/);
+    assert.equal(data.services.supabase.status, 'error');
+    assert.equal(data.services.supabase.httpStatus, 403);
+    assert.match(data.services.supabase.message, /denied access/);
+  });
+});
+
+test('diagnostics refuses a Supabase secret key without contacting Supabase', async () => {
+  let upstreamCalls = 0;
+  await withServer({
+    env: { SUPABASE_URL: 'https://project.example.test', SUPABASE_PUBLISHABLE_KEY: 'sb_secret_forbidden' },
+    fetchImpl: async () => { upstreamCalls += 1; return new Response('{}', { status: 200 }); }
+  }, async base => {
+    const response = await fetch(base + '/diagnostics', { headers: { authorization: 'Bearer ' + TOKEN } });
+    const data = await response.json();
+    assert.equal(data.services.supabase.status, 'error');
+    assert.match(data.services.supabase.message, /must not be a secret key/);
+    assert.equal(upstreamCalls, 1); // Ollama only
+  });
+});
+

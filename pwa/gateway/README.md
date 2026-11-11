@@ -86,7 +86,7 @@ Authenticated clients can request `GET /diagnostics` with the gateway bearer/ses
 
 - Ollama: `GET /api/tags`
 - GitHub: `GET /repos/{GITHUB_REPOSITORY}` using the server-side `GITHUB_TOKEN`
-- Supabase: `GET /auth/v1/health` using `SUPABASE_PUBLISHABLE_KEY`
+- Supabase: `GET /rest/v1/` using `SUPABASE_PUBLISHABLE_KEY` (PostgREST validates the API key without querying user tables)
 - MCP: reports configured server IDs; use the MCP tab's discovery action to verify protocol connectivity
 
 The response reports configuration, reachability, authentication acceptance, HTTP status, and an actionable message. It never returns credential values or upstream response bodies. Provider checks run in parallel with an 8-second timeout and do not read or modify repository files, database rows, or schemas.
