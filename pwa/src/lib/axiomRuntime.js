@@ -51,9 +51,12 @@ export async function registerGatewaySession(gatewayUrl) {
   requireNative();
   return NativeRuntime.registerGatewaySession({ gatewayUrl });
 }
-export async function consumeGatewayPairingIntent() {
+export async function consumeGatewayPairingIntent(gatewayUrl) {
   requireNative();
-  return NativeRuntime.consumeGatewayPairingIntent({ gatewayUrl });
+  if (typeof gatewayUrl !== 'string' || !gatewayUrl.trim()) {
+    throw new Error('Configure the gateway URL before automatic pairing.');
+  }
+  return NativeRuntime.consumeGatewayPairingIntent({ gatewayUrl: gatewayUrl.trim() });
 }
 export async function startBackgroundService(options = {}) {
   requireNative();
