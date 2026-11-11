@@ -25,6 +25,20 @@ class AxiomRuntimePlugin : Plugin() {
     private val terminals = ConcurrentHashMap<String, Terminal>()
     private val random = SecureRandom()
     @Volatile private var sessionToken: String? = null
+
+    private fun validatedGatewayUrl(value: String): URL {
+        val parsed = URL(value.trim().trimEnd('/'))
+        val host = parsed.host.lowercase()
+        val loopbackHost = host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]"
+        val secureTransport = parsed.protocol.equals("https", ignoreCase = true)
+        val allowedLocalTransport = parsed.protocol.equals("http", ignoreCase = true) && loopbackHost
+        require((secureTransport || allowedLocalTransport) &&
+            parsed.userInfo == null && host.isNotBlank() &&
+            parsed.path in listOf("", "/") && parsed.query == null && parsed.ref == null) {
+            "Gateway URL must use HTTPS, or HTTP on this device's loopback interface only."
+        }
+        return parsed
+    }
     private val prefs by lazy { context.getSharedPreferences("axiom_runtime", 0) }
     private val workspaceRoot: File by lazy {
         File(context.filesDir, "workspaces").apply { mkdirs() }.canonicalFile
@@ -196,20 +210,12 @@ class AxiomRuntimePlugin : Plugin() {
 
         val gatewayUrl = call.getString("gatewayUrl").orEmpty().trim().trimEnd('/')
         val parsedGateway = try {
-            URL(gatewayUrl)
-        } catch (_: Exception) {
-            return call.reject("Gateway URL must be a valid HTTP(S) URL.")
+            validatedGatewayUrl(gatewayUrl)
+        } catch (error: Exception) {
+            return call.reject(error.message ?: "Gateway URL is invalid.")
         }
-        val host = parsedGateway.host.lowercase()
-        val loopbackHost = host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]"
-        val secureTransport = parsedGateway.protocol.equals("https", ignoreCase = true)
-        val allowedLocalTransport = parsedGateway.protocol.equals("http", ignoreCase = true) && loopbackHost
-        if (token.length != 64 || !token.matches(Regex("[A-Fa-f0-9]{64}")) ||
-            (!secureTransport && !allowedLocalTransport) ||
-            parsedGateway.userInfo != null || host.isBlank() ||
-            parsedGateway.path !in listOf("", "/") ||
-            parsedGateway.query != null || parsedGateway.ref != null) {
-            return call.reject("Pairing requires a valid 256-bit token and either a loopback HTTP or HTTPS gateway URL.")
+        if (token.length != 64 || !token.matches(Regex("[A-Fa-f0-9]{64}"))) {
+            return call.reject("The gateway pairing credential must be a valid 256-bit token.")
         }
 
         Thread({
@@ -251,9 +257,12 @@ class AxiomRuntimePlugin : Plugin() {
     }
     @PluginMethod
     fun registerGatewaySession(call: PluginCall) {
-        val gatewayUrl = call.getString("gatewayUrl").orEmpty().trimEnd('/')
-        val parsedGateway = try { java.net.URL(gatewayUrl) } catch (_: Exception) { return call.reject("Gateway URL must be a valid HTTP(S) URL.") }
-        if ((parsedGateway.protocol != "http" && parsedGateway.protocol != "https") || parsedGateway.userInfo != null || parsedGateway.host.isBlank()) return call.reject("Gateway URL must be a valid HTTP(S) URL without embedded credentials.")
+        val gatewayUrl = call.getString("gatewayUrl").orEmpty().trim().trimEnd('/')
+        try {
+            validatedGatewayUrl(gatewayUrl)
+        } catch (error: Exception) {
+            return call.reject(error.message ?: "Gateway URL is invalid.")
+        }
         Thread({
             try {
                 val bootstrap = prefs.getString("gateway_bootstrap", null)
