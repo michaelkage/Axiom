@@ -165,7 +165,7 @@ test('diagnostics reports provider reachability without exposing credentials', a
     assert.equal(JSON.stringify(data).includes('sb_publishable_server_secret'), false);
     assert.equal(calls.length, 3);
     assert.ok(calls.some(call => call.url === 'https://api.github.com/repos/michaelkage/Axiom'));
-    assert.ok(calls.some(call => call.url === 'https://project.example.test/auth/v1/health'));
+    assert.ok(calls.some(call => call.url === 'https://project.example.test/rest/v1/'));
   });
 });
 
