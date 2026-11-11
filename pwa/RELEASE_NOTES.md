@@ -1,6 +1,6 @@
 # Axiom Android 1.1.1
 
-Axiom Android 1.1.1 builds on the native local-model runtime into the mobile app, alongside the existing secure gateway and mobile-first workspace.
+Axiom Android 1.1.1 improves native local-model workflows, secure gateway pairing, and the mobile-first workspace.
 
 ## Highlights
 
