@@ -49,8 +49,10 @@ test('native inference exposes model lifecycle, chat-template JNI and cancellati
   assert.match(nativeCpp, /llama_sampler_sample/);
   assert.match(nativeCpp, /isCancelled/);
   assert.match(nativeCpp, /valid_utf8_prefix/);
-  assert.match(nativeCpp, /n_gpu_layers = requested_gpu_layers/);
+  assert.match(nativeCpp, /model_params\.n_gpu_layers = gpu_layer_count/);
   assert.match(nativeCpp, /retrying with CPU-only inference/);
+  assert.match(nativeCpp, /if \(!g_context\)/);
+  assert.match(nativeCpp, /if \(!load_model_and_context\(0\)\)/);
   assert.match(nativeCpp, /llama_supports_gpu_offload/);
   assert.match(nativeCpp, /vkEnumeratePhysicalDevices/);
 });
@@ -74,12 +76,14 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(store, /Hugging Face authentication/);
   assert.match(store, /Run device validation/);
   assert.match(store, /vulkanDeviceAvailable/);
+  assert.match(store, /requestedGpuLayers/);
+  assert.match(app, /text-slate-700 hover:text-slate-950/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
 });
 
 
 test('first-run onboarding can be reopened and missed gateway tokens can be recovered safely', () => {
-  assert.match(app, /axiom\.onboarding\.dismissed/);
+  assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /Open setup guide/);
   assert.match(app, /gateway:token/);
   assert.match(tokenRecovery, /\.config.*axiom.*gateway-token/);
