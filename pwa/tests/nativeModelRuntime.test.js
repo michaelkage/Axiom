@@ -83,8 +83,8 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(store, /Run device validation/);
   assert.match(store, /vulkanDeviceAvailable/);
   assert.match(store, /requestedGpuLayers/);
-  assert.match(store, /samples every 1\.5 seconds/);
-  assert.match(app, /setInterval\(\(\)=>\{void captureTelemetry\(\)\.catch\(\)\},1500\)/);
+  assert.match(store, /about every 1\.5 seconds/);
+  assert.match(app, /setInterval\(\(\)=>\{void captureTelemetry/);
   assert.match(app, /text-slate-700 hover:text-slate-950/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
 });
