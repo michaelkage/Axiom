@@ -1,7 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.clear());
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem("axiom.onboarding.v2.dismissed", "1");
+  });
   await page.route("**/api/tags", route => route.fulfill({
     status: 200,
     contentType: "application/json",
