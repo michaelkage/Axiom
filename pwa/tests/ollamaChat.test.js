@@ -164,6 +164,23 @@ test('reports HTTP errors before attempting to parse a stream', async () => {
   await assert.rejects(harness.run(), /HTTP 503/);
 });
 
+test('explains Ollama model-not-installed 404 responses instead of hiding the upstream detail', async () => {
+  const harness = setup([new Response(JSON.stringify({ error: "model 'qwen2.5:1.5b' not found, try pulling it first" }), {
+    status: 404, headers: { 'content-type': 'application/json' }
+  })]);
+  await assert.rejects(harness.run(), error => {
+    assert.match(error.message, /Ollama model is not installed/);
+    assert.match(error.message, /qwen2\\.5:1\\.5b/);
+    assert.match(error.message, /Open Model Store/);
+    return true;
+  });
+});
+
+test('preserves useful plain-text details for other Ollama HTTP failures', async () => {
+  const harness = setup([new Response('route unavailable', { status: 404 })]);
+  await assert.rejects(harness.run(), /Ollama returned HTTP 404: route unavailable/);
+});
+
 test('supports ordinary multi-turn chat without registering tools', async () => {
   const history = [
     { role: 'user', content: 'My project is called Axiom.' },
