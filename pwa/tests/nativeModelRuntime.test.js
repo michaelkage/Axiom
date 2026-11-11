@@ -25,7 +25,7 @@ test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU
 
 test('native model files stay in private storage and use resumable verified installation', () => {
   assert.match(plugin, /File\(context\.filesDir, "models"\)/);
-  assert.match(plugin, /setRequestProperty\("Range", range\)/);
+  assert.match(plugin, /setRequestProperty\("Range", it\)/);
   assert.match(plugin, /status == 416/);
   assert.match(plugin, /activeDownloads\.putIfAbsent/);
   assert.match(plugin, /identityHash/);
