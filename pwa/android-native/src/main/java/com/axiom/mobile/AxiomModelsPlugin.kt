@@ -7,6 +7,8 @@ import android.os.BatteryManager
 import android.os.PowerManager
 import android.content.Intent
 import android.content.IntentFilter
+import android.provider.OpenableColumns
+import com.getcapacitor.ActivityResult
 import android.util.Base64
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -100,6 +102,91 @@ class AxiomModelsPlugin : Plugin() {
                 .put("loaded", llamaLoadedModel() == file.absolutePath))
         }
         call.resolve(JSObject().put("models", result))
+    }
+
+    @PluginMethod
+    fun importLocalModel(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-gguf", "application/gguf"))
+            putExtra(Intent.EXTRA_TITLE, "Choose a GGUF model")
+        }
+        startActivityForResult(call, intent, "handleLocalModelImport")
+    }
+
+    @ActivityCallback
+    private fun handleLocalModelImport(call: PluginCall, result: ActivityResult) {
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            call.reject("Model import was cancelled.")
+            return
+        }
+        val uri = result.data?.data ?: run {
+            call.reject("The selected file could not be opened.")
+            return
+        }
+        Thread({
+            try {
+                val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "imported-model.gguf"
+                if (!displayName.endsWith(".gguf", true)) {
+                    throw IllegalArgumentException("Choose a .gguf model file. A folder or other file type cannot be loaded by the native runtime.")
+                }
+                val safeName = displayName.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_").take(140)
+                val stat = StatFs(modelRoot.absolutePath)
+                val available = stat.availableBytes
+                val sourceSize = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                if (sourceSize > 0 && available < sourceSize + 134217728L) {
+                    throw IllegalStateException("Not enough private storage for this model file.")
+                }
+                var target = File(modelRoot, safeName).canonicalFile
+                if (target.parentFile != modelRoot) throw IllegalArgumentException("Invalid model filename.")
+                if (target.exists()) {
+                    val stem = safeName.removeSuffix(".gguf")
+                    var suffix = 2
+                    do {
+                        target = File(modelRoot, stem + "-" + suffix + ".gguf").canonicalFile
+                        suffix++
+                    } while (target.exists())
+                }
+                val partial = File(modelRoot, target.name + ".part")
+                val digest = MessageDigest.getInstance("SHA-256")
+                var copied = 0L
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(partial).use { output ->
+                        val buffer = ByteArray(1048576)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            digest.update(buffer, 0, count)
+                            copied += count
+                            if (copied > available - 134217728L) {
+                                throw IllegalStateException("The selected model is larger than the available private storage.")
+                            }
+                        }
+                        output.fd.sync()
+                    }
+                } ?: throw IllegalStateException("Android could not read the selected model file.")
+                if (copied == 0L) throw IllegalStateException("The selected GGUF file is empty.")
+                android.system.Os.rename(partial.absolutePath, target.absolutePath)
+                val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                File(modelRoot, target.name + ".json").writeText(org.json.JSONObject()
+                    .put("source", "android-document-picker")
+                    .put("sourceName", displayName)
+                    .put("sha256", sha)
+                    .put("sha256Verified", true)
+                    .put("sizeBytes", copied).toString())
+                activity.runOnUiThread {
+                    call.resolve(JSObject().put("id", target.name).put("name", target.name)
+                        .put("sizeBytes", copied).put("sha256", sha).put("sha256Verified", true))
+                }
+            } catch (error: Exception) {
+                File(modelRoot, "import-placeholder.part").delete()
+                activity.runOnUiThread { call.reject(error.message ?: "Could not import the GGUF model.") }
+            }
+        }, "axiom-model-import").apply { isDaemon = true }.start()
     }
 
     @PluginMethod
