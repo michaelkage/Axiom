@@ -2,6 +2,14 @@ package com.axiom.mobile
 
 import android.app.ActivityManager
 import android.os.StatFs
+import android.os.Debug
+import android.os.BatteryManager
+import android.os.PowerManager
+import android.content.Intent
+import android.content.IntentFilter
+import android.util.Base64
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.File
@@ -11,6 +19,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AxiomModelsPlugin : Plugin() {
     private val modelRoot: File by lazy { File(context.filesDir, "models").apply { mkdirs() }.canonicalFile }
     private val activeDownloads = ConcurrentHashMap<String, AtomicBoolean>()
+    private val hfPrefs by lazy { context.getSharedPreferences("axiom_models_secure", android.content.Context.MODE_PRIVATE) }
     @Volatile private var generationCancelled = false
 
     private external fun llamaLoadModel(path: String, contextSize: Int, threads: Int): Boolean
@@ -26,6 +40,7 @@ class AxiomModelsPlugin : Plugin() {
     private external fun llamaLoadedModel(): String
     private external fun llamaGenerate(roles: Array<String>, contents: Array<String>, maxTokens: Int, callback: Any): String
     private external fun isVulkanAvailable(): Boolean
+    private external fun gpuOffloadSupported(): Boolean
 
     override fun load() {
         super.load()
@@ -37,6 +52,12 @@ class AxiomModelsPlugin : Plugin() {
         val memory = ActivityManager.MemoryInfo()
         (context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
         val stat = StatFs(modelRoot.absolutePath)
+        val processMemory = Debug.MemoryInfo()
+        Debug.getMemoryInfo(processMemory)
+        val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryTemperature = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)?.takeIf { it >= 0 }?.div(10.0)
+        val thermalStatus = if (android.os.Build.VERSION.SDK_INT >= 29) (context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager).currentThermalStatus else -1
+        val thermalLabel = when (thermalStatus) { 0 -> "none"; 1 -> "light"; 2 -> "moderate"; 3 -> "severe"; 4 -> "critical"; 5 -> "emergency"; 6 -> "shutdown"; else -> "unknown" }
         call.resolve(JSObject()
             .put("platform", "android")
             .put("abis", JSArray().apply { android.os.Build.SUPPORTED_ABIS.forEach { put(it) } })
@@ -45,10 +66,14 @@ class AxiomModelsPlugin : Plugin() {
             .put("totalRamBytes", memory.totalMem)
             .put("availableRamBytes", memory.availMem)
             .put("lowMemory", memory.lowMemory)
+            .put("processPssBytes", processMemory.totalPss.toLong() * 1024L)
+            .put("batteryTemperatureC", batteryTemperature)
+            .put("thermalStatus", thermalLabel)
+            .put("gpuOffloadSupported", gpuOffloadSupported())
             .put("storageAvailableBytes", stat.availableBytes)
             .put("storageTotalBytes", stat.totalBytes)
             .put("vulkanLoaderAvailable", isVulkanAvailable())
-            .put("inferenceBackend", "llama.cpp CPU")
+            .put("inferenceBackend", if (gpuOffloadSupported()) "llama.cpp Vulkan + CPU fallback" else "llama.cpp CPU")
             .put("loadedModel", llamaLoadedModel().takeIf { it.isNotBlank() }?.let { File(it).name } ?: ""))
     }
 
@@ -71,6 +96,58 @@ class AxiomModelsPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun getHuggingFaceAuthStatus(call: PluginCall) {
+        call.resolve(JSObject().put("configured", !hfPrefs.getString("hf_token", null).isNullOrBlank()))
+    }
+
+    @PluginMethod
+    fun setHuggingFaceToken(call: PluginCall) {
+        val token = call.getString("token").orEmpty().trim()
+        if (token.length !in 16..4096 || token.any { it.isWhitespace() }) return call.reject("Enter a valid Hugging Face read token.")
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, getHuggingFaceKey())
+            val encrypted = cipher.iv + cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+            hfPrefs.edit().putString("hf_token", Base64.encodeToString(encrypted, Base64.NO_WRAP)).apply()
+            call.resolve(JSObject().put("configured", true))
+        } catch (error: Exception) {
+            call.reject(error.message ?: "Could not encrypt the Hugging Face token.")
+        }
+    }
+
+    @PluginMethod
+    fun clearHuggingFaceToken(call: PluginCall) {
+        hfPrefs.edit().remove("hf_token").apply()
+        call.resolve(JSObject().put("configured", false))
+    }
+
+    private fun getHuggingFaceToken(): String? {
+        val stored = hfPrefs.getString("hf_token", null) ?: return null
+        return try {
+            val bytes = Base64.decode(stored, Base64.NO_WRAP)
+            require(bytes.size > 12) { "Stored Hugging Face credential is invalid." }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, getHuggingFaceKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
+            String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
+        } catch (error: Exception) {
+            throw IllegalStateException("Could not decrypt the saved Hugging Face token. Save it again.", error)
+        }
+    }
+
+    private fun getHuggingFaceKey(): SecretKey {
+        val alias = "axiom.huggingface.read"
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getKey(alias, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true)
+            .build())
+        return generator.generateKey()
+    }
+
+    @PluginMethod
     fun getHuggingFaceModelFiles(call: PluginCall) {
         val repo = call.getString("repo").orEmpty()
         if (!repo.matches(Regex("[A-Za-z0-9_.-]{1,96}/[A-Za-z0-9_.-]{1,96}"))) return call.reject("Invalid Hugging Face repository ID.")
@@ -80,6 +157,7 @@ class AxiomModelsPlugin : Plugin() {
                 connection.connectTimeout = 12000
                 connection.readTimeout = 20000
                 connection.setRequestProperty("Accept", "application/json")
+                getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
                 val status = connection.responseCode
                 if (status !in 200..299) throw IllegalStateException("Hugging Face returned HTTP $status.")
                 val entries = org.json.JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
@@ -132,6 +210,7 @@ class AxiomModelsPlugin : Plugin() {
                 connection.instanceFollowRedirects = true
                 connection.connectTimeout = 15000
                 connection.readTimeout = 30000
+                getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
                 if (existing > 0) connection.setRequestProperty("Range", "bytes=$existing-")
                 val status = connection.responseCode
                 if (status !in 200..299) throw IllegalStateException("Model download returned HTTP $status.")
@@ -209,12 +288,13 @@ class AxiomModelsPlugin : Plugin() {
         if (file.parentFile != modelRoot || !file.isFile || !file.name.endsWith(".gguf", true)) return call.reject("Model not found in Axiom private storage.")
         val contextSize = (call.getInt("contextSize") ?: 2048).coerceIn(512, 8192)
         val threads = (call.getInt("threads") ?: Runtime.getRuntime().availableProcessors().coerceAtMost(6)).coerceIn(1, 16)
+        val gpuLayers = (call.getInt("gpuLayers") ?: 0).coerceIn(-1, 999)
         Thread({
             try {
-                if (!llamaLoadModel(file.absolutePath, contextSize, threads)) {
+                if (!llamaLoadModel(file.absolutePath, contextSize, threads, gpuLayers)) {
                     throw IllegalStateException("llama.cpp could not load this GGUF. Check model compatibility and available RAM.")
                 }
-                activity.runOnUiThread { call.resolve(JSObject().put("loaded", true).put("id", id).put("contextSize", contextSize).put("threads", threads)) }
+                activity.runOnUiThread { call.resolve(JSObject().put("loaded", true).put("id", id).put("contextSize", contextSize).put("threads", threads).put("requestedGpuLayers", gpuLayers).put("gpuOffloadSupported", gpuOffloadSupported())) }
             } catch (error: Exception) {
                 activity.runOnUiThread { call.reject(error.message ?: "Model loading failed.") }
             }
