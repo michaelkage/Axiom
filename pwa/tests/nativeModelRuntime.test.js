@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [cmake, plugin, nativeCpp, nativeChat, app, store, installer] = await Promise.all([
+const [cmake, plugin, nativeCpp, nativeChat, app, store, installer, tokenRecovery] = await Promise.all([
   readFile(new URL('../android-native/src/main/cpp/CMakeLists.txt', import.meta.url), 'utf8'),
   readFile(new URL('../android-native/src/main/java/com/axiom/mobile/AxiomModelsPlugin.kt', import.meta.url), 'utf8'),
   readFile(new URL('../android-native/src/main/cpp/axiom_llama.cpp', import.meta.url), 'utf8'),
   readFile(new URL('../src/lib/nativeChat.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/App.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/NativeModelStore.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../scripts/install-android-native.mjs', import.meta.url), 'utf8')
+  readFile(new URL('../scripts/install-android-native.mjs', import.meta.url), 'utf8'),
+  readFile(new URL('../gateway/show-token.mjs', import.meta.url), 'utf8')
 ]);
 
 test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU fallback', () => {
@@ -71,4 +72,14 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(store, /onLoad\(model\.id, Number\(contextSize\)\)/);
   assert.match(store, /onDelete\(model\.id\)/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
+});
+
+
+test('first-run onboarding can be reopened and missed gateway tokens can be recovered safely', () => {
+  assert.match(app, /axiom\.onboarding\.dismissed/);
+  assert.match(app, /Open setup guide/);
+  assert.match(app, /gateway:token/);
+  assert.match(tokenRecovery, /\.config.*axiom.*gateway-token/);
+  assert.match(tokenRecovery, /process\.stdout\.write/);
+  assert.doesNotMatch(tokenRecovery, /writeFile|randomBytes/);
 });
