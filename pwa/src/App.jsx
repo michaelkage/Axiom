@@ -177,38 +177,105 @@ export default function App(){
   setNativeValidating(true);
   nativeValidationCancelRef.current=false;
   setNativeValidation(null);
+  const rounds=[];
+  const samples=[];
+  const validationStarted=performance.now();
+  let before=null;
+  let after=null;
+  let telemetryTimer=null;
+  let telemetryBusy=false;
+  const captureTelemetry=async()=>{
+   if(telemetryBusy)return null;
+   telemetryBusy=true;
+   try{
+    const snapshot=await getNativeDeviceCapabilities();
+    samples.push({
+     elapsedMs:Math.round(performance.now()-validationStarted),
+     availableRamBytes:snapshot.availableRamBytes,
+     processPssBytes:snapshot.processPssBytes,
+     batteryTemperatureC:snapshot.batteryTemperatureC,
+     thermalStatus:snapshot.thermalStatus,
+     requestedGpuLayers:snapshot.requestedGpuLayers,
+     vulkanDeviceName:snapshot.vulkanDeviceName||''
+    });
+    return snapshot;
+   }finally{telemetryBusy=false;}
+  };
+  const prompts=[
+   'Write a short checklist about keeping a mobile phone cool during on-device AI inference. Include several numbered points.',
+   'Explain why available RAM can decrease during GGUF model inference. Use concise bullet points.',
+   'Describe three ways to reduce memory pressure during local language model generation.',
+   'Explain the difference between CPU inference and Vulkan GPU layer offload in a few sentences.',
+   'Summarize what a developer should record when benchmarking on-device language model performance.'
+  ];
   try{
-   const before=await getNativeDeviceCapabilities();
-   const rounds=[];
-   const prompts=[
-    'Write a short checklist about keeping a mobile phone cool during on-device AI inference. Include several numbered points.',
-    'Explain why available RAM can decrease during GGUF model inference. Use concise bullet points.',
-    'Describe three ways to reduce memory pressure during local language model generation.',
-    'Explain the difference between CPU inference and Vulkan GPU layer offload in a few sentences.',
-    'Summarize what a developer should record when benchmarking on-device language model performance.'
-   ];
-   for(const prompt of prompts){
+   before=await getNativeDeviceCapabilities();
+   samples.push({elapsedMs:0,availableRamBytes:before.availableRamBytes,processPssBytes:before.processPssBytes,batteryTemperatureC:before.batteryTemperatureC,thermalStatus:before.thermalStatus,requestedGpuLayers:before.requestedGpuLayers,vulkanDeviceName:before.vulkanDeviceName||''});
+   telemetryTimer=setInterval(()=>{void captureTelemetry().catch(()=>{});},1500);
+   for(let index=0;index<prompts.length;index++){
+    if(nativeValidationCancelRef.current)break;
     let firstTokenAt=null;
     const started=performance.now();
     const tokenListener=await addNativeModelListener('nativeModelToken',()=>{if(firstTokenAt===null)firstTokenAt=performance.now();});
     try{
-     const result=await generateNativeText([{role:'user',content:prompt}],{maxTokens:96});
-     rounds.push({wallTimeMs:Math.round(performance.now()-started),firstTokenMs:firstTokenAt===null?null:Math.round(firstTokenAt-started),outputChars:String(result.text||'').length,output:String(result.text||'').slice(0,160),cancelled:Boolean(result.cancelled)});
+     const result=await generateNativeText([{role:'user',content:prompts[index]}],{maxTokens:96});
+     const roundDevice=await captureTelemetry();
+     rounds.push({
+      round:index+1,
+      wallTimeMs:Math.round(performance.now()-started),
+      firstTokenMs:firstTokenAt===null?null:Math.round(firstTokenAt-started),
+      outputChars:String(result.text||'').length,
+      output:String(result.text||'').slice(0,160),
+      cancelled:Boolean(result.cancelled),
+      availableRamBytes:roundDevice?.availableRamBytes??null,
+      processPssBytes:roundDevice?.processPssBytes??null,
+      batteryTemperatureC:roundDevice?.batteryTemperatureC??null,
+      thermalStatus:roundDevice?.thermalStatus??'unknown'
+     });
      if(result.cancelled||nativeValidationCancelRef.current)break;
-    }finally{tokenListener?.remove?.();}
+    }finally{await tokenListener?.remove?.();}
    }
-   const after=await getNativeDeviceCapabilities();
-   const report={timestamp:new Date().toISOString(),model:nativeLoadedModel,ok:rounds.length===5&&rounds.every(round=>round.outputChars>0&&!round.cancelled),cancelled:nativeValidationCancelRef.current,modelLoad:nativeLoadReport,rounds,before,after};
+   if(telemetryTimer!==null){clearInterval(telemetryTimer);telemetryTimer=null;}
+   while(telemetryBusy)await new Promise(resolve=>setTimeout(resolve,50));
+   after=await getNativeDeviceCapabilities();
+   samples.push({elapsedMs:Math.round(performance.now()-validationStarted),availableRamBytes:after.availableRamBytes,processPssBytes:after.processPssBytes,batteryTemperatureC:after.batteryTemperatureC,thermalStatus:after.thermalStatus,requestedGpuLayers:after.requestedGpuLayers,vulkanDeviceName:after.vulkanDeviceName||''});
+   const availableSamples=samples.map(sample=>sample.availableRamBytes).filter(Number.isFinite);
+   const pssSamples=samples.map(sample=>sample.processPssBytes).filter(Number.isFinite);
+   const temperatureSamples=samples.map(sample=>sample.batteryTemperatureC).filter(Number.isFinite);
+   const telemetrySummary={
+    sampleCount:samples.length,
+    minAvailableRamBytes:availableSamples.length?Math.min(...availableSamples):null,
+    maxProcessPssBytes:pssSamples.length?Math.max(...pssSamples):null,
+    maxBatteryTemperatureC:temperatureSamples.length?Math.max(...temperatureSamples):null,
+    thermalStatuses:[...new Set(samples.map(sample=>sample.thermalStatus).filter(Boolean))]
+   };
+   const report={
+    timestamp:new Date().toISOString(),
+    model:nativeLoadedModel,
+    ok:rounds.length===5&&rounds.every(round=>round.outputChars>0&&!round.cancelled),
+    cancelled:nativeValidationCancelRef.current,
+    modelLoad:nativeLoadReport,
+    rounds,
+    samples,
+    telemetrySummary,
+    before,
+    after
+   };
    setNativeValidation(report);
-   setNotice(report.ok?'On-device inference validation completed. Copy the report for diagnostics.':'Validation ran, but one or more rounds returned no output.');
-   log(report.ok?'success':'error','Native device validation',JSON.stringify({model:report.model,rounds:report.rounds,before,after}));
+   setNotice(report.ok?'On-device inference validation completed. Copy the report for diagnostics.':report.cancelled?'On-device validation was cancelled.':'Validation ran, but one or more rounds returned no output.');
+   log(report.ok?'success':report.cancelled?'info':'error','Native device validation',JSON.stringify({model:report.model,rounds:report.rounds,telemetrySummary,before,after}));
   }catch(error){
-   const after=await getNativeDeviceCapabilities().catch(()=>null);
-   const report={timestamp:new Date().toISOString(),model:nativeLoadedModel,ok:false,error:error.message,after};
+   if(telemetryTimer!==null)clearInterval(telemetryTimer);
+   while(telemetryBusy)await new Promise(resolve=>setTimeout(resolve,50));
+   after=await getNativeDeviceCapabilities().catch(()=>null);
+   const report={timestamp:new Date().toISOString(),model:nativeLoadedModel,ok:false,cancelled:nativeValidationCancelRef.current,error:error.message,rounds,samples,before,after};
    setNativeValidation(report);
    setNotice('Native validation failed: '+error.message);
    log('error','Native device validation failed',error.message);
-  }finally{setNativeValidating(false);}
+  }finally{
+   if(telemetryTimer!==null)clearInterval(telemetryTimer);
+   setNativeValidating(false);
+  }
  }
 
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
