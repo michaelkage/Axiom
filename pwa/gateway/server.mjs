@@ -183,9 +183,9 @@ export function createAxiomGateway({
         await chmod(temporaryPath, 0o600);
         await rename(temporaryPath, providerConfigPath);
         await chmod(providerConfigPath, 0o600);
-      } catch (error) {
+      } catch {
         await rm(temporaryPath, { force: true }).catch(() => {});
-        throw error;
+        return sendJson(res, 500, { error: 'Could not securely persist provider credentials on the gateway host.' });
       }
       env.GITHUB_TOKEN = next.githubToken;
       env.GITHUB_REPOSITORY = next.githubRepository;
