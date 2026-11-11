@@ -137,7 +137,7 @@ export default function App(){
    const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6)),gpuLayers});
    const loadWallTimeMs=Math.round(performance.now()-loadStarted);
    const afterLoad=await getNativeDeviceCapabilities();
-   setNativeLoadReport({model:id,wallTimeMs:loadWallTimeMs,before:beforeLoad,after:afterLoad,requestedGpuLayers:gpuLayers,requestedGpuLayers:afterLoad.requestedGpuLayers??0});
+   setNativeLoadReport({model:id,wallTimeMs:loadWallTimeMs,before:beforeLoad,after:afterLoad,requestedGpuLayers:afterLoad.requestedGpuLayers??gpuLayers});
    setNativeLoadedModel(id);
    await refreshNativeModels();
    setNotice('Native model loaded. Chat will now use on-device llama.cpp inference.');
