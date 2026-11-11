@@ -1,10 +1,12 @@
 import http from 'node:http';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { homedir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes } from 'node:crypto';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps']);
+const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
 const MCP_HEADERS = ['content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
 
 function safeEqual(a, b) {
@@ -313,7 +315,39 @@ export function createAxiomGateway({
   return server;
 }
 
+async function ensureGatewayToken(env = process.env, logger = console) {
+  if (env.AXIOM_GATEWAY_TOKEN && env.AXIOM_GATEWAY_TOKEN.length >= 32) return env.AXIOM_GATEWAY_TOKEN;
+  const directory = join(homedir(), '.config', 'axiom');
+  const tokenFile = join(directory, 'gateway-token');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  try {
+    const existing = (await readFile(tokenFile, 'utf8')).trim();
+    if (existing.length >= 64) {
+      env.AXIOM_GATEWAY_TOKEN = existing;
+      return existing;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const generated = randomBytes(32).toString('hex');
+  try {
+    await writeFile(tokenFile, generated + '\\n', { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    env.AXIOM_GATEWAY_TOKEN = generated;
+    logger.warn?.('[axiom-gateway] FIRST RUN: copy this pairing token now. It will not be displayed again:');
+    logger.warn?.(generated);
+    logger.warn?.('[axiom-gateway] Token saved with owner-only permissions at ' + tokenFile);
+    return generated;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const existing = (await readFile(tokenFile, 'utf8')).trim();
+    if (existing.length < 64) throw new Error('Stored gateway token is invalid.');
+    env.AXIOM_GATEWAY_TOKEN = existing;
+    return existing;
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await ensureGatewayToken();
   const server = createAxiomGateway();
   const host = process.env.AXIOM_GATEWAY_HOST || '127.0.0.1';
   const port = Number(process.env.AXIOM_GATEWAY_PORT || 8787);
