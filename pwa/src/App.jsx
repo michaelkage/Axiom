@@ -270,9 +270,9 @@ export default function App(){
   let answer='';
   try{
    const availableTools=toOllamaTools();
-   const runResult=await runOllamaToolChat({
-    baseUrl:base,
-    fetchImpl:gatewayFetch,
+   const chatRunner=nativeLoadedModel?runNativeToolChat:runOllamaToolChat;
+   const runResult=await chatRunner({
+    ...(nativeLoadedModel?{}:{baseUrl:base,fetchImpl:gatewayFetch}),
     model:nativeLoadedModel||state.model,
     messages:[...priorMessages,userMsg],
     tools:availableTools,
