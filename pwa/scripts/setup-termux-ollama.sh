@@ -75,6 +75,7 @@ command -v am >/dev/null 2>&1 || fail "Android activity manager 'am' is unavaila
 export OLLAMA_BASE_URL="http://127.0.0.1:11434"
 export AXIOM_GATEWAY_HOST="127.0.0.1"
 export AXIOM_GATEWAY_PORT="8787"
+export AXIOM_GATEWAY_SILENT_TOKEN="1"
 
 info "Starting the Axiom gateway in the background."
 nohup node gateway/server.mjs > "${HOME}/.axiom-gateway.log" 2>&1 </dev/null &
