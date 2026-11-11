@@ -62,7 +62,7 @@ test('chat never assumes a model that the runtime has not confirmed installed', 
 });
 
 test('model stores do not preselect or prefill a phantom Qwen model', () => {
-  assert.match(modelStore, /No models installed\. Install one below to start chatting\./);
+  assert.match(modelStore, /No models installed\. Connect a model server or install a model below to start chatting\./);
   assert.match(modelStore, /Cannot read the model library/);
   assert.match(nativeModelStore, /useState\(''\)/);
   assert.doesNotMatch(nativeModelStore, /useState\('Qwen2\.5 1\.5B GGUF'\)/);
