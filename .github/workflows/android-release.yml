@@ -43,7 +43,23 @@ jobs:
       - name: Install Android NDK and CMake
         run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Install Vulkan build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libvulkan-dev glslc spirv-headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          for attempt in 1 2 3 4; do
+            echo "Installing Vulkan dependencies (attempt ${attempt}/4)"
+            if sudo apt-get "${apt_options[@]}" update &&
+              sudo apt-get "${apt_options[@]}" install -y libvulkan-dev glslc spirv-headers; then
+              exit 0
+            fi
+            if [[ "${attempt}" -lt 4 ]]; then
+              echo "Ubuntu package mirror is temporarily unavailable; retrying in 15 seconds."
+              sleep 15
+            fi
+          done
+          echo "Unable to install Vulkan build dependencies after four attempts."
+          exit 1
       - name: Locate host SPIR-V headers CMake package
         run: |
           config="$(find /usr -name SPIRV-HeadersConfig.cmake -print -quit)"
