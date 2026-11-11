@@ -25,6 +25,10 @@ Android 14+ declares specialUse for continued user-started local terminal/develo
 5. The gateway accepts that token for 12 hours. The session token is not persisted to browser storage. After an app process restart, the plugin registers a new in-memory token using the stored pairing credential.
 6. Restarting the gateway clears all ephemeral sessions; the app registers again on its next startup.
 
+## Optional Termux/Ollama compatibility bridge
+
+For users who want local Ollama inference before the native engine is available, follow [Android local AI setup](./TERMUX_SETUP.md). It installs a pinned community ARM64 Termux Ollama build and runs the Axiom gateway on the phone. The Termux app itself must be installed manually from an official Termux distribution source. This is a temporary bridge, not the native Axiom runtime; the community Ollama fork is archived and is not an official Ollama Android release.
+
 ## Model discovery and installation
 
 The Models tab automatically refreshes the configured Ollama model list and can pull models from the Ollama registry or compatible Hugging Face GGUF repositories. Ollama downloads and stores those models on the machine running the Ollama service. The app monitors Ollama while open, retries connection checks periodically, and checks again when network connectivity returns.
