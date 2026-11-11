@@ -103,6 +103,9 @@ main input:focus, main textarea:focus, main select:focus, [role="dialog"] input:
 }
 main code, main pre { font-family: var(--mono) !important; }
 main code { color: var(--acid); }
+/* Keep inline code and accent labels readable on acid/lime action surfaces. */
+main [class*="bg-lime-300"] code,
+main [class*="bg-lime-300"] [class*="text-lime-"] { color: var(--ink) !important; }
 main article, main [class*="rounded-2xl"] { border-radius: 2px !important; }
 main .whitespace-pre-wrap { line-height: 1.65; }
 main .flex-1.min-w-0 select { font-family: var(--mono) !important; }
