@@ -82,9 +82,11 @@ export default function App(){
    try{
     const result=await consumeGatewayPairingIntent(state.settings.gatewayUrl);
     if(result?.paired&&active){
-     setGatewayToken(result.token);
+     const session=await registerGatewaySession(state.settings.gatewayUrl);
+     if(!active)return;
+     setGatewayToken(session.token);
      setNotice('Gateway paired automatically. Its bootstrap credential is encrypted in Android Keystore.');
-     log('success','Gateway paired automatically','Axiom validated the handoff with the gateway, then encrypted the credential in Android Keystore.');
+     log('success','Gateway paired automatically','Axiom validated the handoff, encrypted the bootstrap credential in Android Keystore, and registered the runtime session.');
     }
    }catch(error){if(active)setNotice('Gateway pairing could not complete: '+error.message);}
    finally{pairingIntentBusy.current=false;}
