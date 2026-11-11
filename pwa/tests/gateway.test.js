@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAxiomGateway, ensureGatewayToken } from '../gateway/server.mjs';
+import { createAxiomGateway, ensureGatewayToken, loadProviderCredentials } from '../gateway/server.mjs';
 import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const TOKEN = 'test-gateway-token-that-is-at-least-32-characters-long';
 async function withServer(options, run) {
-  const server = createAxiomGateway({ env: { AXIOM_GATEWAY_TOKEN: TOKEN, ...options.env }, fetchImpl: options.fetchImpl || fetch, logger: { error() {} } });
+  const server = createAxiomGateway({ env: { AXIOM_GATEWAY_TOKEN: TOKEN, ...options.env }, fetchImpl: options.fetchImpl || fetch, logger: { error() {} }, ...(options.providerConfigPath ? { providerConfigPath: options.providerConfigPath } : {}) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   try { await run('http://127.0.0.1:' + address.port); }
@@ -279,4 +279,75 @@ test('Ollama proxy streams pull requests and forwards the model reference', asyn
     assert.deepEqual(JSON.parse(seen.options.body.toString()), { model: 'hf.co/example/model-GGUF:Q4_K_M', stream: true });
     assert.match(await response.text(), /"status":"success"/);
   });
+});
+
+
+test('provider configuration requires gateway authentication and never returns saved secrets', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'axiom-provider-config-'));
+  const path = join(directory, 'provider-credentials.json');
+  const env = {};
+  try {
+    await withServer({ env, providerConfigPath: path }, async base => {
+      const denied = await fetch(base + '/provider-config');
+      assert.equal(denied.status, 401);
+      const saved = await fetch(base + '/provider-config', {
+        method: 'PUT',
+        headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          githubToken: 'github_pat_test_secret',
+          githubRepository: 'michaelkage/Axiom',
+          supabaseUrl: 'https://project.supabase.co',
+          supabaseKey: 'sb_publishable_test_key'
+        })
+      });
+      assert.equal(saved.status, 200);
+      const payload = await saved.json();
+      assert.equal(payload.github.configured, true);
+      assert.equal(payload.supabase.configured, true);
+      assert.equal(JSON.stringify(payload).includes('github_pat_test_secret'), false);
+      assert.equal(JSON.stringify(payload).includes('sb_publishable_test_key'), false);
+      const config = JSON.parse(await readFile(path, 'utf8'));
+      assert.equal(config.githubToken, 'github_pat_test_secret');
+      assert.equal(config.supabaseKey, 'sb_publishable_test_key');
+      assert.equal((await stat(path)).mode & 0o777, 0o600);
+      const status = await fetch(base + '/provider-config', { headers: { authorization: 'Bearer ' + TOKEN } });
+      const statusPayload = await status.json();
+      assert.equal(statusPayload.github.repository, 'michaelkage/Axiom');
+      assert.equal(statusPayload.supabase.url, 'https://project.supabase.co');
+      assert.equal(JSON.stringify(statusPayload).includes('github_pat_test_secret'), false);
+    });
+    const restored = {};
+    const status = await loadProviderCredentials(restored, directory);
+    assert.deepEqual(status, { github: true, supabase: true });
+    assert.equal(restored.GITHUB_TOKEN, 'github_pat_test_secret');
+    assert.equal(restored.SUPABASE_PUBLISHABLE_KEY, 'sb_publishable_test_key');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('provider configuration rejects Supabase secret keys and non-HTTPS remote URLs', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'axiom-provider-reject-'));
+  try {
+    await withServer({ providerConfigPath: join(directory, 'provider-credentials.json') }, async base => {
+      const headers = { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' };
+      const secret = await fetch(base + '/provider-config', {
+        method: 'PUT', headers,
+        body: JSON.stringify({ supabaseUrl: 'https://project.supabase.co', supabaseKey: 'sb_secret_forbidden' })
+      });
+      assert.equal(secret.status, 400);
+      const insecure = await fetch(base + '/provider-config', {
+        method: 'PUT', headers,
+        body: JSON.stringify({ supabaseUrl: 'http://remote.example.test', supabaseKey: 'sb_publishable_test_key' })
+      });
+      assert.equal(insecure.status, 400);
+      const invalidRepo = await fetch(base + '/provider-config', {
+        method: 'PUT', headers,
+        body: JSON.stringify({ githubToken: 'github_pat_test_secret', githubRepository: 'not-a-repository' })
+      });
+      assert.equal(invalidRepo.status, 400);
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
