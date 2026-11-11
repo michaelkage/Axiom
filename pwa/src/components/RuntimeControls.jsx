@@ -5,7 +5,7 @@ import {
   startBackgroundService, stopBackgroundService, storeGatewayPairingToken
 } from '../lib/axiomRuntime.js';
 
-export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, terminalRows = 24, terminalCols = 80, onTerminalConfigChange = () => {}, gatewaySessionActive = false }) {
+export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, terminalRows = 24, terminalCols = 80, onTerminalConfigChange = () => {}, gatewaySessionActive = false, gatewaySessionToken = '' }) {
   const native = isNativeAndroid();
   const [info, setInfo] = useState(null);
   const [pairingToken, setPairingToken] = useState('');
@@ -35,7 +35,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
   const service = async enabled => {
     setError('');
     try {
-      if (enabled) await startBackgroundService();
+      if (enabled) await startBackgroundService({ gatewayUrl, sessionToken: gatewaySessionToken });
       else await stopBackgroundService();
       await refresh();
     } catch (e) { setError(e.message); }
@@ -59,7 +59,7 @@ export default function RuntimeControls({ gatewayUrl, onSessionToken, onNotice, 
       <div className="rounded-xl bg-black/25 p-3"><div className="text-[10px] text-slate-500">PTY sessions</div><div className="text-lg font-semibold">{info?.terminalCount ?? 0}</div></div>
       <div className="rounded-xl bg-black/25 p-3"><div className="text-[10px] text-slate-500">Workspace</div><div className="text-sm font-semibold truncate">{info?.activeWorkspace ?? 'Loading…'}</div></div>
     </div>
-    <div className="flex items-center justify-between rounded-xl bg-black/25 p-3 mb-2"><div className="min-w-0"><div className="text-sm">Background runtime</div><div className="text-[10px] text-slate-500">Persistent notification while active</div></div><button type="button" role="switch" aria-checked={!!info?.serviceRequested} onClick={() => service(!info?.serviceRequested)} className={'w-11 h-6 rounded-full p-1 '+(info?.serviceRequested?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white '+(info?.serviceRequested?'translate-x-5':'')}/></button></div>
+    <div className="flex items-center justify-between rounded-xl bg-black/25 p-3 mb-2"><div className="min-w-0"><div className="text-sm">Background runtime</div><div className="text-[10px] text-slate-500">Persistent notification · Ollama checks every 30 seconds while paired</div></div><button type="button" role="switch" aria-checked={!!info?.serviceRequested} onClick={() => service(!info?.serviceRequested)} className={'w-11 h-6 rounded-full p-1 '+(info?.serviceRequested?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white '+(info?.serviceRequested?'translate-x-5':'')}/></button></div>
     <div className="flex items-center justify-between rounded-xl bg-black/25 p-3 mb-4"><div className="min-w-0"><div className="text-sm flex items-center gap-2"><Zap size={14}/> Keep CPU awake</div><div className="text-[10px] text-slate-500">Background CPU only. It does not speed up AI and can heat the phone.</div></div><button type="button" role="switch" aria-checked={!!info?.keepAwake} onClick={() => awake(!info?.keepAwake)} className={'w-11 h-6 rounded-full p-1 '+(info?.keepAwake?'bg-lime-300':'bg-slate-700')}><span className={'block w-4 h-4 rounded-full bg-white '+(info?.keepAwake?'translate-x-5':'')}/></button></div>
     <div className="rounded-xl bg-black/25 p-3 mb-4"><div className="text-sm font-semibold mb-2">Terminal defaults</div><div className="grid grid-cols-2 gap-3"><label className="text-[11px] text-slate-500">Rows<input type="number" min="2" max="200" value={terminalRows} onChange={e => onTerminalConfigChange({ terminalRows: Math.max(2, Math.min(200, Number(e.target.value) || 24)) })} className="w-full mt-1 p-2 rounded-lg bg-black/30 border border-white/10 text-sm text-slate-100"/></label><label className="text-[11px] text-slate-500">Columns<input type="number" min="24" max="400" value={terminalCols} onChange={e => onTerminalConfigChange({ terminalCols: Math.max(24, Math.min(400, Number(e.target.value) || 80)) })} className="w-full mt-1 p-2 rounded-lg bg-black/30 border border-white/10 text-sm text-slate-100"/></label></div><p className="text-[10px] text-slate-600 mt-2">Columns auto-fit the available terminal width when the panel is resized.</p></div>
     <div className="rounded-xl border border-lime-300/15 bg-lime-300/[.035] p-3">
