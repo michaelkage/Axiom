@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [cmake, plugin, nativeCpp, nativeChat, app, store, installer, tokenRecovery] = await Promise.all([
+const [cmake, plugin, nativeCpp, nativeChat, app, store, installer, tokenRecovery, runtimePlugin, runtimeBridge, termuxSetup, runtimeControls] = await Promise.all([
   readFile(new URL('../android-native/src/main/cpp/CMakeLists.txt', import.meta.url), 'utf8'),
   readFile(new URL('../android-native/src/main/java/com/axiom/mobile/AxiomModelsPlugin.kt', import.meta.url), 'utf8'),
   readFile(new URL('../android-native/src/main/cpp/axiom_llama.cpp', import.meta.url), 'utf8'),
@@ -10,7 +10,11 @@ const [cmake, plugin, nativeCpp, nativeChat, app, store, installer, tokenRecover
   readFile(new URL('../src/App.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/NativeModelStore.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../scripts/install-android-native.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../gateway/show-token.mjs', import.meta.url), 'utf8')
+  readFile(new URL('../gateway/show-token.mjs', import.meta.url), 'utf8'),
+  readFile(new URL('../android-native/src/main/java/com/axiom/mobile/AxiomRuntimePlugin.kt', import.meta.url), 'utf8'),
+  readFile(new URL('../src/lib/axiomRuntime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../scripts/setup-termux-ollama.sh', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/RuntimeControls.jsx', import.meta.url), 'utf8')
 ]);
 
 test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU fallback', () => {
@@ -73,6 +77,23 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(app, /consumeGatewayPairingIntent/);
   assert.match(app, /Gateway paired automatically/);
   assert.doesNotMatch(app, /Paste AXIOM_GATEWAY_TOKEN/);
+});
+
+
+test('Termux pairing securely hands a local gateway credential to Android without a token URI', () => {
+  assert.match(runtimePlugin, /fun consumeGatewayPairingIntent/);
+  assert.match(runtimePlugin, /com\\.axiom\\.mobile\\.GATEWAY_PAIR/);
+  assert.match(runtimePlugin, /getStringExtra\\("axiom_gateway_token"\\)/);
+  assert.match(runtimePlugin, /setIntent\\(Intent\\(activity, activity\\.javaClass\\)/);
+  assert.match(runtimePlugin, /AndroidKeyStore/);
+  assert.match(runtimePlugin, /validatedGatewayUrl/);
+  assert.match(runtimePlugin, /instanceFollowRedirects = false/);
+  assert.match(runtimeBridge, /consumeGatewayPairingIntent\\(gatewayUrl\\)/);
+  assert.match(termuxSetup, /am start -n com\\.axiom\\.mobile\\/\\.MainActivity -a com\\.axiom\\.mobile\\.GATEWAY_PAIR --es axiom_gateway_token/);
+  assert.doesNotMatch(termuxSetup, /axiom:\\/\\/gateway-pair|gateway:token/);
+  assert.match(runtimeControls, /Automatic gateway pairing/);
+  assert.match(runtimeControls, /Advanced: pair a gateway on another device/);
+  assert.doesNotMatch(runtimeControls, /Recover the gateway pairing token/);
 });
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
