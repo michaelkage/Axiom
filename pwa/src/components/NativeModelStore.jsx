@@ -90,7 +90,7 @@ export default function NativeModelStore({
     {capabilities && <div className="border border-white/10 p-3 text-[11px] text-slate-500">
       <div className="flex justify-between gap-2"><span>Inference backend</span><span className="text-lime-200">{capabilities.inferenceBackend}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Architecture</span><span>{capabilities.primaryAbi} · {capabilities.cpuCores} CPU cores</span></div>
-      <div className="flex justify-between gap-2 mt-1"><span>Vulkan backend</span><span className={capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'text-lime-200' : ''}>{capabilities.gpuOffloadSupported && capabilities.vulkanDeviceAvailable ? (capabilities.vulkanDeviceName || 'Vulkan device detected') : 'CPU fallback'}</span></div>
+      <div className="flex justify-between gap-2 mt-1"><span>Vulkan backend</span><span className={capabilities.gpuOffloadSupported && capabilities.vulkanDeviceAvailable ? 'text-lime-200' : 'text-slate-400'}>{capabilities.gpuOffloadSupported && capabilities.vulkanDeviceAvailable ? (capabilities.vulkanDeviceName || 'Vulkan device detected') : 'CPU fallback'}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Loaded GPU layers</span><span>{capabilities.loadedGpuLayers ?? 0}</span></div>
     </div>}
 
