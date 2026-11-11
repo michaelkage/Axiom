@@ -73,7 +73,7 @@ class AxiomModelsPlugin : Plugin() {
             .put("batteryTemperatureC", batteryTemperature)
             .put("thermalStatus", thermalLabel)
             .put("gpuOffloadSupported", gpuOffloadSupported())
-            .put("loadedGpuLayers", llamaLoadedGpuLayers())
+            .put("requestedGpuLayers", llamaLoadedGpuLayers())
             .put("storageAvailableBytes", stat.availableBytes)
             .put("storageTotalBytes", stat.totalBytes)
             .put("vulkanLoaderAvailable", isVulkanAvailable())
