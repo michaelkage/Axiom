@@ -11,7 +11,7 @@ const formatBytes = value => {
 
 export default function NativeModelStore({
   models = [], capabilities = null, loadedModel = '', progress = null,
-  ollamaModels = [], ollamaConnection = 'unknown', ollamaBaseUrl = '', onOllamaBaseUrlChange, onOllamaConnect, onSelectOllamaModel,
+  ollamaModels = [], ollamaConnection = 'unknown', ollamaBaseUrl = '', gatewayPaired = false, onOllamaBaseUrlChange, onOllamaConnect, onUseGateway, onSelectOllamaModel,
   busy = false, onRefresh, onImport, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete,
   hfTokenConfigured = false, onSaveHfToken, onClearHfToken, onValidate, validation = null, validating = false, modelLoadReport = null, onCancelValidate
 }) {
@@ -100,7 +100,7 @@ export default function NativeModelStore({
       <p className="text-xs text-slate-500 mt-1">Use a reachable Ollama API address to connect models running on another host or in Termux. Axiom lists only models reported by that server.</p>
       <label htmlFor="native-ollama-url" className="block text-xs text-slate-400 mt-3 mb-1">Ollama API URL</label>
       <input id="native-ollama-url" type="url" inputMode="url" autoCapitalize="none" spellCheck="false" value={ollamaBaseUrl} onChange={event => onOllamaBaseUrlChange?.(event.target.value)} placeholder="http://192.168.1.20:11434" className="w-full p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
-      <button type="button" onClick={onOllamaConnect} className="w-full mt-2 min-h-10 border border-lime-300/20 text-lime-200 text-xs font-semibold">Connect and discover server models</button>
+      <button type="button" onClick={onOllamaConnect} className="w-full mt-2 min-h-10 border border-lime-300/20 text-lime-200 text-xs font-semibold">Connect and discover server models</button>{gatewayPaired && <button type="button" onClick={onUseGateway} className="w-full mt-2 min-h-9 border border-white/10 text-slate-300 text-xs">Use paired Termux gateway instead</button>}
       {ollamaModels.length > 0 ? <div className="mt-3 divide-y divide-white/[.07]">{ollamaModels.map(model => <div key={model} className="py-2 flex items-center gap-2"><span className="text-xs flex-1 break-all">{model}</span><button type="button" onClick={() => onSelectOllamaModel?.(model)} className="min-h-8 px-3 bg-lime-300 text-slate-950 text-[11px] font-semibold">Use</button></div>)}</div> : <p className="text-[11px] text-slate-500 mt-3">{ollamaConnection === 'online' ? 'No models installed on this Ollama server.' : 'No external Ollama models discovered.'}</p>}
     </div>
 
