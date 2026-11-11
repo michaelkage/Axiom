@@ -55,6 +55,6 @@ const mainJava = join(app, 'src/main/java/com/axiom/mobile/MainActivity.java');
 const mainKotlin = join(app, 'src/main/java/com/axiom/mobile/MainActivity.kt');
 await mkdir(dirname(mainJava), { recursive: true });
 if (existsSync(mainKotlin)) throw new Error('Unexpected Kotlin MainActivity exists; refusing to overwrite.');
-const activity = 'package com.axiom.mobile;\n\nimport android.os.Bundle;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(AxiomRuntimePlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n}\n';
+const activity = 'package com.axiom.mobile;\n\nimport android.os.Bundle;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(AxiomRuntimePlugin.class);\n        registerPlugin(AxiomModelsPlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n}\n';
 await writeFile(mainJava, activity);
 console.log('Installed Axiom native PTY, runtime service, and Capacitor plugin.');
