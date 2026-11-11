@@ -37,6 +37,7 @@ export default function App(){
  const [nativeBusy,setNativeBusy]=useState(false);
  const [hfTokenConfigured,setHfTokenConfigured]=useState(false);
  const [nativeValidation,setNativeValidation]=useState(null);
+ const [nativeLoadReport,setNativeLoadReport]=useState(null);
  const [nativeValidating,setNativeValidating]=useState(false);
  const [connection,setConnection]=useState('unknown');
  const [diagnostics,setDiagnostics]=useState(null);
@@ -128,11 +129,16 @@ export default function App(){
   try{
    const effectiveContext=available&&available<3*1024*1024*1024?Math.min(requestedContext,1024):Math.min(requestedContext,4096);
    const gpuLayers=nativeCapabilities?.gpuOffloadSupported&&nativeCapabilities?.vulkanDeviceAvailable?-1:0;
+   const beforeLoad=await getNativeDeviceCapabilities();
+   const loadStarted=performance.now();
    const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6)),gpuLayers});
+   const loadWallTimeMs=Math.round(performance.now()-loadStarted);
+   const afterLoad=await getNativeDeviceCapabilities();
+   setNativeLoadReport({model:id,wallTimeMs:loadWallTimeMs,before:beforeLoad,after:afterLoad,requestedGpuLayers:gpuLayers,loadedGpuLayers:afterLoad.loadedGpuLayers||0});
    setNativeLoadedModel(id);
    await refreshNativeModels();
    setNotice('Native model loaded. Chat will now use on-device llama.cpp inference.');
-   log('success','Native model loaded',JSON.stringify(result));
+   log('success','Native model loaded',JSON.stringify({...result,loadWallTimeMs,before:beforeLoad,after:afterLoad}));
   }catch(error){setNotice('Could not load native model: '+error.message);log('error','Native model load failed',error.message);}
   finally{setNativeBusy(false);}
  }
@@ -167,21 +173,23 @@ export default function App(){
    const before=await getNativeDeviceCapabilities();
    const rounds=[];
    const prompts=[
-    'Reply with exactly: AXIOM_NATIVE_CHECK_1',
-    'Reply with exactly: AXIOM_NATIVE_CHECK_2',
-    'Reply with exactly: AXIOM_NATIVE_CHECK_3'
+    'Write a short checklist about keeping a mobile phone cool during on-device AI inference. Include several numbered points.',
+    'Explain why available RAM can decrease during GGUF model inference. Use concise bullet points.',
+    'Describe three ways to reduce memory pressure during local language model generation.',
+    'Explain the difference between CPU inference and Vulkan GPU layer offload in a few sentences.',
+    'Summarize what a developer should record when benchmarking on-device language model performance.'
    ];
    for(const prompt of prompts){
     let firstTokenAt=null;
     const started=performance.now();
     const tokenListener=await addNativeModelListener('nativeModelToken',()=>{if(firstTokenAt===null)firstTokenAt=performance.now();});
     try{
-     const result=await generateNativeText([{role:'user',content:prompt}],{maxTokens:32});
+     const result=await generateNativeText([{role:'user',content:prompt}],{maxTokens:96});
      rounds.push({wallTimeMs:Math.round(performance.now()-started),firstTokenMs:firstTokenAt===null?null:Math.round(firstTokenAt-started),outputChars:String(result.text||'').length,output:String(result.text||'').slice(0,160),cancelled:Boolean(result.cancelled)});
     }finally{tokenListener?.remove?.();}
    }
    const after=await getNativeDeviceCapabilities();
-   const report={timestamp:new Date().toISOString(),model:nativeLoadedModel,ok:rounds.length===3&&rounds.every(round=>round.outputChars>0&&!round.cancelled),rounds,before,after};
+   const report={timestamp:new Date().toISOString(),model:nativeLoadedModel,ok:rounds.length===5&&rounds.every(round=>round.outputChars>0&&!round.cancelled),modelLoad:nativeLoadReport,rounds,before,after};
    setNativeValidation(report);
    setNotice(report.ok?'On-device inference validation completed. Copy the report for diagnostics.':'Validation ran, but one or more rounds returned no output.');
    log(report.ok?'success':'error','Native device validation',JSON.stringify({model:report.model,rounds:report.rounds,before,after}));
