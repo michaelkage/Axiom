@@ -1,3 +1,9 @@
+# Axiom Android 1.1.5
+
+- Added a native Android document picker to import local GGUF model files directly into Axiom private storage. Imports are streamed, checked against available storage, SHA-256 hashed, and atomically installed.
+- Added an explicit Ollama server URL field in the Models screen with a discover action, so users can point Axiom at a reachable model server without digging through Settings.
+- Removed the hardcoded Qwen first-run suggestion. Axiom only shows discovered models and does not invent or preselect a model when none is installed.
+
 # Axiom Android 1.1.4
 
 Axiom Android 1.1.4 removes the phantom default model and requires a confirmed installed model before chat can run.
