@@ -203,6 +203,14 @@ class AxiomRuntimePlugin : Plugin() {
                 val status = connection.responseCode
                 if (status !in 200..299) throw IllegalStateException("Gateway session registration failed (HTTP $status).")
                 connection.disconnect()
+                prefs.edit().putString("gateway_url", gatewayUrl).apply()
+                if (prefs.getBoolean("service_requested", false)) {
+                    val monitorIntent = Intent(context, AxiomRuntimeService::class.java)
+                        .setAction(AxiomRuntimeService.ACTION_MONITOR)
+                        .putExtra(AxiomRuntimeService.EXTRA_GATEWAY_URL, gatewayUrl)
+                        .putExtra(AxiomRuntimeService.EXTRA_SESSION_TOKEN, token)
+                    if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(monitorIntent) else context.startService(monitorIntent)
+                }
                 val result = JSObject().put("token", token).put("expiresIn", 43200)
                 activity.runOnUiThread { call.resolve(result) }
             } catch (error: Exception) {
@@ -216,7 +224,13 @@ class AxiomRuntimePlugin : Plugin() {
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             activity.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8787)
         }
+        val gatewayUrl = call.getString("gatewayUrl")?.trimEnd('/').orEmpty()
+        val sessionToken = call.getString("sessionToken").orEmpty()
         val intent = Intent(context, AxiomRuntimeService::class.java).setAction(AxiomRuntimeService.ACTION_START)
+        if (gatewayUrl.isNotBlank() && sessionToken.isNotBlank()) {
+            intent.putExtra(AxiomRuntimeService.EXTRA_GATEWAY_URL, gatewayUrl)
+            intent.putExtra(AxiomRuntimeService.EXTRA_SESSION_TOKEN, sessionToken)
+        }
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         prefs.edit().putBoolean("service_requested", true).apply()
         call.resolve(JSObject().put("running", true))
