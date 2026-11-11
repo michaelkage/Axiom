@@ -78,3 +78,15 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 | `SUPABASE_PUBLISHABLE_KEY` | optional | Publishable key or legacy anon JWT only, never service-role |
 
 Run gateway tests with `npm test`.
+
+
+## Connection diagnostics
+
+Authenticated clients can request `GET /diagnostics` with the gateway bearer/session token. The endpoint performs bounded, read-only checks from the gateway host:
+
+- Ollama: `GET /api/tags`
+- GitHub: `GET /repos/{GITHUB_REPOSITORY}` using the server-side `GITHUB_TOKEN`
+- Supabase: `GET /auth/v1/health` using `SUPABASE_PUBLISHABLE_KEY`
+- MCP: reports configured server IDs; use the MCP tab's discovery action to verify protocol connectivity
+
+The response reports configuration, reachability, authentication acceptance, HTTP status, and an actionable message. It never returns credential values or upstream response bodies. Provider checks run in parallel with an 8-second timeout and do not read or modify repository files, database rows, or schemas.

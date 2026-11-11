@@ -148,3 +148,36 @@ test('gateway rejects malformed native session registrations', async () => {
     assert.equal(response.status, 400);
   });
 });
+
+test('diagnostics reports provider reachability without exposing credentials', async () => {
+  const calls = [];
+  await withServer({ env: { GITHUB_TOKEN: 'github-server-secret', GITHUB_REPOSITORY: 'michaelkage/Axiom', SUPABASE_URL: 'https://project.example.test', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_server_secret' },
+    fetchImpl: async (url, options) => { calls.push({ url: String(url), headers: options.headers }); return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }); }
+  }, async base => {
+    assert.equal((await fetch(base + '/diagnostics')).status, 401);
+    const response = await fetch(base + '/diagnostics', { headers: { authorization: 'Bearer ' + TOKEN } });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.services.ollama.status, 'connected');
+    assert.equal(data.services.github.authenticated, true);
+    assert.equal(data.services.supabase.authenticated, true);
+    assert.equal(JSON.stringify(data).includes('github-server-secret'), false);
+    assert.equal(JSON.stringify(data).includes('sb_publishable_server_secret'), false);
+    assert.equal(calls.length, 3);
+    assert.ok(calls.some(call => call.url === 'https://api.github.com/repos/michaelkage/Axiom'));
+    assert.ok(calls.some(call => call.url === 'https://project.example.test/auth/v1/health'));
+  });
+});
+
+test('diagnostics reports missing provider configuration and offline upstreams', async () => {
+  await withServer({ fetchImpl: async () => { throw new Error('upstream unavailable'); } }, async base => {
+    const response = await fetch(base + '/diagnostics', { headers: { authorization: 'Bearer ' + TOKEN } });
+    const data = await response.json();
+    assert.equal(data.services.github.status, 'missing');
+    assert.equal(data.services.supabase.status, 'error');
+    assert.match(data.services.supabase.message, /missing/);
+    assert.equal(data.services.ollama.status, 'offline');
+    assert.deepEqual(data.services.mcp, []);
+  });
+});
+

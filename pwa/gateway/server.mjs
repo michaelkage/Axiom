@@ -116,6 +116,55 @@ export function createAxiomGateway({
     res.on('close', () => { if (!res.writableEnded) requestController.abort(new Error('Client disconnected.')); });
     const upstreamSignal = timeoutMs => AbortSignal.any([requestController.signal, AbortSignal.timeout(timeoutMs)]);
 
+
+    if (url.pathname === '/diagnostics' && req.method === 'GET') {
+      const checkedAt = new Date(now()).toISOString();
+      const check = async (name, configured, target, headers = {}) => {
+        if (!configured) return { configured: false, reachable: false, authenticated: false, status: 'missing', message: name + ' is not configured on the gateway.' };
+        try {
+          const upstream = await fetchImpl(target, { method: 'GET', headers, signal: upstreamSignal(8000) });
+          const accepted = upstream.status >= 200 && upstream.status < 300;
+          const message = accepted ? name + ' is reachable and accepted the configured credential.'
+            : upstream.status === 401 ? name + ' rejected the configured credential.'
+            : upstream.status === 403 ? name + ' denied access. Check token permissions or project access.'
+            : upstream.status === 404 ? name + ' could not find the configured resource. Check its URL or repository.'
+            : name + ' returned HTTP ' + upstream.status + '.';
+          await upstream.body?.cancel().catch(() => {});
+          return { configured: true, reachable: true, authenticated: accepted, status: accepted ? 'connected' : 'error', httpStatus: upstream.status, message };
+        } catch {
+          return { configured: true, reachable: false, authenticated: false, status: 'offline', message: name + ' could not be reached. Check the gateway host network and upstream URL.' };
+        }
+      };
+      const githubRepo = String(env.GITHUB_REPOSITORY || '');
+      const githubValid = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(githubRepo);
+      const supabaseUrl = String(env.SUPABASE_URL || '');
+      const supabaseKey = String(env.SUPABASE_PUBLISHABLE_KEY || '');
+      let supabaseTarget = null;
+      let supabaseConfigError = '';
+      try {
+        if (!supabaseUrl || !supabaseKey) throw new Error('Supabase URL or publishable key is missing.');
+        if (supabaseKey.startsWith('sb_secret_')) throw new Error('SUPABASE_PUBLISHABLE_KEY must not be a secret key.');
+        if (supabaseKey.startsWith('eyJ')) {
+          const claims = JSON.parse(Buffer.from(supabaseKey.split('.')[1], 'base64url').toString('utf8'));
+          if (claims.role !== 'anon') throw new Error('SUPABASE_PUBLISHABLE_KEY must use the anon role, never service_role.');
+        }
+        const parsed = new URL(supabaseUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('SUPABASE_URL must be a valid HTTP(S) URL without embedded credentials.');
+        supabaseTarget = new URL('/auth/v1/health', parsed);
+      } catch (error) { supabaseConfigError = error.message; }
+      const [ollama, github, supabase] = await Promise.all([
+        check('Ollama', true, new URL('/api/tags', ollamaBase)),
+        check('GitHub', Boolean(env.GITHUB_TOKEN && githubValid),
+          githubValid ? new URL('/repos/' + githubRepo, 'https://api.github.com') : new URL('/user', 'https://api.github.com'),
+          env.GITHUB_TOKEN ? { authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } : {}),
+        supabaseConfigError
+          ? Promise.resolve({ configured: Boolean(supabaseUrl || supabaseKey), reachable: false, authenticated: false, status: 'error', message: supabaseConfigError })
+          : check('Supabase', true, supabaseTarget, { apikey: supabaseKey, authorization: 'Bearer ' + supabaseKey, accept: 'application/json' })
+      ]);
+      const mcp = Object.keys(mcpServers).map(id => ({ id, configured: true, status: 'configured', message: 'MCP endpoint is configured. Run discovery from the MCP tab to verify protocol access.' }));
+      return sendJson(res, 200, { ok: true, checkedAt, services: { ollama, github: { ...github, repository: githubRepo || null }, supabase, mcp } });
+    }
+
     if (url.pathname.startsWith('/api/ollama/')) {
       const upstreamPath = url.pathname.slice('/api/ollama'.length);
       if (!OLLAMA_PATHS.has(upstreamPath) || !['GET', 'POST'].includes(req.method)) return sendJson(res, 404, { error: 'Ollama route not allowed.' });
