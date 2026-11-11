@@ -4,8 +4,9 @@ import { TerminalScreen } from '../src/lib/terminalScreen.js';
 
 test('terminal screen handles carriage-return redraws and backspace editing', () => {
   const screen = new TerminalScreen(40);
-  screen.write('prompt $ npm\b\b\b\b\bnode\r\nprompt $ node\r\n');
-  assert.equal(screen.toString(), 'prompt $ node\nprompt $ node');
+  screen.write('prompt $ npm\r\u001b[2Kprompt $ node\r\n');
+  screen.write('abc\b \bX');
+  assert.equal(screen.toString(), 'prompt $ node\nabX');
 });
 
 test('terminal screen interprets ANSI clear-line and cursor movement sequences', () => {
@@ -17,7 +18,7 @@ test('terminal screen interprets ANSI clear-line and cursor movement sequences',
 
 test('terminal screen preserves partial escape sequences between PTY chunks', () => {
   const screen = new TerminalScreen(20);
-  screen.write('hello\u001b[');
+  screen.write('hello\r\u001b[');
   screen.write('2Kworld');
   assert.equal(screen.toString(), 'world');
 });
@@ -30,6 +31,6 @@ test('terminal screen wraps long prompts at the configured PTY width', () => {
 
 test('terminal screen bounds retained scrollback', () => {
   const screen = new TerminalScreen(20, 3);
-  screen.write('one\ntwo\nthree\nfour');
+  screen.write('one\r\ntwo\r\nthree\r\nfour');
   assert.equal(screen.toString(), 'two\nthree\nfour');
 });
