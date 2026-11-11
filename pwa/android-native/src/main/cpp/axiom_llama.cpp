@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <dlfcn.h>
 
 #define AXIOM_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "AxiomLLM", __VA_ARGS__)
 
@@ -24,7 +25,7 @@ static void release_model_locked() {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_axiom_mobile_AxiomRuntimePlugin_nativeLoadModel(JNIEnv * env, jobject, jstring path, jint context_size, jint threads) {
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, jstring path, jint context_size, jint threads) {
     const char * raw_path = env->GetStringUTFChars(path, nullptr);
     if (!raw_path) return JNI_FALSE;
     std::string model_path(raw_path);
@@ -65,19 +66,19 @@ Java_com_axiom_mobile_AxiomRuntimePlugin_nativeLoadModel(JNIEnv * env, jobject, 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_axiom_mobile_AxiomRuntimePlugin_nativeUnloadModel(JNIEnv *, jobject) {
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaUnloadModel(JNIEnv *, jobject) {
     std::lock_guard<std::mutex> lock(g_model_mutex);
     release_model_locked();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_axiom_mobile_AxiomRuntimePlugin_nativeLoadedModel(JNIEnv * env, jobject) {
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedModel(JNIEnv * env, jobject) {
     std::lock_guard<std::mutex> lock(g_model_mutex);
     return env->NewStringUTF(g_loaded_path.c_str());
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_axiom_mobile_AxiomRuntimePlugin_nativeGenerate(JNIEnv * env, jobject, jstring prompt, jint max_tokens, jobject callback) {
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jstring prompt, jint max_tokens, jobject callback) {
     const char * raw_prompt = env->GetStringUTFChars(prompt, nullptr);
     if (!raw_prompt) return env->NewStringUTF("");
     const std::string prompt_text(raw_prompt);
@@ -161,7 +162,7 @@ Java_com_axiom_mobile_AxiomRuntimePlugin_nativeGenerate(JNIEnv * env, jobject, j
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_axiom_mobile_AxiomRuntimePlugin_nativeVulkanAvailable(JNIEnv *, jobject) {
+Java_com_axiom_mobile_AxiomModelsPlugin_isVulkanAvailable(JNIEnv *, jobject) {
     void * handle = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
     if (!handle) return JNI_FALSE;
     dlclose(handle);
