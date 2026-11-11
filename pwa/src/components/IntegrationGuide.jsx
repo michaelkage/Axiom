@@ -2,7 +2,6 @@ import React from 'react';
 import { ArrowUpRight, BookOpen, Github, Database, ShieldCheck, KeyRound, TerminalSquare } from 'lucide-react';
 
 export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings }) {
-  const gatewayCommand = "export AXIOM_GATEWAY_TOKEN=$(node -e 'console.log(require(\"node:crypto\").randomBytes(32).toString(\"hex\"))')";
   return <section className="rounded-2xl border border-sky-300/15 bg-sky-300/[.035] p-4 mb-4">
     <div className="flex items-start gap-3">
       <div className="w-10 h-10 shrink-0 rounded-xl bg-sky-300/10 text-sky-200 grid place-items-center"><BookOpen size={19}/></div>
