@@ -6,7 +6,11 @@ on:
     paths:
       - ".github/workflows/publish-android-release.yml"
       - "pwa/RELEASE_NOTES.md"
-      - "pwa/tests/mobile-e2e/**"
+      - "pwa/src/**"
+      - "pwa/gateway/**"
+      - "pwa/scripts/**"
+      - "pwa/android-native/**"
+      - "pwa/tests/**"
 
 permissions:
   contents: write
@@ -121,9 +125,9 @@ jobs:
       - name: Attach APK to public GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v1.1.0
+          tag_name: android-v1.1.1
           target_commitish: ${{ github.sha }}
-          name: Axiom Android 1.1.0
+          name: Axiom Android 1.1.1
           body_path: pwa/RELEASE_NOTES.md
           draft: false
           prerelease: false
