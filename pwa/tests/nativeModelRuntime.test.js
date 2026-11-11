@@ -110,6 +110,8 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(app, /setInterval\(\(\)=>\{void captureTelemetry/);
   assert.match(app, /text-slate-700 hover:text-slate-950/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
+  assert.ok(installer.includes('versionCode\\s+\\d+'));
+  assert.ok(installer.includes('versionName\\s+'));
 });
 
 
