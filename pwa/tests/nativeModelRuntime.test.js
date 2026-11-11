@@ -79,6 +79,7 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(nativeChat, /cancelNativeGeneration/);
   assert.match(app, /nativeLoadedModel\?runNativeToolChat:runOllamaToolChat/);
   assert.match(app, /importNativeModelFile/);
+  assert.match(app, /ollamaConnectionMode/);
   assert.match(app, /No models installed/);
   assert.match(app, /confirmTool:/);
   assert.match(app, /runNativeValidation/);
@@ -108,6 +109,8 @@ test('Termux pairing securely hands a local gateway credential to Android withou
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
   assert.match(store, /Import \.gguf/);
+  assert.match(store, /native-ollama-url/);
+  assert.match(store, /Connect and discover server models/);
   assert.match(store, /No native models installed/);
   assert.match(store, /Inspect GGUF files/);
   assert.match(store, /Download into Axiom/);
