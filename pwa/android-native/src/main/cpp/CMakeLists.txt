@@ -13,12 +13,14 @@ set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
 set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
 set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
   llama_cpp
   GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
   GIT_TAG b12248
   GIT_SHALLOW TRUE
+  GIT_SUBMODULES_RECURSE TRUE
 )
 FetchContent_MakeAvailable(llama_cpp)
 
