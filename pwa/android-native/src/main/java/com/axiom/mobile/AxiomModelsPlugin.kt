@@ -153,17 +153,41 @@ class AxiomModelsPlugin : Plugin() {
         return generator.generateKey()
     }
 
+    private fun openHuggingFaceConnection(url: URL, accept: String? = null, range: String? = null): HttpURLConnection {
+        var current = url
+        val token = getHuggingFaceToken()
+        for (redirect in 0..5) {
+            if (current.protocol != "https" || current.userInfo != null) {
+                throw IllegalStateException("Hugging Face returned an unsafe download URL.")
+            }
+            val connection = current.openConnection() as HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            accept?.let { connection.setRequestProperty("Accept", it) }
+            range?.let { connection.setRequestProperty("Range", it) }
+            // Never forward the Hub credential to a signed CDN redirect.
+            if (redirect == 0 && current.host.equals("huggingface.co", ignoreCase = true)) {
+                token?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
+            }
+            val status = connection.responseCode
+            if (status !in setOf(301, 302, 303, 307, 308)) return connection
+            val location = connection.getHeaderField("Location")
+                ?: throw IllegalStateException("Hugging Face returned a redirect without a destination.")
+            connection.disconnect()
+            if (redirect == 5) throw IllegalStateException("Hugging Face exceeded the redirect limit.")
+            current = URL(current, location)
+        }
+        throw IllegalStateException("Could not open the Hugging Face resource.")
+    }
+
     @PluginMethod
     fun getHuggingFaceModelFiles(call: PluginCall) {
         val repo = call.getString("repo").orEmpty()
         if (!repo.matches(Regex("[A-Za-z0-9_.-]{1,96}/[A-Za-z0-9_.-]{1,96}"))) return call.reject("Invalid Hugging Face repository ID.")
         Thread({
             try {
-                val connection = URL("https://huggingface.co/api/models/$repo/tree/main?recursive=true&expand=true").openConnection() as HttpURLConnection
-                connection.connectTimeout = 12000
-                connection.readTimeout = 20000
-                connection.setRequestProperty("Accept", "application/json")
-                getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
+                val connection = openHuggingFaceConnection(URL("https://huggingface.co/api/models/$repo/tree/main?recursive=true&expand=true"), "application/json")
                 val status = connection.responseCode
                 if (status == 401 || status == 403) throw IllegalStateException("Hugging Face denied access. Save a read token in Axiom and confirm your account has access to this repository.")
                 if (status !in 200..299) throw IllegalStateException("Hugging Face returned HTTP $status.")
@@ -197,13 +221,16 @@ class AxiomModelsPlugin : Plugin() {
         if (remotePath.isBlank() || remotePath.startsWith("/") || remotePath.split("/").any { it == ".." } || !remotePath.endsWith(".gguf", true)) return call.reject("Invalid GGUF file path.")
         if (expectedSha.isNotEmpty() && !expectedSha.matches(Regex("[a-f0-9]{64}"))) return call.reject("Invalid SHA-256 checksum.")
 
-        val id = (repo.replace("/", "--") + "--" + remotePath.substringAfterLast("/")).replace(Regex("[^A-Za-z0-9._-]"), "_").take(180)
+        val identityHash = MessageDigest.getInstance("SHA-256").digest("$repo/$remotePath".toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
+        val safeRepo = repo.replace("/", "--").replace(Regex("[^A-Za-z0-9._-]"), "_").take(64)
+        val safeFile = remotePath.substringAfterLast("/").replace(Regex("[^A-Za-z0-9._-]"), "_").take(100)
+        val id = "$safeRepo--$safeFile--$identityHash"
         val target = File(modelRoot, id).canonicalFile
         if (target.parentFile != modelRoot) return call.reject("Model path escaped private storage.")
         val partial = File(modelRoot, "$id.part")
         if (llamaLoadedModel() == target.absolutePath) return call.reject("Unload this model before replacing it.")
         val cancel = AtomicBoolean(false)
-        activeDownloads.put(id, cancel)?.set(true)
+        if (activeDownloads.putIfAbsent(id, cancel) != null) return call.reject("This model download is already running.")
 
         Thread({
             try {
@@ -213,13 +240,16 @@ class AxiomModelsPlugin : Plugin() {
                 }
                 var existing = if (partial.exists()) partial.length() else 0L
                 val encodedPath = remotePath.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
-                val connection = URL("https://huggingface.co/$repo/resolve/main/$encodedPath?download=true").openConnection() as HttpURLConnection
-                connection.instanceFollowRedirects = true
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
-                if (existing > 0) connection.setRequestProperty("Range", "bytes=$existing-")
-                val status = connection.responseCode
+                val resourceUrl = URL("https://huggingface.co/$repo/resolve/main/$encodedPath?download=true")
+                var connection = openHuggingFaceConnection(resourceUrl, range = if (existing > 0) "bytes=$existing-" else null)
+                var status = connection.responseCode
+                if (status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && existing > 0) {
+                    connection.disconnect()
+                    partial.delete()
+                    existing = 0L
+                    connection = openHuggingFaceConnection(resourceUrl)
+                    status = connection.responseCode
+                }
                 if (status == 401 || status == 403) throw IllegalStateException("Hugging Face denied this download. Save a read token and confirm repository access.")
                 if (status !in 200..299) throw IllegalStateException("Model download returned HTTP $status.")
                 if (existing > 0 && status != HttpURLConnection.HTTP_PARTIAL) {
@@ -251,8 +281,7 @@ class AxiomModelsPlugin : Plugin() {
                 if (expectedSize > 0 && partial.length() != expectedSize) throw IllegalStateException("Downloaded size does not match Hugging Face file metadata.")
                 val digest = sha256(partial)
                 if (expectedSha.isNotEmpty() && !digest.equals(expectedSha, true)) throw IllegalStateException("SHA-256 verification failed. The partial file was not installed.")
-                if (target.exists() && !target.delete()) throw IllegalStateException("Could not replace existing model.")
-                if (!partial.renameTo(target)) throw IllegalStateException("Could not atomically install downloaded model.")
+                android.system.Os.rename(partial.absolutePath, target.absolutePath)
                 File(modelRoot, id + ".json").writeText(org.json.JSONObject().put("repo", repo).put("sourceFile", remotePath).put("sha256", digest).put("sha256Verified", expectedSha.isNotEmpty()).put("sizeBytes", target.length()).toString())
                 notifyListeners("modelDownloadProgress", JSObject()
                     .put("id", id).put("downloadedBytes", target.length()).put("totalBytes", target.length())
