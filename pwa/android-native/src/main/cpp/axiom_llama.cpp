@@ -359,9 +359,21 @@ Java_com_axiom_mobile_AxiomModelsPlugin_vulkanDeviceName(JNIEnv * env, jobject) 
         vkDestroyInstance(instance, nullptr);
         return env->NewStringUTF("");
     }
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(devices.front(), &properties);
-    const std::string name(properties.deviceName);
+    std::string name;
+    for (const VkPhysicalDevice device : devices) {
+        uint32_t queue_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queues(queue_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_count, queues.data());
+        const bool has_compute = std::any_of(queues.begin(), queues.end(), [](const VkQueueFamilyProperties & queue) {
+            return (queue.queueFlags & VK_QUEUE_COMPUTE_BIT) != 0 && queue.queueCount > 0;
+        });
+        if (!has_compute) continue;
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(device, &properties);
+        name = properties.deviceName;
+        break;
+    }
     vkDestroyInstance(instance, nullptr);
     return utf8_to_jstring(env, name);
 }
