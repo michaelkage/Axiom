@@ -71,6 +71,9 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(store, /Download into Axiom/);
   assert.match(store, /onLoad\(model\.id, Number\(contextSize\)\)/);
   assert.match(store, /onDelete\(model\.id\)/);
+  assert.match(store, /Hugging Face authentication/);
+  assert.match(store, /Run device validation/);
+  assert.match(store, /vulkanDeviceAvailable/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
 });
 
