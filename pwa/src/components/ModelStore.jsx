@@ -3,7 +3,7 @@ import { Download, ExternalLink, LoaderCircle, Package, RefreshCw, Search, Serve
 
 const QUANTIZATIONS = ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'F16'];
 
-export default function ModelStore({ models = [], connection = 'unknown', baseUrl = '', onBaseUrlChange, onRefresh, onPullModel, onSelectModel, pullingModel = '', pullProgress = null, disabled = false }) {
+export default function ModelStore({ models = [], connection = 'unknown', baseUrl = '', onBaseUrlChange, onConnect, onRefresh, onPullModel, onSelectModel, pullingModel = '', pullProgress = null, disabled = false }) {
   const [registryName, setRegistryName] = useState('');
   const [query, setQuery] = useState('');
   const [quantization, setQuantization] = useState('Q4_K_M');
@@ -47,7 +47,7 @@ export default function ModelStore({ models = [], connection = 'unknown', baseUr
       <p className="text-xs text-slate-500 mt-1">Point Axiom at an existing Ollama API. Use the host address reachable from this device, not a model name. Axiom discovers only models installed on that server.</p>
       <label htmlFor="ollama-server-url" className="block text-xs text-slate-400 mt-3 mb-1">Ollama server URL</label>
       <input id="ollama-server-url" type="url" inputMode="url" autoCapitalize="none" spellCheck="false" value={baseUrl} onChange={event => onBaseUrlChange?.(event.target.value)} placeholder="http://192.168.1.20:11434" className="w-full p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
-      <button type="button" onClick={onRefresh} disabled={disabled} className="w-full mt-2 min-h-10 border border-lime-300/20 text-lime-200 text-xs font-semibold disabled:opacity-40">Connect and discover installed models</button>
+      <button type="button" onClick={onConnect || onRefresh} disabled={disabled} className="w-full mt-2 min-h-10 border border-lime-300/20 text-lime-200 text-xs font-semibold disabled:opacity-40">Connect and discover installed models</button>
     </div>
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
