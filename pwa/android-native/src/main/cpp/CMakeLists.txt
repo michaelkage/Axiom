@@ -62,6 +62,20 @@ if(ANDROID AND EXISTS "${AXIOM_GGML_VULKAN_SOURCE}")
       message(FATAL_ERROR "Pinned llama.cpp Vulkan source changed: cannot apply Android Features2 dispatch fix")
     endif()
   endif()
+  # b12248 also has a third Features2 call using a vk::PhysicalDevice
+  # parameter. Patch it through Vulkan-Hpp's dynamic dispatcher as well.
+  set(AXIOM_VK_FEATURES2_OLD "vkGetPhysicalDeviceFeatures2(vkdev, &device_features2);")
+  set(AXIOM_VK_FEATURES2_NEW "(void)vkdev.getFeatures2(reinterpret_cast<vk::PhysicalDeviceFeatures2 *>(&device_features2));")
+  string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_OLD}" AXIOM_VK_FEATURES2_OLD_POS)
+  if(NOT AXIOM_VK_FEATURES2_OLD_POS EQUAL -1)
+    string(REPLACE "${AXIOM_VK_FEATURES2_OLD}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_GGML_VULKAN_CONTENT "${AXIOM_GGML_VULKAN_CONTENT}")
+  else()
+    string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_VK_FEATURES2_NEW_POS)
+    if(AXIOM_VK_FEATURES2_NEW_POS EQUAL -1)
+      message(FATAL_ERROR "Pinned llama.cpp Vulkan source changed: cannot apply Android vkdev Features2 dispatch fix")
+    endif()
+  endif()
+
   file(WRITE "${AXIOM_GGML_VULKAN_SOURCE}" "${AXIOM_GGML_VULKAN_CONTENT}")
 endif()
 
