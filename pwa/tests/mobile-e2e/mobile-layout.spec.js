@@ -38,8 +38,8 @@ test("switches between all primary mobile sections", async ({ page }) => {
   await page.goto("/");
   for (const [label, heading] of [
     ["Tools", "Give Axiom tools."],
-    ["MCP", "MCP servers"],
-    ["Logs", "Execution logs"],
+    ["MCP", "External endpoints."],
+    ["Logs", "What happened."],
     ["Chat", "Think. Build. Verify."],
   ]) {
     await page.getByRole("button", { name: label, exact: true }).click();
@@ -103,7 +103,7 @@ test("adds and removes an MCP endpoint from the mobile server manager", async ({
   await expect(page.getByRole("button", { name: "Reconnect Local test server" })).toBeVisible();
   await page.getByRole("button", { name: "Remove Local test server" }).click();
   await expect(page.getByText("Local test server")).toHaveCount(0);
-  await expect(page.getByText("No MCP servers connected yet.")).toBeVisible();
+  await expect(page.getByText("No External endpoints. connected yet.")).toBeVisible();
 });
 
 test("clears execution logs using the labelled mobile action", async ({ page }) => {
