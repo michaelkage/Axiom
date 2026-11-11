@@ -240,6 +240,26 @@ test('gateway pairing token is generated once, persisted privately, and not prin
   }
 });
 
+test('Termux bootstrap can generate the pairing token without writing it to gateway logs', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'axiom-gateway-silent-'));
+  const env = { AXIOM_GATEWAY_SILENT_TOKEN: '1' };
+  const warnings = [];
+  const infos = [];
+  try {
+    const token = await ensureGatewayToken(env, {
+      warn: value => warnings.push(String(value)),
+      info: value => infos.push(String(value))
+    }, directory);
+    assert.match(token, /^[a-f0-9]{64}$/);
+    assert.equal(env.AXIOM_GATEWAY_TOKEN, token);
+    assert.equal(warnings.length, 0);
+    assert.ok(infos.some(line => line.includes('stored with owner-only permissions')));
+    assert.equal((await readFile(join(directory, 'gateway-token'), 'utf8')).trim(), token);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('Ollama proxy streams pull requests and forwards the model reference', async () => {
   let seen;
   await withServer({ fetchImpl: async (url, options) => {
