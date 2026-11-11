@@ -8,6 +8,7 @@
 #include <vector>
 #include <cstring>
 #include <dlfcn.h>
+#include <vulkan/vulkan.h>
 
 #define AXIOM_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "AxiomLLM", __VA_ARGS__)
 
@@ -335,4 +336,32 @@ Java_com_axiom_mobile_AxiomModelsPlugin_isVulkanAvailable(JNIEnv *, jobject) {
     if (!handle) return JNI_FALSE;
     dlclose(handle);
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_axiom_mobile_AxiomModelsPlugin_vulkanDeviceName(JNIEnv * env, jobject) {
+    VkApplicationInfo app_info{};
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pApplicationName = "Axiom";
+    app_info.apiVersion = VK_API_VERSION_1_0;
+    VkInstanceCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    create_info.pApplicationInfo = &app_info;
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&create_info, nullptr, &instance) != VK_SUCCESS) return env->NewStringUTF("");
+    uint32_t count = 0;
+    if (vkEnumeratePhysicalDevices(instance, &count, nullptr) != VK_SUCCESS || count == 0) {
+        vkDestroyInstance(instance, nullptr);
+        return env->NewStringUTF("");
+    }
+    std::vector<VkPhysicalDevice> devices(count);
+    if (vkEnumeratePhysicalDevices(instance, &count, devices.data()) != VK_SUCCESS) {
+        vkDestroyInstance(instance, nullptr);
+        return env->NewStringUTF("");
+    }
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(devices.front(), &properties);
+    const std::string name(properties.deviceName);
+    vkDestroyInstance(instance, nullptr);
+    return utf8_to_jstring(env, name);
 }
