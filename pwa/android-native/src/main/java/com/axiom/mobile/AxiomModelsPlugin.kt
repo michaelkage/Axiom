@@ -103,7 +103,7 @@ class AxiomModelsPlugin : Plugin() {
 
     @PluginMethod
     fun getHuggingFaceAuthStatus(call: PluginCall) {
-        call.resolve(JSObject().put("configured", !hfPrefs.getString("hf_token", null).isNullOrBlank()))
+        call.resolve(JSObject().put("configured", runCatching { !getHuggingFaceToken().isNullOrBlank() }.getOrDefault(false)))
     }
 
     @PluginMethod
@@ -236,7 +236,7 @@ class AxiomModelsPlugin : Plugin() {
             try {
                 val stat = StatFs(modelRoot.absolutePath)
                 if (expectedSize > 0 && stat.availableBytes < expectedSize + 128L * 1024L * 1024L) {
-                    throw IllegalStateException("Not enough free storage. Free at least \${expectedSize + 128L * 1024L * 1024L} bytes before downloading.")
+                    throw IllegalStateException("Not enough free storage. Free at least ${expectedSize + 128L * 1024L * 1024L} bytes before downloading.")
                 }
                 var existing = if (partial.exists()) partial.length() else 0L
                 val encodedPath = remotePath.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
