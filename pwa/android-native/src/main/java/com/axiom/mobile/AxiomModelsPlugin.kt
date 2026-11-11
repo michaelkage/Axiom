@@ -33,7 +33,8 @@ class AxiomModelsPlugin : Plugin() {
     private val modelRoot: File by lazy { File(context.filesDir, "models").apply { mkdirs() }.canonicalFile }
     private val activeDownloads = ConcurrentHashMap<String, AtomicBoolean>()
     private val hfPrefs by lazy { context.getSharedPreferences("axiom_models_secure", android.content.Context.MODE_PRIVATE) }
-    @Volatile private var generationCancelled = false
+    private val generationCancelled = AtomicBoolean(false)
+    private val generationActive = AtomicBoolean(false)
 
     private external fun llamaLoadModel(path: String, contextSize: Int, threads: Int, gpuLayers: Int): Boolean
     private external fun llamaLoadedGpuLayers(): Int
@@ -348,8 +349,9 @@ class AxiomModelsPlugin : Plugin() {
 
     @PluginMethod
     fun cancelLocalGeneration(call: PluginCall) {
-        generationCancelled = true
-        call.resolve(JSObject().put("cancelling", true))
+        val active = generationActive.get()
+        if (active) generationCancelled.set(true)
+        call.resolve(JSObject().put("cancelling", active))
     }
 
     @PluginMethod
@@ -370,7 +372,10 @@ class AxiomModelsPlugin : Plugin() {
             return call.reject("Conversation message format is invalid.")
         }
         val maxTokens = (call.getInt("maxTokens") ?: 512).coerceIn(1, 4096)
-        generationCancelled = false
+        if (!generationActive.compareAndSet(false, true)) {
+            return call.reject("A native generation is already running. Cancel it or wait for it to finish.")
+        }
+        generationCancelled.set(false)
         Thread({
             try {
                 val callback = object {
@@ -379,12 +384,16 @@ class AxiomModelsPlugin : Plugin() {
                         notifyListeners("nativeModelToken", JSObject().put("token", token))
                     }
                     @Suppress("unused")
-                    fun isCancelled(): Boolean = generationCancelled
+                    fun isCancelled(): Boolean = generationCancelled.get()
                 }
                 val output = llamaGenerate(roles.toTypedArray(), contents.toTypedArray(), maxTokens, callback)
-                activity.runOnUiThread { call.resolve(JSObject().put("text", output).put("cancelled", generationCancelled)) }
+                val wasCancelled = generationCancelled.get()
+                activity.runOnUiThread { call.resolve(JSObject().put("text", output).put("cancelled", wasCancelled)) }
             } catch (error: Exception) {
                 activity.runOnUiThread { call.reject(error.message ?: "Native inference failed.") }
+            } finally {
+                generationCancelled.set(false)
+                generationActive.set(false)
             }
         }, "axiom-native-inference").apply { isDaemon = true }.start()
     }
