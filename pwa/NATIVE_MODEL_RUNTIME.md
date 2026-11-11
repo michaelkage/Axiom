@@ -37,7 +37,7 @@ llama.cpp is fetched at the pinned `b12248` tag during native build. This requir
 
 ## Current limitations and validation
 
-- No Vulkan/Adreno/Hexagon acceleration is enabled yet. CPU fallback is the supported path.
+- Vulkan GPU offload is compiled and attempted when a physical Vulkan device is available, with CPU fallback if GPU model loading fails. Physical GPU correctness, performance and stability still require device testing; no Adreno/Hexagon-specific backend is claimed.
 - The native runtime has not yet been physically validated across Android devices. CI compilation proves the APK can be built, not that every model/driver/device combination will run.
 - Long-running inference is currently hosted in the app process. Background inference and persistent model sessions are not promised.
 - Model metadata parsing is currently based on Hub file metadata, not a full GGUF metadata/architecture preflight. Unsupported or incompatible files fail at load time with an actionable error.
