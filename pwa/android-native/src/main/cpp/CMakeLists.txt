@@ -31,6 +31,40 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(llama_cpp)
 
+# Android's Vulkan loader exports Vulkan 1.0 entry points from libvulkan.so;
+# Vulkan 1.1+ entry points must be resolved through vkGetInstanceProcAddr.
+# llama.cpp b12248 uses two direct C calls for Features2, which fail to link
+# against the Android NDK loader. Route those calls through Vulkan-Hpp's
+# already-configured dynamic dispatcher instead of weakening Vulkan support.
+set(AXIOM_GGML_VULKAN_SOURCE "${llama_cpp_SOURCE_DIR}/ggml/src/ggml-vulkan/ggml-vulkan.cpp")
+if(ANDROID AND EXISTS "${AXIOM_GGML_VULKAN_SOURCE}")
+  file(READ "${AXIOM_GGML_VULKAN_SOURCE}" AXIOM_GGML_VULKAN_CONTENT)
+  set(AXIOM_VK_FEATURES2_OLD "vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);")
+  set(AXIOM_VK_FEATURES2_NEW "vk::PhysicalDevice(device->physical_device).getFeatures2(&device_features2);")
+  string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_OLD}" AXIOM_VK_FEATURES2_OLD_POS)
+  if(NOT AXIOM_VK_FEATURES2_OLD_POS EQUAL -1)
+    string(REPLACE "${AXIOM_VK_FEATURES2_OLD}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_GGML_VULKAN_CONTENT "${AXIOM_GGML_VULKAN_CONTENT}")
+  else()
+    string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_VK_FEATURES2_NEW_POS)
+    if(AXIOM_VK_FEATURES2_NEW_POS EQUAL -1)
+      message(FATAL_ERROR "Pinned llama.cpp Vulkan source changed: cannot apply Android Features2 dispatch fix")
+    endif()
+  endif()
+
+  set(AXIOM_VK_FEATURES2_OLD "vkGetPhysicalDeviceFeatures2(physical_device, &device_features2);")
+  set(AXIOM_VK_FEATURES2_NEW "vk::PhysicalDevice(physical_device).getFeatures2(&device_features2);")
+  string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_OLD}" AXIOM_VK_FEATURES2_OLD_POS)
+  if(NOT AXIOM_VK_FEATURES2_OLD_POS EQUAL -1)
+    string(REPLACE "${AXIOM_VK_FEATURES2_OLD}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_GGML_VULKAN_CONTENT "${AXIOM_GGML_VULKAN_CONTENT}")
+  else()
+    string(FIND "${AXIOM_GGML_VULKAN_CONTENT}" "${AXIOM_VK_FEATURES2_NEW}" AXIOM_VK_FEATURES2_NEW_POS)
+    if(AXIOM_VK_FEATURES2_NEW_POS EQUAL -1)
+      message(FATAL_ERROR "Pinned llama.cpp Vulkan source changed: cannot apply Android Features2 dispatch fix")
+    endif()
+  endif()
+  file(WRITE "${AXIOM_GGML_VULKAN_SOURCE}" "${AXIOM_GGML_VULKAN_CONTENT}")
+endif()
+
 # llama.cpp's Vulkan backend includes the Vulkan-Hpp C++ bindings. Android's
 # NDK ships the C Vulkan headers and loader, but not vulkan.hpp. Use the host
 # Vulkan-Headers package for compile-time headers while linking against the
