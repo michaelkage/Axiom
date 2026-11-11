@@ -49,6 +49,18 @@ if(ANDROID AND TARGET ggml-vulkan)
   file(COPY "${AXIOM_VULKAN_HPP_INCLUDE_DIR}/vulkan"
     DESTINATION "${AXIOM_VULKAN_STAGED_INCLUDE_DIR}"
   )
+  # The backend also includes SPIRV-Headers directly (spirv/unified1/spirv.hpp).
+  # Stage that tree beside Vulkan-Hpp so the Android cross-compiler can resolve
+  # both host-provided header families through one explicit include directory.
+  find_path(AXIOM_SPIRV_INCLUDE_DIR
+    NAMES spirv/unified1/spirv.hpp
+    PATHS /usr/include /usr/local/include
+    NO_CMAKE_FIND_ROOT_PATH
+    REQUIRED
+  )
+  file(COPY "${AXIOM_SPIRV_INCLUDE_DIR}/spirv"
+    DESTINATION "${AXIOM_VULKAN_STAGED_INCLUDE_DIR}"
+  )
   target_include_directories(ggml-vulkan SYSTEM BEFORE PRIVATE
     "${AXIOM_VULKAN_STAGED_INCLUDE_DIR}"
   )
