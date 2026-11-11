@@ -120,7 +120,8 @@ export default function App(){
   }
   setNativeBusy(true);
   try{
-   const effectiveContext=available&&available<3*1024*1024*1024?Math.min(requestedContext,1024):Math.min(requestedContext,4096);\n   const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6))});
+   const effectiveContext=available&&available<3*1024*1024*1024?Math.min(requestedContext,1024):Math.min(requestedContext,4096);
+   const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6))});
    setNativeLoadedModel(id);
    await refreshNativeModels();
    setNotice('Native model loaded. Chat will now use on-device llama.cpp inference.');
