@@ -90,7 +90,7 @@ export default function NativeModelStore({
     {capabilities && <div className="border border-white/10 p-3 text-[11px] text-slate-500">
       <div className="flex justify-between gap-2"><span>Inference backend</span><span className="text-lime-200">{capabilities.inferenceBackend}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Architecture</span><span>{capabilities.primaryAbi} · {capabilities.cpuCores} CPU cores</span></div>
-      <div className="flex justify-between gap-2 mt-1"><span>Vulkan backend</span><span className={capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'text-lime-200' : ''}>{capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'Compiled · driver detected' : 'CPU fallback'}</span></div>
+      <div className="flex justify-between gap-2 mt-1"><span>Vulkan backend</span><span className={capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'text-lime-200' : ''}>{capabilities.gpuOffloadSupported && capabilities.vulkanDeviceAvailable ? (capabilities.vulkanDeviceName || 'Vulkan device detected') : 'CPU fallback'}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Loaded GPU layers</span><span>{capabilities.loadedGpuLayers ?? 0}</span></div>
     </div>}
 
@@ -122,7 +122,7 @@ export default function NativeModelStore({
       <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Hugging Face authentication</h2><span className={hfTokenConfigured ? 'text-[10px] text-lime-200' : 'text-[10px] text-slate-500'}>{hfTokenConfigured ? 'READ TOKEN SAVED' : 'PUBLIC ACCESS'}</span></div>
       <p className="text-xs text-slate-400 mt-2">Optional. Add a Hugging Face read token to inspect private repositories and download gated models your account is allowed to access. The token is encrypted with Android Keystore and never stored in browser storage.</p>
       <input type="password" autoComplete="off" value={hfToken} onChange={event => setHfToken(event.target.value)} placeholder="hf_…" aria-label="Hugging Face read token" className="w-full mt-3 p-3 bg-black/30 border border-white/10 text-sm text-slate-100"/>
-      <div className="flex gap-2 mt-2"><button type="button" onClick={async () => { if (!hfToken.trim()) return; await onSaveHfToken(hfToken.trim()); setHfToken(''); }} disabled={!hfToken.trim() || busy} className="flex-1 min-h-10 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">Save securely</button>{hfTokenConfigured && <button type="button" onClick={onClearHfToken} disabled={busy} className="min-h-10 px-3 border border-red-300/20 text-red-200 text-xs">Remove token</button>}</div>
+      <div className="flex gap-2 mt-2"><button type="button" onClick={async () => { if (!hfToken.trim()) return; try { await onSaveHfToken(hfToken.trim()); setHfToken(''); } catch (cause) { setError(cause.message || 'Could not save token.'); } }} disabled={!hfToken.trim() || busy} className="flex-1 min-h-10 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">Save securely</button>{hfTokenConfigured && <button type="button" onClick={onClearHfToken} disabled={busy} className="min-h-10 px-3 border border-red-300/20 text-red-200 text-xs">Remove token</button>}</div>
       <p className="text-[10px] text-slate-500 mt-2">Create a read-only token at huggingface.co/settings/tokens. Gated model access must first be approved on the model's Hugging Face page.</p>
     </div>
     <div className="border border-white/[.09] bg-white/[.025] p-4">
