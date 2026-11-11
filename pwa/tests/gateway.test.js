@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAxiomGateway } from '../gateway/server.mjs';
+import { createAxiomGateway, ensureGatewayToken } from '../gateway/server.mjs';
+import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const TOKEN = 'test-gateway-token-that-is-at-least-32-characters-long';
 async function withServer(options, run) {
@@ -212,3 +215,48 @@ test('diagnostics refuses a Supabase secret key without contacting Supabase', as
   });
 });
 
+
+test('gateway pairing token is generated once, persisted privately, and not printed again', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'axiom-gateway-'));
+  const env = {};
+  const firstLogs = [];
+  const logger = { warn: value => firstLogs.push(String(value)) };
+  try {
+    const first = await ensureGatewayToken(env, logger, directory);
+    assert.match(first, /^[a-f0-9]{64}$/);
+    assert.equal(env.AXIOM_GATEWAY_TOKEN, first);
+    assert.equal(firstLogs.filter(line => line === first).length, 1);
+    const file = join(directory, 'gateway-token');
+    assert.equal((await readFile(file, 'utf8')).trim(), first);
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    assert.equal((await stat(directory)).mode & 0o777, 0o700);
+
+    const secondLogs = [];
+    const second = await ensureGatewayToken({}, { warn: value => secondLogs.push(String(value)) }, directory);
+    assert.equal(second, first);
+    assert.equal(secondLogs.length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Ollama proxy streams pull requests and forwards the model reference', async () => {
+  let seen;
+  await withServer({ fetchImpl: async (url, options) => {
+    seen = { url: String(url), options };
+    return new Response('{"status":"pulling manifest"}\\n{"status":"success"}\\n', {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' }
+    });
+  } }, async base => {
+    const response = await fetch(base + '/api/ollama/api/pull', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'hf.co/example/model-GGUF:Q4_K_M', stream: true })
+    });
+    assert.equal(response.status, 200);
+    assert.match(seen.url, /127\\.0\\.0\\.1:11434\\/api\\/pull$/);
+    assert.deepEqual(JSON.parse(seen.options.body.toString()), { model: 'hf.co/example/model-GGUF:Q4_K_M', stream: true });
+    assert.match(await response.text(), /"status":"success"/);
+  });
+});
