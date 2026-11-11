@@ -4,9 +4,9 @@ import {
   addRuntimeListener, createWorkspace, getRuntimeInfo, isNativeAndroid, listWorkspaces,
   resizeTerminal, selectWorkspace, startTerminal, stopTerminal, writeTerminal
 } from '../lib/axiomRuntime.js';
+import { TerminalScreen } from '../lib/terminalScreen.js';
 
 const MAX_SCROLLBACK = 160000;
-const cleanAnsi = value => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCols = 80 }) {
   const native = isNativeAndroid();
   const [runtime, setRuntime] = useState(null);
@@ -27,7 +27,15 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
   const inputRef = useRef(null);
   const pendingChunksRef = useRef(new Map());
   const sessionRef = useRef(null);
-  const append = useCallback(text => setOutput(current => (current + cleanAnsi(text)).slice(-MAX_SCROLLBACK)), []);
+  const screenRef = useRef(new TerminalScreen(terminalCols));
+  const append = useCallback(value => {
+    const rendered = screenRef.current.write(value);
+    setOutput(rendered.slice(-MAX_SCROLLBACK));
+  }, []);
+  const clearScreen = () => {
+    screenRef.current.reset();
+    setOutput('');
+  };
 
   useEffect(() => {
     if (!native) return;
@@ -78,7 +86,7 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
   const launch = async () => {
     if (!native || sessionRef.current) return;
     setError('');
-    setOutput('');
+    clearScreen();
     setStatus('starting');
     try {
       const result = await startTerminal({ rows, cols });
@@ -87,7 +95,7 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       if (pending) { append(pending); pendingChunksRef.current.delete(result.sessionId); }
       setSessionId(result.sessionId);
       setStatus('running');
-      append('Axiom shell · ' + result.cwd + '\r\n');
+      append('Axiom Android shell · ' + result.cwd + '\r\n');
       setTimeout(() => inputRef.current?.focus(), 50);
     } catch (e) {
       setStatus('stopped');
@@ -131,7 +139,7 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       send('\u0004');
     } else if (event.key === 'l' && event.ctrlKey) {
       event.preventDefault();
-      setOutput('');
+      clearScreen();
       send('\u000c');
     } else if (event.key === 'ArrowUp' && !input) {
       event.preventDefault();
@@ -166,18 +174,20 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       setNewWorkspace('');
       await refreshRuntime();
       setWorkspace(created.name);
-      setOutput('Workspace created: ' + created.path + '\r\n');
+      clearScreen();
+      append('Workspace created: ' + created.path + '\r\n');
     } catch (e) { setError(e.message); }
   };
 
   useEffect(() => {
-    if (!sessionId) return;
-    if (typeof ResizeObserver === 'undefined') return;
+    if (!sessionId || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(entries => {
       const width = entries[0]?.contentRect.width || 640;
-      const nextCols = Math.max(24, Math.min(180, Math.floor(width / 8)));
+      const nextCols = Math.max(24, Math.min(180, Math.floor(width / 7.2)));
       if (nextCols !== cols) {
         setCols(nextCols);
+        screenRef.current.resize(nextCols);
+        setOutput(screenRef.current.toString().slice(-MAX_SCROLLBACK));
         resizeTerminal(sessionId, rows, nextCols).catch(() => {});
       }
     });
@@ -192,12 +202,18 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       <div><p className="text-xs text-lime-300 font-semibold tracking-widest uppercase">Native runtime</p><h1 className="text-2xl font-semibold mt-1">Terminal</h1><p className="text-xs text-slate-500 mt-1">{runtime?.workspaceRoot || 'Loading private workspace…'}</p></div>
       <button type="button" onClick={refreshRuntime} aria-label="Refresh runtime status" className="p-2 rounded-xl bg-white/[.06] text-slate-300"><RefreshCw size={17}/></button>
     </div>
+    <div className="rounded-xl border border-amber-300/20 bg-amber-300/[.06] p-3 mb-3">
+      <p className="text-xs font-semibold text-amber-100">Android app shell · not Termux</p>
+      <p className="text-[11px] leading-relaxed text-slate-300 mt-1">This is an isolated <code>/system/bin/sh</code> workspace. Basic Android commands such as <code>pwd</code>, <code>ls</code>, <code>cd</code>, <code>mkdir</code>, <code>cat</code> and <code>getprop</code> are available. Node.js, npm, pip and apt are not installed here. Use the separate Termux app for Node, Ollama and the gateway.</p>
+      <p className="text-[11px] leading-relaxed text-slate-400 mt-2">Gateway token recovery in Termux: <code>cat ~/.config/axiom/gateway-token</code>. On the computer hosting the gateway: <code>cd pwa && npm run gateway:token</code>. Axiom's app shell cannot access either environment's files.</p>
+      <a href="https://github.com/michaelkage/Axiom/blob/main/pwa/TERMUX_SETUP.md" target="_blank" rel="noreferrer" className="inline-flex mt-2 text-[11px] text-lime-200 underline underline-offset-4">Termux setup instructions</a>
+    </div>
     <div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-3 mb-3">
       <div className="flex items-center gap-2 mb-3"><select aria-label="Active workspace" value={workspace} onChange={e => changeWorkspace(e.target.value)} className="flex-1 min-w-0 p-3 rounded-xl bg-[#090d14] border border-white/10 text-sm"><option value={workspace}>{workspace}</option>{workspaces.filter(item => item.name !== workspace).map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select><span className={'text-xs '+(status === 'running' ? 'text-lime-300' : 'text-slate-500')}>{status}</span></div>
       <div className="flex gap-2"><input value={newWorkspace} onChange={e => setNewWorkspace(e.target.value)} onKeyDown={e => e.key === 'Enter' && addWorkspace()} placeholder="New project workspace" aria-label="New workspace name" className="min-w-0 flex-1 p-3 rounded-xl bg-black/30 border border-white/10 text-sm"/><button onClick={addWorkspace} aria-label="Create workspace" className="p-3 rounded-xl bg-white/[.08] text-lime-300"><FolderPlus size={18}/></button></div>
     </div>
     <div className="rounded-2xl border border-white/[.1] bg-[#05070b] overflow-hidden">
-      <div className="px-3 py-2 flex items-center justify-between border-b border-white/[.08]"><div className="flex items-center gap-2 text-xs text-slate-400"><span className={'w-2 h-2 rounded-full '+(status === 'running' ? 'bg-lime-400' : 'bg-slate-600')}/>{sessionId ? 'PTY session ' + sessionId.slice(0, 8) : 'Shell stopped'}</div><div className="flex gap-2">{sessionId ? <><button onClick={() => { setInput(''); send('\u0003'); }} className="p-2 text-amber-300" aria-label="Send Ctrl+C interrupt"><Activity size={15}/></button><button onClick={() => stop(false)} className="p-2 text-red-300" aria-label="Close terminal session"><CircleStop size={15}/></button></> : <button onClick={launch} className="p-2 text-lime-300" aria-label="Start shell"><Play size={15}/></button>}<button onClick={() => setOutput('')} className="p-2 text-slate-500" aria-label="Clear terminal"><X size={15}/></button></div></div>
+      <div className="px-3 py-2 flex items-center justify-between border-b border-white/[.08]"><div className="flex items-center gap-2 text-xs text-slate-400"><span className={'w-2 h-2 rounded-full '+(status === 'running' ? 'bg-lime-400' : 'bg-slate-600')}/>{sessionId ? 'PTY session ' + sessionId.slice(0, 8) : 'Shell stopped'}</div><div className="flex gap-2">{sessionId ? <><button onClick={() => { setInput(''); send('\u0003'); }} className="p-2 text-amber-300" aria-label="Send Ctrl+C interrupt"><Activity size={15}/></button><button onClick={() => stop(false)} className="p-2 text-red-300" aria-label="Close terminal session"><CircleStop size={15}/></button></> : <button onClick={launch} className="p-2 text-lime-300" aria-label="Start shell"><Play size={15}/></button>}<button onClick={clearScreen} className="p-2 text-slate-500" aria-label="Clear terminal"><X size={15}/></button></div></div>
       <pre ref={outputRef} onClick={() => inputRef.current?.focus()} className="h-[48vh] min-h-64 max-h-[65vh] overflow-auto p-3 text-[12px] leading-5 text-slate-200 whitespace-pre-wrap break-words font-mono">{output || 'Start the shell to connect to your active workspace.'}</pre>
       <div className="border-t border-white/[.08] p-2"><textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onInputKeyDown} disabled={!sessionId} rows={2} spellCheck="false" autoCapitalize="off" autoCorrect="off" aria-label="Terminal input" placeholder={sessionId ? 'Type a command… Enter to run · Ctrl+C to interrupt' : 'Start the shell first'} className="w-full resize-none bg-transparent outline-none p-2 text-sm font-mono text-lime-100 placeholder:text-slate-600 disabled:opacity-40"/><div className="flex items-center justify-between px-2 pb-1 text-[10px] text-slate-600"><span>PTY · {rows} × {cols} · scrollback {Math.min(output.length, MAX_SCROLLBACK).toLocaleString()} chars</span><span>Ctrl+C interrupt · Ctrl+D EOF · Ctrl+L clear</span></div></div>
     </div>
