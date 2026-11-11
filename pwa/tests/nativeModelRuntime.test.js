@@ -64,7 +64,7 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(app, /nativeLoadedModel\?runNativeToolChat:runOllamaToolChat/);
   assert.match(app, /confirmTool:/);
   assert.match(app, /runNativeValidation/);
-  assert.match(app, /axiom.onboarding.dismissed/);
+  assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /gateway:token/);
 });
 
