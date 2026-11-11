@@ -60,11 +60,4 @@ await mkdir(dirname(mainJava), { recursive: true });
 if (existsSync(mainKotlin)) throw new Error('Unexpected Kotlin MainActivity exists; refusing to overwrite.');
 const activity = 'package com.axiom.mobile;\n\nimport android.os.Bundle;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(AxiomRuntimePlugin.class);\n        registerPlugin(AxiomModelsPlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n\n    @Override\n    public void onNewIntent(android.content.Intent intent) {\n        super.onNewIntent(intent);\n        setIntent(intent);\n    }\n}\n';
 await writeFile(mainJava, activity);
-const activityMatch = manifest.match(/<activity\b(?=[^>]*android:name="[^"]*MainActivity")[^>]*>/);
-if (!activityMatch) throw new Error('Could not locate generated MainActivity manifest declaration.');
-if (!manifest.includes('axiom-gateway-pair')) {
-  const pairingFilter = '\n            <intent-filter android:label="Axiom gateway pairing">\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="axiom" android:host="gateway-pair" />\n            </intent-filter>';
-  manifest = manifest.replace(activityMatch[0], activityMatch[0] + pairingFilter);
-  await writeFile(manifestPath, manifest);
-}
-console.log('Installed Axiom native PTY, secure pairing deep link, runtime service, and Capacitor plugin.');
+console.log('Installed Axiom native PTY, secure pairing handoff, runtime service, and Capacitor plugin.');
