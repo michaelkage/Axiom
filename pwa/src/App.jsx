@@ -296,13 +296,13 @@ export default function App(){
      <div className="rounded-2xl border border-white/[.09] bg-white/[.025] p-4 text-left">
       <div className="text-xs uppercase tracking-widest text-lime-300 font-semibold mb-3">FIRST RUN / THREE MOVES</div>
       <div className="space-y-3">
-       <div className="flex gap-3"><span className="w-7 h-7 shrink-0 rounded-lg bg-lime-300/10 text-lime-200 grid place-items-center text-xs font-bold">1</span><div><div className="text-sm font-medium">01 — Bring a model online</div><p className="text-xs text-slate-500 mt-1">Run Ollama and pull something small to start, like <code>qwen2.5:1.5b</code>. Set the Ollama URL in Settings, then test the connection.</p></div></div>
+       <div className="flex gap-3"><span className="w-7 h-7 shrink-0 rounded-lg bg-lime-300/10 text-lime-200 grid place-items-center text-xs font-bold">1</span><div><div className="text-sm font-medium">01 — Bring a model online</div><p className="text-xs text-slate-500 mt-1">Open Models to browse Ollama and Hugging Face, then install a small model such as <code>qwen2.5:1.5b</code>. Axiom detects Ollama and refreshes the installed-model list automatically.</p></div></div>
        <div className="flex gap-3"><span className="w-7 h-7 shrink-0 rounded-lg bg-sky-300/10 text-sky-200 grid place-items-center text-xs font-bold">2</span><div><div className="text-sm font-medium">02 — Pair the gateway</div><p className="text-xs text-slate-500 mt-1">Needed for GitHub, Supabase, and remote MCP. The guide tells you what each key does and where it belongs.</p></div></div>
        <div className="flex gap-3"><span className="w-7 h-7 shrink-0 rounded-lg bg-violet-300/10 text-violet-200 grid place-items-center text-xs font-bold">3</span><div><div className="text-sm font-medium">03 — Give it tools</div><p className="text-xs text-slate-500 mt-1">Connect only what the job needs. Axiom asks before protected writes.</p></div></div>
       </div>
       <div className="grid grid-cols-2 gap-2 mt-4">
        <button type="button" onClick={()=>setShowSettings(true)} className="min-h-11 rounded-xl bg-lime-300 text-slate-950 text-xs font-semibold">Set up connections</button>
-       <button type="button" onClick={()=>setTab('tools')} className="min-h-11 rounded-xl border border-sky-200/20 bg-sky-200/[.06] text-sky-100 text-xs font-semibold">Read the field guide</button>
+       <button type="button" onClick={()=>setTab('models')} className="min-h-11 rounded-xl border border-sky-200/20 bg-sky-200/[.06] text-sky-100 text-xs font-semibold">Open model store</button>
       </div>
      </div>
      <div className="grid grid-cols-2 gap-2 w-full mt-4">{['Explain a codebase','Draft a SQL query','Plan a project','Debug an error'].map(x=><button key={x} onClick={()=>setDraft(x)} className="text-left p-3 rounded-xl border border-white/[.08] bg-white/[.025] text-xs text-slate-300 active:bg-white/[.08]">{x}<ChevronRight size={13} className="inline ml-1 text-lime-300"/></button>)}</div>
