@@ -8,7 +8,8 @@ import android.os.PowerManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.provider.OpenableColumns
-import com.getcapacitor.ActivityResult
+import androidx.activity.result.ActivityResult
+import com.getcapacitor.annotation.ActivityCallback
 import android.util.Base64
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
