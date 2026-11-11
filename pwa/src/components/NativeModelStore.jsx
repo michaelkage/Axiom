@@ -11,7 +11,7 @@ const formatBytes = value => {
 
 export default function NativeModelStore({
   models = [], capabilities = null, loadedModel = '', progress = null,
-  busy = false, onRefresh, onSearch, onFiles, onDownload, onLoad, onUnload, onDelete
+  busy = false, onRefresh, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete
 }) {
   const [query, setQuery] = useState('Qwen2.5 1.5B GGUF');
   const [results, setResults] = useState([]);
@@ -117,7 +117,7 @@ export default function NativeModelStore({
         </article>;
       })}
       {error && <p role="alert" className="text-xs text-red-300 mt-3">{error}</p>}
-      {progress && <div className="mt-4" role="status" aria-live="polite"><div className="flex justify-between text-xs"><span className="truncate pr-2">{progress.status || 'Downloading model'}</span><span>{progress.percent ?? 0}%</span></div><div className="h-1.5 bg-white/10 mt-2"><div className="h-full bg-lime-300" style={{ width: (progress.percent || 0) + '%' }}/></div><p className="text-[10px] text-slate-500 mt-1">{formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)}</p></div>}
+      {progress && <div className="mt-4" role="status" aria-live="polite"><div className="flex justify-between text-xs"><span className="truncate pr-2">{progress.status || 'Downloading model'}</span><span>{progress.percent ?? 0}%</span></div><div className="h-1.5 bg-white/10 mt-2"><div className="h-full bg-lime-300" style={{ width: (progress.percent || 0) + '%' }}/></div><p className="text-[10px] text-slate-500 mt-1">{formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)}</p>{progress.status !== 'Installed' && progress.id && <button type="button" onClick={onCancelDownload} className="mt-2 min-h-9 px-3 border border-red-300/20 text-red-200 text-xs">Cancel download</button>}</div>}
     </div>
     <div className="text-[11px] text-amber-200/80 leading-relaxed">Models are downloaded from Hugging Face and stored in Axiom's private app directory. They are removed when app data is cleared or Axiom is uninstalled. Only public repositories are supported in this first native model manager.</div>
   </section>;
