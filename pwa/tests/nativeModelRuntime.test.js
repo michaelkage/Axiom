@@ -44,6 +44,9 @@ test('native model files stay in private storage and use resumable verified inst
 });
 
 test('native inference exposes model lifecycle, chat-template JNI and cancellation', () => {
+  assert.match(plugin, /fun importLocalModel/);
+  assert.match(plugin, /Intent\(Intent\.ACTION_OPEN_DOCUMENT\)/);
+  assert.match(plugin, /OpenableColumns\.DISPLAY_NAME/);
   assert.match(plugin, /fun loadLocalModel/);
   assert.match(plugin, /fun unloadLocalModel/);
   assert.match(plugin, /fun generateLocal/);
@@ -75,6 +78,8 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(nativeChat, /executeTool\(call\.name, args/);
   assert.match(nativeChat, /cancelNativeGeneration/);
   assert.match(app, /nativeLoadedModel\?runNativeToolChat:runOllamaToolChat/);
+  assert.match(app, /importNativeModelFile/);
+  assert.match(app, /No models installed/);
   assert.match(app, /confirmTool:/);
   assert.match(app, /runNativeValidation/);
   assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
@@ -102,6 +107,8 @@ test('Termux pairing securely hands a local gateway credential to Android withou
 });
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
+  assert.match(store, /Import \.gguf/);
+  assert.match(store, /No native models installed/);
   assert.match(store, /Inspect GGUF files/);
   assert.match(store, /Download into Axiom/);
   assert.match(store, /onLoad\(model\.id, Number\(contextSize\)\)/);
