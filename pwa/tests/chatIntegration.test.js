@@ -47,6 +47,7 @@ test('provider credentials are entered in app settings and saved through the aut
   assert.match(app, /id="supabase-project-url"/);
   assert.match(app, /id="supabase-publishable-key"/);
   assert.match(app, /provider-config/);
+  assert.match(app, /Provider secrets require an HTTPS gateway/);
   assert.match(app, /Tools registered:/);
   assert.match(app, /diagnostics\?\.services\?\.\[id\]\?\.status!=='connected'/);
 });
