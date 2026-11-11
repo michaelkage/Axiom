@@ -56,11 +56,14 @@ class AxiomModelsPlugin : Plugin() {
     fun listLocalModels(call: PluginCall) {
         val result = JSArray()
         modelRoot.listFiles()?.filter { it.isFile && it.name.endsWith(".gguf", true) }?.sortedBy { it.name }?.forEach { file ->
+            val metadataFile = File(modelRoot, file.name + ".json")
+            val metadata = try { if (metadataFile.isFile) org.json.JSONObject(metadataFile.readText()) else org.json.JSONObject() } catch (_: Exception) { org.json.JSONObject() }
             result.put(JSObject()
                 .put("id", file.name)
                 .put("name", file.name)
                 .put("sizeBytes", file.length())
-                .put("sha256", sha256(file))
+                .put("sha256", metadata.optString("sha256", "not-verified"))
+                .put("repo", metadata.optString("repo", ""))
                 .put("loaded", llamaLoadedModel() == file.absolutePath))
         }
         call.resolve(JSObject().put("models", result))
@@ -108,10 +111,11 @@ class AxiomModelsPlugin : Plugin() {
         if (remotePath.isBlank() || remotePath.startsWith("/") || remotePath.split("/").any { it == ".." } || !remotePath.endsWith(".gguf", true)) return call.reject("Invalid GGUF file path.")
         if (expectedSha.isNotEmpty() && !expectedSha.matches(Regex("[a-f0-9]{64}"))) return call.reject("Invalid SHA-256 checksum.")
 
-        val id = (repo.replace("/", "--") + "--" + remotePath.substringAfterLast("/")).replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val id = (repo.replace("/", "--") + "--" + remotePath.substringAfterLast("/")).replace(Regex("[^A-Za-z0-9._-]"), "_").take(180)
         val target = File(modelRoot, id).canonicalFile
         if (target.parentFile != modelRoot) return call.reject("Model path escaped private storage.")
         val partial = File(modelRoot, "$id.part")
+        if (llamaLoadedModel() == target.absolutePath) return call.reject("Unload this model before replacing it.")
         val cancel = AtomicBoolean(false)
         activeDownloads.put(id, cancel)?.set(true)
 
@@ -161,6 +165,7 @@ class AxiomModelsPlugin : Plugin() {
                 if (expectedSha.isNotEmpty() && !digest.equals(expectedSha, true)) throw IllegalStateException("SHA-256 verification failed. The partial file was not installed.")
                 if (target.exists() && !target.delete()) throw IllegalStateException("Could not replace existing model.")
                 if (!partial.renameTo(target)) throw IllegalStateException("Could not atomically install downloaded model.")
+                File(modelRoot, id + ".json").writeText(org.json.JSONObject().put("repo", repo).put("sourceFile", remotePath).put("sha256", digest).put("sizeBytes", target.length()).toString())
                 notifyListeners("modelDownloadProgress", JSObject()
                     .put("id", id).put("downloadedBytes", target.length()).put("totalBytes", target.length())
                     .put("percent", 100).put("status", "Installed").put("sha256", digest))
@@ -170,7 +175,7 @@ class AxiomModelsPlugin : Plugin() {
             } catch (error: Exception) {
                 activity.runOnUiThread { call.reject(error.message ?: "Model download failed.") }
             } finally {
-                activeDownloads.remove(id)
+                activeDownloads.remove(id, cancel)
             }
         }, "axiom-model-download").apply { isDaemon = true }.start()
     }
@@ -191,6 +196,7 @@ class AxiomModelsPlugin : Plugin() {
         if (llamaLoadedModel() == file.absolutePath) return call.reject("Unload this model before deleting it.")
         val bytes = file.length()
         if (!file.delete()) return call.reject("Could not delete model file.")
+        File(modelRoot, id + ".json").delete()
         call.resolve(JSObject().put("deleted", true).put("freedBytes", bytes))
     }
 
@@ -216,8 +222,10 @@ class AxiomModelsPlugin : Plugin() {
 
     @PluginMethod
     fun unloadLocalModel(call: PluginCall) {
-        llamaUnloadModel()
-        call.resolve(JSObject().put("loaded", false))
+        Thread({
+            llamaUnloadModel()
+            activity.runOnUiThread { call.resolve(JSObject().put("loaded", false)) }
+        }, "axiom-model-unload").apply { isDaemon = true }.start()
     }
 
     @PluginMethod
