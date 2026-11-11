@@ -49,7 +49,7 @@ export default function ModelStore({ models = [], connection = 'unknown', onRefr
       </div>
       <p className="text-xs text-slate-500 mt-1">Installed models on the configured Ollama host.</p>
       <button type="button" onClick={onRefresh} disabled={disabled} className="mt-3 min-h-10 px-3 border border-white/10 text-xs flex items-center gap-2 disabled:opacity-40"><RefreshCw size={14}/> Refresh library</button>
-      {models.length ? <div className="mt-3 divide-y divide-white/[.07]">{models.map(model => <div key={model} className="py-3 flex items-center gap-3"><Package size={17} className="text-slate-500"/><span className="text-sm flex-1 break-all">{model}</span><button type="button" onClick={() => onSelectModel(model)} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold">Use</button></div>)}</div> : <p className="mt-4 py-5 text-center text-xs text-slate-500">No installed models detected yet.</p>}
+      {models.length ? <div className="mt-3 divide-y divide-white/[.07]">{models.map(model => <div key={model} className="py-3 flex items-center gap-3"><Package size={17} className="text-slate-500"/><span className="text-sm flex-1 break-all">{model}</span><button type="button" onClick={() => onSelectModel(model)} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold">Use</button></div>)}</div> : <p className="mt-4 py-5 text-center text-xs text-slate-500">{connection === 'online' ? 'No models installed. Install one below to start chatting.' : connection === 'offline' ? 'Cannot read the model library. Connect to the Ollama runtime and refresh.' : 'Checking the installed model library…'}</p>}
     </div>
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
