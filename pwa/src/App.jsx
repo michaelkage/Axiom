@@ -252,7 +252,7 @@ export default function App(){
    const report={
     timestamp:new Date().toISOString(),
     model:nativeLoadedModel,
-    ok:rounds.length===5&&rounds.every(round=>round.outputChars>0&&!round.cancelled),
+    ok:!nativeValidationCancelRef.current&&rounds.length===5&&rounds.every(round=>round.outputChars>0&&!round.cancelled),
     cancelled:nativeValidationCancelRef.current,
     modelLoad:nativeLoadReport,
     rounds,
