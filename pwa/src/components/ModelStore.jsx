@@ -65,7 +65,7 @@ export default function ModelStore({ models = [], connection = 'unknown', baseUr
       <p className="text-xs text-slate-500 mt-1">Pull a model directly into your connected Ollama runtime. Downloads run on that host, not inside the browser.</p>
       <form onSubmit={event => { event.preventDefault(); if (registryName.trim()) onPullModel(registryName.trim()); }} className="mt-3">
         <label className="block text-xs text-slate-400 mb-1" htmlFor="ollama-model-name">Model name or registry ID</label>
-        <input id="ollama-model-name" value={registryName} onChange={event => setRegistryName(event.target.value)} placeholder="qwen2.5:1.5b" className="w-full p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
+        <input id="ollama-model-name" value={registryName} onChange={event => setRegistryName(event.target.value)} placeholder="model:tag" className="w-full p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
         <button type="submit" disabled={disabled || !registryName.trim() || Boolean(pullingModel)} className="w-full mt-2 min-h-11 bg-lime-300 text-slate-950 text-sm font-semibold disabled:opacity-40">{pullingModel ? 'Installing…' : 'Download and install'}</button>
       </form>
       {pullingModel && <div className="mt-3" role="status" aria-live="polite"><div className="flex justify-between text-xs text-slate-400"><span className="truncate pr-2">{pullingModel}</span><span>{pullProgress?.percent ?? 0}%</span></div><div className="h-1.5 bg-white/10 mt-2 overflow-hidden"><div className="h-full bg-lime-300 transition-all" style={{ width: (pullProgress?.percent ?? 0) + '%' }}/></div><p className="text-[10px] text-slate-500 mt-1">{pullProgress?.status || 'Preparing download…'}{pullProgress?.detail ? ' · ' + pullProgress.detail : ''}</p></div>}
@@ -75,7 +75,7 @@ export default function ModelStore({ models = [], connection = 'unknown', baseUr
       <div className="flex items-center gap-2"><Sparkles size={17} className="text-sky-300"/><h2 className="text-sm font-semibold">Hugging Face catalogue</h2></div>
       <p className="text-xs text-slate-500 mt-1">Search GGUF repositories. Compatible repositories can be installed through Ollama's Hugging Face model support.</p>
       <form onSubmit={searchHuggingFace} className="mt-3 flex gap-2">
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search Qwen, Llama, Gemma…" aria-label="Search Hugging Face GGUF models" className="min-w-0 flex-1 p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search GGUF models…" aria-label="Search Hugging Face GGUF models" className="min-w-0 flex-1 p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
         <button type="submit" disabled={searching || !query.trim()} aria-label="Search Hugging Face" className="w-12 min-h-11 bg-white/10 grid place-items-center disabled:opacity-40">{searching ? <LoaderCircle size={17} className="animate-spin"/> : <Search size={17}/>}</button>
       </form>
       <label className="block text-xs text-slate-400 mt-3 mb-1" htmlFor="hf-quantization">GGUF quantization</label>
