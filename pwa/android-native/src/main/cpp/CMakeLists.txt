@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.22.1)
 project(axiom_runtime LANGUAGES C CXX)
 
 include(FetchContent)
+
+# Vulkan shader generation runs on the host while ggml-vulkan itself targets Android.
+# The Android toolchain restricts package discovery to its sysroot, so point the
+# SPIR-V headers package at the host config installed by the CI dependency step.
+if(ANDROID AND DEFINED ENV{SPIRV_HEADERS_CMAKE_DIR})
+  set(SPIRV-Headers_DIR "$ENV{SPIRV_HEADERS_CMAKE_DIR}" CACHE PATH "Host SPIR-V headers package" FORCE)
+endif()
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
