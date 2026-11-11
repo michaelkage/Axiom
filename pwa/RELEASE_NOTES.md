@@ -1,3 +1,17 @@
+# Axiom Android 1.1.3
+
+Axiom Android 1.1.3 fixes Ollama model selection after downloads and adds secure in-app GitHub and Supabase credential management.
+
+## 1.1.3 changes
+
+- Automatically selects a successfully downloaded Ollama model for the next chat instead of leaving the previous default active.
+- Adds GitHub Personal Access Token and repository fields to Settings.
+- Adds Supabase project URL and publishable/legacy anon key fields to Settings.
+- Stores provider credentials only on the authenticated gateway host in a private owner-only configuration file; secrets are never returned to the app or written to local storage.
+- Adds credential removal controls and validates Supabase keys, URL transport, and GitHub repository scope.
+- Provider tools can only be enabled after the gateway successfully verifies the upstream credentials. Tool registration is no longer presented as provider connectivity.
+- Adds regression tests for secure credential persistence, validation, diagnostics, and model selection.
+
 # Axiom Android 1.1.2
 
 Axiom Android 1.1.2 improves Ollama compatibility diagnostics and preserves actionable upstream error details.
