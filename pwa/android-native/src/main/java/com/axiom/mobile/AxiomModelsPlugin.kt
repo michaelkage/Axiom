@@ -79,7 +79,7 @@ class AxiomModelsPlugin : Plugin() {
             .put("vulkanLoaderAvailable", isVulkanAvailable())
             .put("vulkanDeviceAvailable", gpuName.isNotBlank())
             .put("vulkanDeviceName", gpuName)
-            .put("inferenceBackend", if (gpuOffloadSupported()) "llama.cpp Vulkan + CPU fallback" else "llama.cpp CPU")
+            .put("inferenceBackend", if (gpuOffloadSupported() && gpuName.isNotBlank()) "llama.cpp Vulkan + CPU fallback" else "llama.cpp CPU")
             .put("loadedModel", llamaLoadedModel().takeIf { it.isNotBlank() }?.let { File(it).name } ?: ""))
     }
 
