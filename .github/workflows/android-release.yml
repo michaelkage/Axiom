@@ -59,11 +59,11 @@ jobs:
         working-directory: .
         run: |
           mkdir -p release
-          cp pwa/android/app/build/outputs/apk/debug/app-debug.apk release/Axiom-Android-universal-debug.apk
+          cp pwa/android/app/build/outputs/apk/debug/app-debug.apk release/Axiom-Android-arm64-debug.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Axiom-Android-${{ github.ref_name }}
+          name: Axiom-Android-arm64-${{ github.ref_name }}
           path: release/Axiom-Android-universal-debug.apk
           if-no-files-found: error
           retention-days: 90
