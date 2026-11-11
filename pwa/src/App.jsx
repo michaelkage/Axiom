@@ -127,7 +127,7 @@ export default function App(){
   setNativeBusy(true);
   try{
    const effectiveContext=available&&available<3*1024*1024*1024?Math.min(requestedContext,1024):Math.min(requestedContext,4096);
-   const gpuLayers=nativeCapabilities?.gpuOffloadSupported&&nativeCapabilities?.vulkanLoaderAvailable?-1:0;
+   const gpuLayers=nativeCapabilities?.gpuOffloadSupported&&nativeCapabilities?.vulkanDeviceAvailable?-1:0;
    const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6)),gpuLayers});
    setNativeLoadedModel(id);
    await refreshNativeModels();
@@ -163,11 +163,9 @@ export default function App(){
   if(!nativeLoadedModel||nativeValidating)return;
   setNativeValidating(true);
   setNativeValidation(null);
-  let listener=null;
   try{
    const before=await getNativeDeviceCapabilities();
    const rounds=[];
-   listener=await addNativeModelListener('nativeModelToken',()=>{});
    const prompts=[
     'Reply with exactly: AXIOM_NATIVE_CHECK_1',
     'Reply with exactly: AXIOM_NATIVE_CHECK_2',
@@ -193,7 +191,7 @@ export default function App(){
    setNativeValidation(report);
    setNotice('Native validation failed: '+error.message);
    log('error','Native device validation failed',error.message);
-  }finally{listener?.remove?.();setNativeValidating(false);}
+  }finally{setNativeValidating(false);}
  }
 
  const patchChat=(fn,chatId)=>setState(s=>{const chats=[...s.chats];let index=chatId?chats.findIndex(chat=>chat.id===chatId):0;if(index<0&&chatId){chats.unshift({id:chatId,title:'New conversation',messages:[]});index=0;}else if(index<0){chats.unshift({id:uid(),title:'New conversation',messages:[]});index=0;}chats[index]={...chats[index],messages:fn(chats[index].messages||[])};return {...s,chats};});
