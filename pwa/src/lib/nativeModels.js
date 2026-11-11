@@ -42,7 +42,7 @@ export async function unloadNativeModel() {
 }
 export async function generateNativeText(prompt, options = {}) {
   requireAndroid();
-  return NativeModels.generateLocal({ prompt, ...options });
+  return NativeModels.generateLocal({ messages: prompt, ...options });
 }
 export async function cancelNativeGeneration() {
   requireAndroid();
