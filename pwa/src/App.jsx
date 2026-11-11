@@ -117,7 +117,9 @@ export default function App(){
   finally{setNativeBusy(false);}
  }
  async function activateNativeModel(id, requestedContext=2048){
-  if(nativeBusy)return;
+  if(nativeBusy||nativeValidating)return;
+  setNativeValidation(null);
+  setNativeLoadReport(null);
   const model=nativeModels.find(item=>item.id===id);
   const available=Number(nativeCapabilities?.availableRamBytes||0);
   const estimated=Number(model?.sizeBytes||0)*1.4+512*1024*1024;
@@ -143,9 +145,9 @@ export default function App(){
   finally{setNativeBusy(false);}
  }
  async function deactivateNativeModel(){
-  if(nativeBusy)return;
+  if(nativeBusy||nativeValidating)return;
   setNativeBusy(true);
-  try{await unloadNativeModel();setNativeLoadedModel('');await refreshNativeModels();setNotice('Native model unloaded and memory released.');}
+  try{await unloadNativeModel();setNativeLoadedModel('');setNativeLoadReport(null);setNativeValidation(null);await refreshNativeModels();setNotice('Native model unloaded and memory released.');}
   catch(error){setNotice('Could not unload native model: '+error.message);}
   finally{setNativeBusy(false);}
  }
@@ -312,6 +314,7 @@ export default function App(){
  }
  async function sendMessage(){
   const prompt=draft.trim(); if(!prompt||busy)return;
+  if(nativeValidating){setNotice('Wait for the on-device validation run to finish before starting chat.');return;}
   const controller=new AbortController();
   activeRunRef.current=controller;
   const signal=controller.signal;
