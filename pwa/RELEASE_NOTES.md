@@ -1,4 +1,14 @@
-# Axiom Android 1.1.1
+# Axiom Android 1.1.2
+
+Axiom Android 1.1.2 improves Ollama compatibility diagnostics and preserves actionable upstream error details.
+
+## 1.1.2 changes
+
+- Ollama HTTP failures now include the upstream error message instead of only the status code.
+- Missing Ollama models are identified explicitly, with instructions to install the selected model from Model Store.
+- Added regression coverage for JSON model-not-found responses and plain-text HTTP failures.
+
+## 1.1.1 highlights
 
 Axiom Android 1.1.1 improves native local-model workflows, secure gateway pairing, and the mobile-first workspace.
 
