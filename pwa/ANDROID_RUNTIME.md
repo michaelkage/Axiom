@@ -53,3 +53,9 @@ For a local build:
     ./gradlew assembleDebug
 
 The installer is idempotent and is required after regenerating the Capacitor Android project.
+
+## Native on-device model engine
+
+The Android app now includes a native llama.cpp inference path and private GGUF model manager. Open **Models** in the Android app to search public Hugging Face GGUF repositories, inspect available files/quantizations, download into Axiom's private storage, load/unload models, and remove models. When a native model is loaded, Chat uses the native engine and preserves the existing tool approval workflow.
+
+This path is independent of Termux, Ollama, and the Node gateway. The current native build targets ARM64 and CPU inference; Vulkan is detected for diagnostics only and is not enabled. See [Native model runtime](./NATIVE_MODEL_RUNTIME.md) for build details, storage/integrity behavior, device constraints and known limitations. Physical-device validation is still required.
