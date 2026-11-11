@@ -54,7 +54,7 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
   assert.match(store, /Inspect GGUF files/);
   assert.match(store, /Download into Axiom/);
-  assert.match(store, /onLoad\(model\.id\)/);
+  assert.match(store, /onLoad\(model\.id, Number\(contextSize\)\)/);
   assert.match(store, /onDelete\(model\.id\)/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
 });
