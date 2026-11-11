@@ -1,7 +1,7 @@
 name: Mobile PWA build
 on:
   push:
-    branches: [main, "axiom/product-rebuild"]
+    branches: [main]
     paths:
       - "pwa/**"
       - ".github/workflows/mobile-pwa.yml"
