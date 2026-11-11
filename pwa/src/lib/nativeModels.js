@@ -20,6 +20,18 @@ export async function getNativeHuggingFaceFiles(repo) {
   requireAndroid();
   return (await NativeModels.getHuggingFaceModelFiles({ repo })).files || [];
 }
+export async function getHuggingFaceAuthStatus() {
+  requireAndroid();
+  return NativeModels.getHuggingFaceAuthStatus();
+}
+export async function setHuggingFaceToken(token) {
+  requireAndroid();
+  return NativeModels.setHuggingFaceToken({ token });
+}
+export async function clearHuggingFaceToken() {
+  requireAndroid();
+  return NativeModels.clearHuggingFaceToken();
+}
 export async function downloadNativeModel(options) {
   requireAndroid();
   return NativeModels.downloadHuggingFaceModel(options);
