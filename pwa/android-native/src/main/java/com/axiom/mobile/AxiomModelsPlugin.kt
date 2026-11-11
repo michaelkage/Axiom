@@ -35,7 +35,8 @@ class AxiomModelsPlugin : Plugin() {
     private val hfPrefs by lazy { context.getSharedPreferences("axiom_models_secure", android.content.Context.MODE_PRIVATE) }
     @Volatile private var generationCancelled = false
 
-    private external fun llamaLoadModel(path: String, contextSize: Int, threads: Int): Boolean
+    private external fun llamaLoadModel(path: String, contextSize: Int, threads: Int, gpuLayers: Int): Boolean
+    private external fun llamaLoadedGpuLayers(): Int
     private external fun llamaUnloadModel()
     private external fun llamaLoadedModel(): String
     private external fun llamaGenerate(roles: Array<String>, contents: Array<String>, maxTokens: Int, callback: Any): String
@@ -70,6 +71,7 @@ class AxiomModelsPlugin : Plugin() {
             .put("batteryTemperatureC", batteryTemperature)
             .put("thermalStatus", thermalLabel)
             .put("gpuOffloadSupported", gpuOffloadSupported())
+            .put("loadedGpuLayers", llamaLoadedGpuLayers())
             .put("storageAvailableBytes", stat.availableBytes)
             .put("storageTotalBytes", stat.totalBytes)
             .put("vulkanLoaderAvailable", isVulkanAvailable())
@@ -159,6 +161,7 @@ class AxiomModelsPlugin : Plugin() {
                 connection.setRequestProperty("Accept", "application/json")
                 getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
                 val status = connection.responseCode
+                if (status == 401 || status == 403) throw IllegalStateException("Hugging Face denied access. Save a read token in Axiom and confirm your account has access to this repository.")
                 if (status !in 200..299) throw IllegalStateException("Hugging Face returned HTTP $status.")
                 val entries = org.json.JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
                 val files = JSArray()
@@ -213,6 +216,7 @@ class AxiomModelsPlugin : Plugin() {
                 getHuggingFaceToken()?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
                 if (existing > 0) connection.setRequestProperty("Range", "bytes=$existing-")
                 val status = connection.responseCode
+                if (status == 401 || status == 403) throw IllegalStateException("Hugging Face denied this download. Save a read token and confirm repository access.")
                 if (status !in 200..299) throw IllegalStateException("Model download returned HTTP $status.")
                 if (existing > 0 && status != HttpURLConnection.HTTP_PARTIAL) {
                     existing = 0L
