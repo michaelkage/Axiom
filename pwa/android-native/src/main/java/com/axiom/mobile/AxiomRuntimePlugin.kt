@@ -182,6 +182,33 @@ class AxiomRuntimePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun consumeGatewayPairingIntent(call: PluginCall) {
+        try {
+            val intent = activity.intent
+            val data = intent?.data
+            if (data?.scheme != "axiom" || data.host != "gateway-pair") {
+                call.resolve(JSObject().put("paired", false))
+                return
+            }
+            val token = data.getQueryParameter("token").orEmpty()
+            if (token.length < 64 || token.length > 256 || !token.matches(Regex("[A-Fa-f0-9]+"))) {
+                intent.data = null
+                call.reject("The automatic gateway pairing link is invalid or incomplete.")
+                return
+            }
+            val encrypted = encrypt(token)
+            prefs.edit().putString("gateway_bootstrap", Base64.encodeToString(encrypted, Base64.NO_WRAP)).apply()
+            // Remove the one-time secret from the Activity intent as soon as it is consumed.
+            intent.data = null
+            intent.action = Intent.ACTION_MAIN
+            intent.replaceExtras(null)
+            call.resolve(JSObject().put("paired", true))
+        } catch (error: Exception) {
+            call.reject(error.message ?: "Could not complete automatic gateway pairing.")
+        }
+    }
+
+    @PluginMethod
     fun registerGatewaySession(call: PluginCall) {
         val gatewayUrl = call.getString("gatewayUrl").orEmpty().trimEnd('/')
         val parsedGateway = try { java.net.URL(gatewayUrl) } catch (_: Exception) { return call.reject("Gateway URL must be a valid HTTP(S) URL.") }
