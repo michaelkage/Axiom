@@ -18,6 +18,7 @@ test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU
   assert.match(cmake, /GGML_NATIVE OFF/);
   assert.match(cmake, /GGML_CPU_KLEIDIAI ON/);
   assert.match(cmake, /GGML_VULKAN ON/);
+  assert.match(cmake, /SPIRV_HEADERS_CMAKE_DIR/);
   assert.match(cmake, /LLAMA_BUILD_SERVER OFF/);
   assert.match(cmake, /add_library\(axiompty SHARED axiompty\.cpp axiom_llama\.cpp\)/);
 });
@@ -26,7 +27,7 @@ test('native model files stay in private storage and use resumable verified inst
   assert.match(plugin, /File\(context\.filesDir, "models"\)/);
   assert.match(plugin, /setRequestProperty\("Range", "bytes=\$existing-"\)/);
   assert.match(plugin, /MessageDigest\.getInstance\("SHA-256"\)/);
-  assert.match(plugin, /partial\.renameTo\(target\)/);
+  assert.match(plugin, /android\.system\.Os\.rename\(partial\.absolutePath, target\.absolutePath\)/);
   assert.match(plugin, /expectedSha\.isNotEmpty\(\).*digest\.equals/);
   assert.match(plugin, /fun cancelModelDownload/);
   assert.match(plugin, /fun deleteLocalModel/);
@@ -66,6 +67,7 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(app, /runNativeValidation/);
   assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /gateway:token/);
+  assert.match(app, /prints the existing private token once in your terminal/);
 });
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
@@ -77,6 +79,8 @@ test('Android model store supports HF file inspection, installation, activation 
   assert.match(store, /Run device validation/);
   assert.match(store, /vulkanDeviceAvailable/);
   assert.match(store, /requestedGpuLayers/);
+  assert.match(store, /samples every 1\.5 seconds/);
+  assert.match(app, /setInterval\(\(\)=>\{void captureTelemetry\(\)\.catch\(\)\},1500\)/);
   assert.match(app, /text-slate-700 hover:text-slate-950/);
   assert.match(installer, /registerPlugin\(AxiomModelsPlugin\.class\)/);
 });
