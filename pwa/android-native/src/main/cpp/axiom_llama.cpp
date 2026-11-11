@@ -39,6 +39,66 @@ static size_t valid_utf8_prefix(const std::string & value) {
     return i;
 }
 
+static std::string jstring_to_utf8(JNIEnv * env, jstring value) {
+    if (!value) return {};
+    const jsize length = env->GetStringLength(value);
+    const jchar * chars = env->GetStringChars(value, nullptr);
+    std::string output;
+    output.reserve(static_cast<size_t>(length) * 3);
+    for (jsize i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < length) {
+            const uint32_t low = chars[i + 1];
+            if (low >= 0xdc00 && low <= 0xdfff) {
+                cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+                ++i;
+            }
+        }
+        if (cp <= 0x7f) output.push_back(static_cast<char>(cp));
+        else if (cp <= 0x7ff) {
+            output.push_back(static_cast<char>(0xc0 | (cp >> 6)));
+            output.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+        } else if (cp <= 0xffff) {
+            output.push_back(static_cast<char>(0xe0 | (cp >> 12)));
+            output.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+            output.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+        } else {
+            output.push_back(static_cast<char>(0xf0 | (cp >> 18)));
+            output.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3f)));
+            output.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+            output.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+        }
+    }
+    env->ReleaseStringChars(value, chars);
+    return output;
+}
+
+static jstring utf8_to_jstring(JNIEnv * env, const std::string & value) {
+    std::vector<jchar> output;
+    output.reserve(value.size());
+    for (size_t i = 0; i < value.size();) {
+        const unsigned char lead = static_cast<unsigned char>(value[i]);
+        uint32_t cp = 0xfffd;
+        size_t count = 1;
+        if (lead <= 0x7f) cp = lead;
+        else if (lead >= 0xc2 && lead <= 0xdf && i + 1 < value.size()) {
+            cp = ((lead & 0x1f) << 6) | (static_cast<unsigned char>(value[i + 1]) & 0x3f); count = 2;
+        } else if (lead >= 0xe0 && lead <= 0xef && i + 2 < value.size()) {
+            cp = ((lead & 0x0f) << 12) | ((static_cast<unsigned char>(value[i + 1]) & 0x3f) << 6) | (static_cast<unsigned char>(value[i + 2]) & 0x3f); count = 3;
+        } else if (lead >= 0xf0 && lead <= 0xf4 && i + 3 < value.size()) {
+            cp = ((lead & 0x07) << 18) | ((static_cast<unsigned char>(value[i + 1]) & 0x3f) << 12) | ((static_cast<unsigned char>(value[i + 2]) & 0x3f) << 6) | (static_cast<unsigned char>(value[i + 3]) & 0x3f); count = 4;
+        }
+        if (cp <= 0xffff) output.push_back(static_cast<jchar>(cp));
+        else {
+            cp -= 0x10000;
+            output.push_back(static_cast<jchar>(0xd800 + (cp >> 10)));
+            output.push_back(static_cast<jchar>(0xdc00 + (cp & 0x3ff)));
+        }
+        i += count;
+    }
+    return env->NewString(output.data(), static_cast<jsize>(output.size()));
+}
+
 static std::mutex g_model_mutex;
 static llama_model * g_model = nullptr;
 static llama_context * g_context = nullptr;
@@ -121,12 +181,9 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
     for (jsize i = 0; i < message_count; ++i) {
         auto role = static_cast<jstring>(env->GetObjectArrayElement(roles, i));
         auto content = static_cast<jstring>(env->GetObjectArrayElement(contents, i));
-        const char * role_chars = env->GetStringUTFChars(role, nullptr);
-        const char * content_chars = env->GetStringUTFChars(content, nullptr);
-        role_values.emplace_back(role_chars ? role_chars : "user");
-        content_values.emplace_back(content_chars ? content_chars : "");
-        if (role_chars) env->ReleaseStringUTFChars(role, role_chars);
-        if (content_chars) env->ReleaseStringUTFChars(content, content_chars);
+        role_values.emplace_back(jstring_to_utf8(env, role));
+        content_values.emplace_back(jstring_to_utf8(env, content));
+        if (role_values.back().empty()) role_values.back() = "user";
         env->DeleteLocalRef(role);
         env->DeleteLocalRef(content);
         prompt_capacity += (role_values.back().size() + content_values.back().size()) * 2 + 64;
@@ -228,7 +285,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
             const size_t safe_bytes = valid_utf8_prefix(output);
             if (safe_bytes > emitted_bytes) {
                 const std::string safe_chunk = output.substr(emitted_bytes, safe_bytes - emitted_bytes);
-                jstring chunk = env->NewStringUTF(safe_chunk.c_str());
+                jstring chunk = utf8_to_jstring(env, safe_chunk);
                 if (chunk) {
                     env->CallVoidMethod(callback, token_method, chunk);
                     env->DeleteLocalRef(chunk);
@@ -245,7 +302,8 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
         if (llama_decode(g_context, batch) != 0) break;
     }
     llama_batch_free(batch);
-    return env->NewStringUTF(output.c_str());
+    output.resize(valid_utf8_prefix(output));
+    return utf8_to_jstring(env, output);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
