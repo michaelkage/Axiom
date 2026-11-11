@@ -102,7 +102,7 @@ export default function App(){
   setPullingModel(model);setPullProgress({status:'Connecting to model registry',percent:0});setNotice('');
   log('request','Model download started',model);
   try{
-   const response=await gatewayFetch(base+'/api/pull',{method:'POST',headers:{'content-type':'application/json',accept:'application/x-ndjson'},body:JSON.stringify({name:model,stream:true})});
+   const response=await gatewayFetch(base+'/api/pull',{method:'POST',headers:{'content-type':'application/json',accept:'application/x-ndjson'},body:JSON.stringify({model,stream:true})});
    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Ollama pull failed with HTTP '+response.status+'.');}
    if(!response.body)throw new Error('Ollama did not return a download stream.');
    const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';let lastStatus='Downloading';let completed=false;
