@@ -368,6 +368,7 @@ export default function App(){
    finally{setDiagnosticsBusy(false);}
   }
   useEffect(()=>{if(gatewayToken){checkGatewayDiagnostics({silent:true});refreshProviderConfig();}else{setDiagnostics(null);setProviderConfig(null);}},[gatewayToken,state.settings?.gatewayUrl]);
+  useEffect(()=>{if(!diagnostics)return;setState(current=>({...current,tools:current.tools.map(tool=>tool.enabled&&diagnostics.services?.[tool.id]?.status!=='connected'?{...tool,enabled:false}:tool)}));},[diagnostics]);
   async function checkOllama({silent=false}={}){
   const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\/$/,'');
   const previous=connection;
