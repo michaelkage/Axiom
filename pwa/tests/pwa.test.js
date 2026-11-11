@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [manifestText, worker, html, entry] = await Promise.all([
+const [manifestText, worker, html, entry, app, modelStore, nativeModelStore] = await Promise.all([
   readFile(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'),
   readFile(new URL('../public/sw.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.jsx', import.meta.url), 'utf8')
+  readFile(new URL('../src/main.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/App.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/ModelStore.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/NativeModelStore.jsx', import.meta.url), 'utf8')
 ]);
 const manifest = JSON.parse(manifestText);
 
@@ -45,4 +48,22 @@ test('offline navigation falls back to the cached application document', () => {
   assert.match(worker, /const response = await fetch\(request\)/);
   assert.match(worker, /return \(await caches\.match\('\/index\.html'\)\) \|\| Response\.error\(\)/);
   assert.match(worker, /cache\.put\('\/index\.html', response\.clone\(\)\)/);
+});
+
+
+test('chat never assumes a model that the runtime has not confirmed installed', () => {
+  assert.match(app, /model:''/);
+  assert.match(app, /models\.includes\(state\.model\)/);
+  assert.match(app, /No models installed/);
+  assert.match(app, /!nativeLoadedModel&&!selectedOllamaModel/);
+  assert.match(app, /disabled=\{!draft\.trim\(\)\|\|!activeModel\}/);
+  assert.doesNotMatch(app, /model:'qwen2\.5:1\.5b'/);
+  assert.doesNotMatch(app, /aria-label="Default model"/);
+});
+
+test('model stores do not preselect or prefill a phantom Qwen model', () => {
+  assert.match(modelStore, /No models installed\. Install one below to start chatting\./);
+  assert.match(modelStore, /Cannot read the model library/);
+  assert.match(nativeModelStore, /useState\(''\)/);
+  assert.doesNotMatch(nativeModelStore, /useState\('Qwen2\.5 1\.5B GGUF'\)/);
 });
