@@ -29,26 +29,13 @@ The script:
 
 The gateway remains in the foreground in that Termux session. Keep the session open while using the Termux-backed runtime. Press Ctrl+C to stop the gateway. Ollama is started separately in the background.
 
-## 3. Pair Axiom
+## 3. Automatic Axiom pairing
 
-On the gateway's first startup, it generates a random 256-bit pairing token, stores it in `~/.config/axiom/gateway-token`, and prints it once.
+The bootstrap starts the gateway, waits for its health endpoint, and sends its one-time pairing credential directly to the explicitly targeted Axiom Android activity. Axiom imports it into Android Keystore, removes it from the launch intent, and registers a short-lived session automatically.
 
-In Axiom:
+No token is displayed, copied, pasted, or stored in shell history. The pairing handoff uses an explicit Android package/component target rather than a generic browser link. Keep Axiom installed before running the bootstrap.
 
-1. Open **Settings → Secure gateway pairing**.
-2. Set the gateway URL to `http://127.0.0.1:8787`.
-3. Paste the one-time pairing token and save.
-4. Open **Models**, refresh the library, and install a small model such as `qwen2.5:1.5b`.
-
-Do not paste the pairing token into chat, screenshots, source code, or public issue reports. Axiom stores its copy encrypted with Android Keystore. The gateway token is not a GitHub or Supabase credential.
-
-If the gateway has already generated a token and you need to retrieve it, run this locally in Termux:
-
-```bash
-cat ~/.config/axiom/gateway-token
-```
-
-That file is private to the Termux app's Linux home directory. Do not send its contents to anyone.
+The gateway credential remains private to Termux and Axiom. It is not a GitHub or Supabase credential. If automatic handoff fails, check the gateway log at `~/.axiom-gateway.log` and rerun the bootstrap after closing and reopening Axiom.
 
 ## 4. Start it again later
 
