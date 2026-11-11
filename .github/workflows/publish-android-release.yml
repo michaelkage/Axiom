@@ -91,26 +91,32 @@ jobs:
         run: |
           set -euo pipefail
           apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
-          for attempt in 1 2 3 4; do
-            echo "Installing Vulkan dependencies (attempt ${attempt}/4)"
+          for attempt in 1 2 3; do
+            echo "Installing Vulkan dependencies (attempt ${attempt}/3)"
             if sudo apt-get "${apt_options[@]}" update &&
               sudo apt-get "${apt_options[@]}" install -y libvulkan-dev glslc spirv-headers; then
+              echo "AXIOM_ENABLE_VULKAN=1" >> "$GITHUB_ENV"
               exit 0
             fi
-            if [[ "${attempt}" -lt 4 ]]; then
-              echo "Ubuntu package mirror is temporarily unavailable; retrying in 15 seconds."
+            if [[ "${attempt}" -lt 3 ]]; then
+              echo "Ubuntu package mirrors are unavailable; retrying in 15 seconds."
               sleep 15
             fi
           done
-          echo "Unable to install Vulkan build dependencies after four attempts."
-          exit 1
+          echo "::warning::Vulkan host dependencies could not be downloaded. Building the supported CPU backend instead."
+          echo "AXIOM_ENABLE_VULKAN=0" >> "$GITHUB_ENV"
 
       - name: Locate host SPIR-V headers CMake package
+        shell: bash
         run: |
-          config="$(find /usr -name SPIRV-HeadersConfig.cmake -print -quit)"
-          test -n "$config" || { echo "SPIRV-Headers CMake package was not installed"; exit 1; }
-          echo "SPIRV_HEADERS_CMAKE_DIR=$(dirname "$config")" >> "$GITHUB_ENV"
-
+          set -euo pipefail
+          if [[ "${AXIOM_ENABLE_VULKAN:-1}" == "1" ]]; then
+            config="$(find /usr -name SPIRV-HeadersConfig.cmake -print -quit)"
+            test -n "$config" || { echo "SPIRV-Headers CMake package was not installed"; exit 1; }
+            echo "SPIRV_HEADERS_CMAKE_DIR=$(dirname "$config")" >> "$GITHUB_ENV"
+          else
+            echo "Skipping host Vulkan header setup because the CPU backend was selected."
+          fi
       - name: Install dependencies
         working-directory: pwa
         run: npm ci

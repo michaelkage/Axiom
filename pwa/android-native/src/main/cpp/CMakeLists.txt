@@ -19,7 +19,14 @@ set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
 set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
-set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+# Keep the Vulkan backend enabled by default. CI may select the CPU backend
+# when host Vulkan SDK packages are unreachable; Android's CPU backend remains
+# fully supported and does not require host Vulkan headers or shader tools.
+set(AXIOM_ENABLE_VULKAN ON)
+if(DEFINED ENV{AXIOM_ENABLE_VULKAN} AND "$ENV{AXIOM_ENABLE_VULKAN}" STREQUAL "0")
+  set(AXIOM_ENABLE_VULKAN OFF)
+endif()
+set(GGML_VULKAN ${AXIOM_ENABLE_VULKAN} CACHE BOOL "" FORCE)
 set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
@@ -37,7 +44,7 @@ FetchContent_MakeAvailable(llama_cpp)
 # against the Android NDK loader. Route those calls through Vulkan-Hpp's
 # already-configured dynamic dispatcher instead of weakening Vulkan support.
 set(AXIOM_GGML_VULKAN_SOURCE "${llama_cpp_SOURCE_DIR}/ggml/src/ggml-vulkan/ggml-vulkan.cpp")
-if(ANDROID AND EXISTS "${AXIOM_GGML_VULKAN_SOURCE}")
+if(ANDROID AND AXIOM_ENABLE_VULKAN AND EXISTS "${AXIOM_GGML_VULKAN_SOURCE}")
   file(READ "${AXIOM_GGML_VULKAN_SOURCE}" AXIOM_GGML_VULKAN_CONTENT)
   set(AXIOM_VK_FEATURES2_OLD "vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);")
   set(AXIOM_VK_FEATURES2_NEW "(void)vk::PhysicalDevice(device->physical_device).getFeatures2(reinterpret_cast<vk::PhysicalDeviceFeatures2 *>(&device_features2));")
@@ -83,7 +90,7 @@ endif()
 # NDK ships the C Vulkan headers and loader, but not vulkan.hpp. Use the host
 # Vulkan-Headers package for compile-time headers while linking against the
 # Android NDK Vulkan loader selected by FindVulkan.
-if(ANDROID AND TARGET ggml-vulkan)
+if(ANDROID AND AXIOM_ENABLE_VULKAN AND TARGET ggml-vulkan)
   find_path(AXIOM_VULKAN_HPP_INCLUDE_DIR
     NAMES vulkan/vulkan.hpp
     PATHS /usr/include /usr/local/include
