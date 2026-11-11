@@ -2,50 +2,77 @@
 
 The gateway keeps Ollama, GitHub, Supabase, and MCP upstream access behind one authenticated local process. Browser clients never receive configured GitHub PATs, Supabase publishable keys, or MCP bearer tokens.
 
-## Run
+## 1. Create the gateway pairing token
 
-Node.js 20+ is required.
+This is a secret you generate yourself. It is not supplied by GitHub or Supabase. On the machine that will run the gateway, use Node.js 20+:
 
 ```bash
-cd pwa
-AXIOM_GATEWAY_TOKEN="$(openssl rand -hex 32)" \
+export AXIOM_GATEWAY_TOKEN="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
+```
+
+Keep the value in the same shell session when starting the gateway. Use this exact value once in Axiom's Android Settings → Secure gateway pairing. For browser mode, paste it into Gateway bearer token. The gateway later issues ephemeral client session tokens automatically; do not generate those yourself.
+
+Do not commit the generated value to Git or share it in chat. If you lose it, generate a new one, restart the gateway with the new value, and pair Axiom again.
+
+## 2. Get the GitHub token
+
+1. Open [GitHub fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new).
+2. Create a token restricted to only the repository Axiom should access.
+3. Grant Repository permissions: Contents read/write if Axiom should edit files, or Contents read for read-only use. Metadata read is required.
+4. Set an expiry, generate the token, and copy it immediately.
+5. Set it as `GITHUB_TOKEN` in the gateway process environment. Do not paste it into Axiom or commit it.
+
+Set `GITHUB_REPOSITORY` to the exact `owner/repo`. Axiom's Repository field must match this value. The gateway restricts GitHub content operations to this repository.
+
+## 3. Get the Supabase URL and publishable key
+
+1. Open the [Supabase Dashboard](https://supabase.com/dashboard) and select your project.
+2. Open the project's **Connect** dialog to copy the Project URL and publishable key, or use **Settings → API Keys**.
+3. Set the URL as `SUPABASE_URL` and the `sb_publishable_...` key as `SUPABASE_PUBLISHABLE_KEY` in the gateway environment.
+
+A legacy `anon` key is also supported for compatibility. Never use `sb_secret_...` or `service_role`. Publishable keys are low-privilege by design; table grants and Row Level Security policies still control data access. Tables must also be exposed through the Data API. Supabase SQL/schema tools require a project-owned, permission-controlled `exec_sql` RPC. Do not expose an unrestricted SQL function.
+
+## 4. Optional MCP server credentials
+
+If an MCP server requires a bearer token, place it in that server's `token` field inside `MCP_SERVERS_JSON` on the gateway host. The app selects the configured server by ID; the upstream token remains server-side.
+
+## 5. Run
+
+Node.js 20+ is required. From the `pwa` directory, after setting the variables above:
+
+```bash
 OLLAMA_BASE_URL="http://127.0.0.1:11434" \
 AXIOM_ALLOWED_ORIGINS="https://your-pwa.example" \
-MCP_SERVERS_JSON='{"filesystem":{"url":"http://127.0.0.1:3001/mcp","token":"SERVER_SIDE_MCP_TOKEN"}}' \
 GITHUB_TOKEN="github_pat_..." \
-GITHUB_REPOSITORY="michaelkage/Axiom" \
+GITHUB_REPOSITORY="owner/repo" \
 SUPABASE_URL="https://your-project.supabase.co" \
 SUPABASE_PUBLISHABLE_KEY="sb_publishable_..." \
 npm run gateway
 ```
 
-By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-device development setup. To expose it on a LAN, explicitly set `AXIOM_GATEWAY_HOST=0.0.0.0`, use HTTPS at a trusted reverse proxy, configure exact allowed origins, and firewall the port.
+By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-device development setup. To expose it on a LAN, explicitly set `AXIOM_GATEWAY_HOST=0.0.0.0`, use HTTPS at a trusted reverse proxy, configure exact allowed origins, and firewall the port. Do not expose this single-user local trust boundary directly to the public internet.
 
 ## Security model
 
 - Every protected route requires either the bootstrap bearer token or a registered ephemeral session token. Both are compared in constant time.
 - POST /session/register requires the bootstrap token and registers a random client session token for at most 12 hours. Sessions are held in memory and are cleared when the gateway restarts.
-- Token comparisons use constant-time comparison.
 - Browser origins are checked against an exact allowlist. No wildcard origin or credentialed cookie support.
 - Ollama is a fixed upstream; only known API endpoints and GET/POST methods are allowed.
 - MCP servers are selected by ID from `MCP_SERVERS_JSON`; browser input cannot supply arbitrary upstream URLs. Upstream bearer tokens remain in the gateway process.
-- Request bodies are capped at 2 MiB. Responses are streamed and marked no-store.
 - GitHub access is restricted to GET/PUT content operations in the single configured `GITHUB_REPOSITORY`; the PAT stays in the gateway process.
-- Supabase REST requests use the gateway-held publishable key. Secret and service-role keys are rejected; database permissions and RLS remain the actual authorization boundary.
-- MCP requests can only target IDs in `MCP_SERVERS_JSON`; gateway-managed connections use Streamable HTTP. Legacy SSE remains direct-browser only and cannot carry gateway authorization.
-- This gateway is a local trust boundary, not an internet-facing multi-user service. Do not expose it publicly without TLS, network controls, per-user identity, rate limits, and audit logging.
+- Supabase REST requests use the gateway-held publishable key. Secret and service-role keys are rejected; database grants and RLS remain the authorization boundary.
 
 ## Environment
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AXIOM_GATEWAY_TOKEN` | required | Random 32+ character client token |
+| `AXIOM_GATEWAY_TOKEN` | required | Random 32-byte (64 hex-character) pairing secret generated by you |
 | `AXIOM_GATEWAY_HOST` | `127.0.0.1` | Bind address |
 | `AXIOM_GATEWAY_PORT` | `8787` | Listen port |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Fixed Ollama upstream |
 | `AXIOM_ALLOWED_ORIGINS` | local Vite origins | Comma-separated exact browser origins |
 | `MCP_SERVERS_JSON` | `{}` | Server-side MCP ID-to-URL/token map |
-| `GITHUB_TOKEN` | optional | Least-privilege GitHub PAT, gateway only |
+| `GITHUB_TOKEN` | optional | Least-privilege GitHub fine-grained PAT, gateway only |
 | `GITHUB_REPOSITORY` | optional | Exact `owner/name` allowlist for GitHub content API |
 | `SUPABASE_URL` | optional | Supabase project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | optional | Publishable key or legacy anon JWT only, never service-role |
