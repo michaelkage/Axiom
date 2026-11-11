@@ -49,7 +49,7 @@ class AxiomModelsPlugin : Plugin() {
             .put("storageTotalBytes", stat.totalBytes)
             .put("vulkanLoaderAvailable", isVulkanAvailable())
             .put("inferenceBackend", "llama.cpp CPU")
-            .put("loadedModel", llamaLoadedModel()))
+            .put("loadedModel", llamaLoadedModel().takeIf { it.isNotBlank() }?.let { File(it).name } ?: ""))
     }
 
     @PluginMethod
