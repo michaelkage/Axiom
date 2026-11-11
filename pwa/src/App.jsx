@@ -108,7 +108,7 @@ export default function App(){
    const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';let lastStatus='Downloading';let completed=false;
    while(true){
     const {value,done}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
-    const chunks=buffer.split('\\n');buffer=chunks.pop()||'';
+    const chunks=buffer.split(String.fromCharCode(10));buffer=chunks.pop()||'';
     for(const line of chunks){
      if(!line.trim())continue;
      let event;try{event=JSON.parse(line);}catch{continue;}
