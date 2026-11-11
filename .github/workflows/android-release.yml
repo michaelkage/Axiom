@@ -38,6 +38,11 @@ jobs:
         run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Install Vulkan build dependencies
         run: sudo apt-get update && sudo apt-get install -y libvulkan-dev glslc spirv-headers
+      - name: Locate host SPIR-V headers CMake package
+        run: |
+          config="$(find /usr -name SPIRV-HeadersConfig.cmake -print -quit)"
+          test -n "$config" || { echo "SPIRV-Headers CMake package was not installed"; exit 1; }
+          echo "SPIRV_HEADERS_CMAKE_DIR=$(dirname "$config")" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: npm ci
       - name: Audit production dependencies
