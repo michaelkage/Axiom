@@ -11,7 +11,8 @@ const formatBytes = value => {
 
 export default function NativeModelStore({
   models = [], capabilities = null, loadedModel = '', progress = null,
-  busy = false, onRefresh, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete
+  busy = false, onRefresh, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete,
+  hfTokenConfigured = false, onSaveHfToken, onClearHfToken, onValidate, validation = null, validating = false
 }) {
   const [query, setQuery] = useState('Qwen2.5 1.5B GGUF');
   const [contextSize, setContextSize] = useState('2048');
@@ -21,10 +22,17 @@ export default function NativeModelStore({
   const [searching, setSearching] = useState(false);
   const [loadingRepo, setLoadingRepo] = useState('');
   const [error, setError] = useState('');
+  const [hfToken, setHfToken] = useState('');
 
   async function search(event) {
     event?.preventDefault();
     if (!query.trim()) return;
+    if (/^[A-Za-z0-9_.-]{1,96}\/[A-Za-z0-9_.-]{1,96}$/.test(query.trim())) {
+      const repo = query.trim();
+      setResults(current => current.some(item => item.id === repo) ? current : [{ id: repo, downloads: 0, likes: 0, tags: [] }, ...current]);
+      await inspect(repo);
+      return;
+    }
     setSearching(true);
     setError('');
     try {
@@ -82,7 +90,8 @@ export default function NativeModelStore({
     {capabilities && <div className="border border-white/10 p-3 text-[11px] text-slate-500">
       <div className="flex justify-between gap-2"><span>Inference backend</span><span className="text-lime-200">{capabilities.inferenceBackend}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Architecture</span><span>{capabilities.primaryAbi} · {capabilities.cpuCores} CPU cores</span></div>
-      <div className="flex justify-between gap-2 mt-1"><span>Vulkan loader</span><span>{capabilities.vulkanLoaderAvailable ? 'Detected, backend not enabled' : 'Unavailable'}</span></div>
+      <div className="flex justify-between gap-2 mt-1"><span>Vulkan backend</span><span className={capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'text-lime-200' : ''}>{capabilities.gpuOffloadSupported && capabilities.vulkanLoaderAvailable ? 'Compiled · driver detected' : 'CPU fallback'}</span></div>
+      <div className="flex justify-between gap-2 mt-1"><span>Loaded GPU layers</span><span>{capabilities.loadedGpuLayers ?? 0}</span></div>
     </div>}
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
@@ -110,8 +119,15 @@ export default function NativeModelStore({
     </div>
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
+      <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Hugging Face authentication</h2><span className={hfTokenConfigured ? 'text-[10px] text-lime-200' : 'text-[10px] text-slate-500'}>{hfTokenConfigured ? 'READ TOKEN SAVED' : 'PUBLIC ACCESS'}</span></div>
+      <p className="text-xs text-slate-400 mt-2">Optional. Add a Hugging Face read token to inspect private repositories and download gated models your account is allowed to access. The token is encrypted with Android Keystore and never stored in browser storage.</p>
+      <input type="password" autoComplete="off" value={hfToken} onChange={event => setHfToken(event.target.value)} placeholder="hf_…" aria-label="Hugging Face read token" className="w-full mt-3 p-3 bg-black/30 border border-white/10 text-sm text-slate-100"/>
+      <div className="flex gap-2 mt-2"><button type="button" onClick={async () => { if (!hfToken.trim()) return; await onSaveHfToken(hfToken.trim()); setHfToken(''); }} disabled={!hfToken.trim() || busy} className="flex-1 min-h-10 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">Save securely</button>{hfTokenConfigured && <button type="button" onClick={onClearHfToken} disabled={busy} className="min-h-10 px-3 border border-red-300/20 text-red-200 text-xs">Remove token</button>}</div>
+      <p className="text-[10px] text-slate-500 mt-2">Create a read-only token at huggingface.co/settings/tokens. Gated model access must first be approved on the model's Hugging Face page.</p>
+    </div>
+    <div className="border border-white/[.09] bg-white/[.025] p-4">
       <div className="flex items-center gap-2"><Search size={17} className="text-lime-300"/><h2 className="text-sm font-semibold">Hugging Face GGUF catalogue</h2></div>
-      <p className="text-xs text-slate-500 mt-1">Search public GGUF repositories, inspect their actual files and download a specific quantization directly into private storage.</p>
+      <p className="text-xs text-slate-400 mt-1">Search public GGUF repositories, or enter an exact owner/repository ID to inspect private or gated repositories with your saved read token.</p>
       <form onSubmit={search} className="mt-3 flex gap-2">
         <input value={query} onChange={event => setQuery(event.target.value)} aria-label="Search native Hugging Face models" placeholder="Search GGUF models" className="min-w-0 flex-1 p-3 bg-black/30 border border-white/10 text-sm"/>
         <button type="submit" disabled={searching || !query.trim()} aria-label="Search native model catalogue" className="w-12 min-h-11 bg-white/10 grid place-items-center disabled:opacity-40">{searching ? <LoaderCircle size={16} className="animate-spin"/> : <Search size={16}/>}</button>
@@ -129,6 +145,12 @@ export default function NativeModelStore({
       {error && <p role="alert" className="text-xs text-red-300 mt-3">{error}</p>}
       {progress && <div className="mt-4" role="status" aria-live="polite"><div className="flex justify-between text-xs"><span className="truncate pr-2">{progress.status || 'Downloading model'}</span><span>{progress.percent ?? 0}%</span></div><div className="h-1.5 bg-white/10 mt-2"><div className="h-full bg-lime-300" style={{ width: (progress.percent || 0) + '%' }}/></div><p className="text-[10px] text-slate-500 mt-1">{formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)}</p>{progress.status !== 'Installed' && progress.id && <button type="button" onClick={onCancelDownload} className="mt-2 min-h-9 px-3 border border-red-300/20 text-red-200 text-xs">Cancel download</button>}</div>}
     </div>
-    <div className="text-[11px] text-amber-200/80 leading-relaxed">Models are downloaded from Hugging Face and stored in Axiom's private app directory. They are removed when app data is cleared or Axiom is uninstalled. Only public repositories are supported in this first native model manager.</div>
+    <div className="border border-white/[.09] bg-white/[.025] p-4">
+      <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">On-device runtime validation</h2><span className="text-[10px] text-slate-500">3 inference rounds</span></div>
+      <p className="text-xs text-slate-400 mt-2">With a model loaded, this runs three short prompts and records generation time, first-token latency, app memory, available RAM, battery temperature and Android thermal status. It does not deliberately exhaust memory.</p>
+      <button type="button" onClick={onValidate} disabled={!loadedModel || validating || busy} className="w-full min-h-11 mt-3 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">{validating ? 'Running device checks…' : 'Run device validation'}</button>
+      {validation && <div className="mt-3 rounded-lg border border-white/10 bg-black/25 p-3"><div className="text-xs font-semibold">{validation.ok ? 'Inference checks completed' : 'Validation failed'}</div><div className="text-[10px] text-slate-400 mt-1">{new Date(validation.timestamp).toLocaleString()} · {validation.model}</div>{validation.rounds?.map((round,index)=><div key={index} className="mt-2 text-[11px] text-slate-300">Round {index+1}: {round.wallTimeMs} ms · first token {round.firstTokenMs ?? 'n/a'} ms · {round.outputChars} chars</div>)}<div className="mt-3 text-[11px] text-slate-400">RAM available: {formatBytes(validation.before?.availableRamBytes)} → {formatBytes(validation.after?.availableRamBytes)} · App PSS: {formatBytes(validation.before?.processPssBytes)} → {formatBytes(validation.after?.processPssBytes)}</div><div className="text-[11px] text-slate-400 mt-1">Battery: {validation.before?.batteryTemperatureC ?? 'n/a'}°C → {validation.after?.batteryTemperatureC ?? 'n/a'}°C · Thermal: {validation.before?.thermalStatus || 'unknown'} → {validation.after?.thermalStatus || 'unknown'}</div><button type="button" onClick={() => navigator.clipboard?.writeText(JSON.stringify(validation,null,2))} className="mt-3 min-h-9 px-3 border border-white/15 text-xs text-slate-200">Copy validation report</button></div>}
+    </div>
+    <div className="text-[11px] text-slate-300 leading-relaxed">Models are downloaded from Hugging Face and stored in Axiom's private app directory. They are removed when app data is cleared or Axiom is uninstalled. Private and gated repository access requires a saved Hugging Face read token and prior model-owner approval.</div>
   </section>;
 }
