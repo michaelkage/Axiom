@@ -4,7 +4,7 @@ Axiom's Android APK includes a native llama.cpp inference engine. It is separate
 
 ## Architecture
 
-- **Inference:** llama.cpp is fetched at the pinned upstream tag `b12248` and compiled by CMake with the Android NDK. CPU kernels use runtime feature selection; the ARM64 build enables KleidiAI. The build disables host-native CPU flags, OpenMP, llamafile, OpenSSL, and Vulkan.
+- **Inference:** llama.cpp is fetched at the pinned upstream tag `b12248` and compiled by CMake with the Android NDK. CPU kernels use runtime feature selection; the ARM64 build enables KleidiAI. The build disables host-native CPU flags, OpenMP, llamafile, and OpenSSL. It compiles the Vulkan backend alongside the ARM64 CPU backend; GPU offload is attempted only when Android reports a real Vulkan physical device.
 - **Android bridge:** Capacitor plugin `AxiomModels` exposes model storage, downloads, device capabilities, load/unload, generation and cancellation. JNI calls llama.cpp directly inside the app process.
 - **Storage:** GGUF files live in `context.filesDir/models`, which is private to Axiom. A partial download uses a `.part` file; a completed file is installed by same-directory rename. A JSON sidecar stores source, size and SHA-256 metadata.
 - **Discovery:** Public Hugging Face model search is followed by an authenticated-free Hub tree request to enumerate actual GGUF files. The user chooses the file/quantization rather than assuming a repository has a particular Q4 file.
@@ -14,11 +14,11 @@ Axiom's Android APK includes a native llama.cpp inference engine. It is separate
 ## Device and model compatibility
 
 - The Android native inference build targets `arm64-v8a`. 32-bit ARM and x86 APK ABIs are not included in this native runtime build.
-- The current backend is CPU inference. llama.cpp performs runtime CPU feature selection; KleidiAI is enabled for ARM64. A detected Vulkan loader is diagnostic only. Vulkan acceleration is deliberately disabled until device-driver validation and a separate GPU backend test matrix exist.
+- The runtime includes both the ARM64 CPU backend and a compiled Vulkan backend. llama.cpp attempts GPU layer offload when a Vulkan physical device is enumerated. If GPU model loading fails, the native engine retries CPU-only. The model screen reports the Vulkan device and the active/requested GPU layer count. A Vulkan loader alone is not considered proof of a usable GPU.
 - Device capabilities include available/total RAM, storage, CPU core count and ABI. A conservative pre-load memory estimate is applied in the UI, but Android can still kill an app under memory pressure. Start with a small 1B-2B Q4 GGUF and 1K-2K context.
 - Context length is bounded to 512-8192 in the native bridge. The UI starts at 1024 or 2048 based on available RAM. Generation is capped at 4096 tokens.
 - GGUF chat templates are not a full Jinja implementation. If a repository uses a template unsupported by llama.cpp's built-in legacy template parser, Axiom falls back to a plain role-labelled prompt. Tool calling is model-dependent; the app requests a strict JSON tool-call format and still requires approval for registered tools.
-- Only public Hugging Face repositories are supported in this initial native manager. Gated/private model authentication is not stored in the app yet.
+- Public Hugging Face repositories work without authentication. A read-only Hugging Face token can be saved through the Android model store; it is encrypted with Android Keystore and attached only to Hub metadata/download requests. Exact owner/repository IDs can be entered directly to inspect private repositories. Gated repositories still require the user's account to have been granted access on Hugging Face. The token is not stored in localStorage or emitted to logs.
 
 ## Integrity and download behavior
 
