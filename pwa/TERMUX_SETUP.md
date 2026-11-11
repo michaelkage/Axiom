@@ -16,7 +16,7 @@ Install and open Termux once before continuing. Do not mix Termux add-ons from d
 Open Termux, paste this command, and let it finish:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/michaelkage/Axiom/main/pwa/scripts/setup-termux-ollama.sh -o axiom-termux-setup.sh && bash axiom-termux-setup.sh
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/michaelkage/Axiom/main/pwa/scripts/setup-termux-ollama.sh -o axiom-termux-setup.sh && bash axiom-termux-setup.sh
 ```
 
 The script:
