@@ -36,9 +36,9 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
         <li>Create a token restricted to only the repository Axiom should access, and set an expiry.</li>
         <li>Repository permissions: <strong>Contents: Read and write</strong> for file editing, plus Metadata read. Read-only use can use Contents: Read.</li>
         <li>Generate it and copy it immediately. GitHub will not show the full token again.</li>
-        <li>Set it as <code>GITHUB_TOKEN</code> on the gateway machine. Never paste it into Axiom chat or commit it.</li>
+        <li>Open Axiom Settings → Provider credentials, paste the token into the GitHub field, enter the exact <code>owner/repo</code>, and save.</li>
       </ol>
-      <p className="text-[11px] text-slate-300 mt-2">Set <code>GITHUB_REPOSITORY=owner/repo</code> to the exact repository. The Repository field in Axiom Settings must match. The gateway only permits content operations on that one repository.</p>
+      <p className="text-[11px] text-slate-300 mt-2">Axiom sends the token over the authenticated gateway. The gateway stores it in a private file with owner-only permissions and only permits content operations on the configured repository. The app never reads the saved token back.</p>
       <p className="text-[10px] text-slate-500 mt-2">Try in Chat: “Read README.md from my configured GitHub repository.” File writes require approval.</p>
     </div>
     <div className="mt-3 rounded-xl bg-black/20 p-3">
@@ -46,8 +46,9 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
       <ol className="list-decimal pl-4 mt-2 space-y-1 text-xs text-slate-300">
         <li>Open <a className="text-sky-200 underline" href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Supabase Dashboard</a> and select your project.</li>
         <li>Open the project's <strong>Connect</strong> dialog to copy the Project URL and publishable key, or go to <strong>Settings → API Keys</strong>.</li>
-        <li>Set the URL as <code>SUPABASE_URL</code> and the <code>sb_publishable_...</code> key as <code>SUPABASE_PUBLISHABLE_KEY</code> on the gateway machine.</li>
+        <li>Open Axiom Settings → Provider credentials, enter the Project URL and publishable key, then save.</li>
       </ol>
+      <p className="text-[11px] text-slate-300 mt-2">The gateway stores both values in its private configuration file. Axiom receives only the configured status and project URL, never the key.</p>
       <p className="text-[11px] text-amber-200/85 mt-2">Use the publishable key (or legacy anon key for compatibility). Never use <code>sb_secret_...</code>, <code>service_role</code>, or another secret key. Publishable keys are low-privilege; table grants and Row Level Security still decide which rows can be accessed.</p>
       <p className="text-[10px] text-slate-500 mt-2">Try in Chat: “Read up to 10 rows from my public profiles table.” The table must be exposed through the Data API, granted access, and have an RLS policy that allows the operation.</p>
     </div>
@@ -60,10 +61,8 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
       <div className="text-sm font-semibold">Quick reference: where each value comes from</div>
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2 mt-3 text-[11px]">
         <span className="text-slate-400">AXIOM_GATEWAY_TOKEN</span><span>Generated once by the gateway at first startup</span>
-        <span className="text-slate-400">GITHUB_TOKEN</span><span>GitHub fine-grained personal access token</span>
-        <span className="text-slate-400">GITHUB_REPOSITORY</span><span>Type <code>owner/repo</code> yourself</span>
-        <span className="text-slate-400">SUPABASE_URL</span><span>Supabase project Connect dialog</span>
-        <span className="text-slate-400">SUPABASE_PUBLISHABLE_KEY</span><span>Supabase Connect dialog / API Keys</span>
+        <span className="text-slate-400">GitHub PAT + repository</span><span>Axiom Settings → Provider credentials</span>
+        <span className="text-slate-400">Supabase URL + publishable key</span><span>Axiom Settings → Provider credentials</span>
         <span className="text-slate-400">MCP server token</span><span>Issued by that MCP provider</span>
       </div>
     </div>
