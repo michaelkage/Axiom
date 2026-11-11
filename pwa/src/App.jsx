@@ -109,18 +109,18 @@ export default function App(){
   }catch(error){setNotice('Native model download failed: '+error.message);log('error','Native model download failed',error.message);}
   finally{setNativeBusy(false);}
  }
- async function activateNativeModel(id){
+ async function activateNativeModel(id, requestedContext=2048){
   if(nativeBusy)return;
   const model=nativeModels.find(item=>item.id===id);
   const available=Number(nativeCapabilities?.availableRamBytes||0);
-  const estimated=Number(model?.sizeBytes||0)*1.2+384*1024*1024;
-  if(available&&estimated>available*0.9){
+  const estimated=Number(model?.sizeBytes||0)*1.4+512*1024*1024;
+  if(available&&estimated>available*0.8){
    setNotice('This model is too large for the currently available RAM. Choose a smaller quantization or close other apps first.');
    return;
   }
   setNativeBusy(true);
   try{
-   const result=await loadNativeModelFile(id,{contextSize:available&&available<3*1024*1024*1024?1024:2048,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6))});
+   const effectiveContext=available&&available<3*1024*1024*1024?Math.min(requestedContext,1024):Math.min(requestedContext,4096);\n   const result=await loadNativeModelFile(id,{contextSize:effectiveContext,threads:Math.max(1,Math.min(nativeCapabilities?.cpuCores||4,6))});
    setNativeLoadedModel(id);
    await refreshNativeModels();
    setNotice('Native model loaded. Chat will now use on-device llama.cpp inference.');
