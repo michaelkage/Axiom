@@ -49,8 +49,8 @@ jobs:
           apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
           for attempt in 1 2 3; do
             echo "Installing Vulkan dependencies (attempt ${attempt}/3)"
-            if sudo apt-get "${apt_options[@]}" update &&
-              sudo apt-get "${apt_options[@]}" install -y libvulkan-dev glslc spirv-headers; then
+            if timeout --kill-after=10s 60s sudo apt-get "${apt_options[@]}" update &&
+              timeout --kill-after=10s 90s sudo apt-get "${apt_options[@]}" install -y libvulkan-dev glslc spirv-headers; then
               echo "AXIOM_ENABLE_VULKAN=1" >> "$GITHUB_ENV"
               exit 0
             fi
