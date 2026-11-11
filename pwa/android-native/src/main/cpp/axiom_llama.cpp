@@ -105,14 +105,14 @@ static llama_model * g_model = nullptr;
 static llama_context * g_context = nullptr;
 static llama_sampler * g_sampler = nullptr;
 static std::string g_loaded_path;
-static int g_loaded_gpu_layers = 0;
+static int g_requested_gpu_layers = 0;
 
 static void release_model_locked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_context) { llama_free(g_context); g_context = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
     g_loaded_path.clear();
-    g_loaded_gpu_layers = 0;
+    g_requested_gpu_layers = 0;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -127,34 +127,46 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, js
     release_model_locked();
 
     llama_backend_init();
-    llama_model_params model_params = llama_model_default_params();
     const int requested_gpu_layers = std::clamp(static_cast<int>(gpu_layers), -1, 999);
-    model_params.n_gpu_layers = requested_gpu_layers;
-    g_model = llama_model_load_from_file(model_path.c_str(), model_params);
-    int active_gpu_layers = requested_gpu_layers;
-    if (!g_model && requested_gpu_layers != 0) {
-        AXIOM_LOGE("Vulkan/GPU model load failed; retrying with CPU-only inference");
-        release_model_locked();
-        model_params = llama_model_default_params();
-        model_params.n_gpu_layers = 0;
-        g_model = llama_model_load_from_file(model_path.c_str(), model_params);
-        active_gpu_layers = 0;
-    }
-    if (!g_model) {
-        AXIOM_LOGE("Failed to load GGUF model: %s", model_path.c_str());
-        return JNI_FALSE;
-    }
+    const uint32_t safe_context_size = static_cast<uint32_t>(std::clamp(context_size, 512, 8192));
+    const int safe_threads = std::clamp(threads, 1, 16);
 
-    llama_context_params context_params = llama_context_default_params();
-    context_params.n_ctx = static_cast<uint32_t>(std::clamp(context_size, 512, 8192));
-    context_params.n_batch = 512;
-    context_params.n_threads = std::clamp(threads, 1, 16);
-    context_params.n_threads_batch = context_params.n_threads;
-    g_context = llama_init_from_model(g_model, context_params);
-    if (!g_context) {
-        AXIOM_LOGE("Failed to create llama context");
-        release_model_locked();
-        return JNI_FALSE;
+    auto load_model_and_context = [&](int gpu_layer_count) -> bool {
+        llama_model_params model_params = llama_model_default_params();
+        model_params.n_gpu_layers = gpu_layer_count;
+        g_model = llama_model_load_from_file(model_path.c_str(), model_params);
+        if (!g_model) return false;
+
+        llama_context_params context_params = llama_context_default_params();
+        context_params.n_ctx = safe_context_size;
+        context_params.n_batch = 512;
+        context_params.n_threads = safe_threads;
+        context_params.n_threads_batch = safe_threads;
+        g_context = llama_init_from_model(g_model, context_params);
+        if (!g_context) {
+            llama_model_free(g_model);
+            g_model = nullptr;
+            return false;
+        }
+        return true;
+    };
+
+    int active_gpu_layers = requested_gpu_layers;
+    if (!load_model_and_context(requested_gpu_layers)) {
+        if (requested_gpu_layers != 0) {
+            AXIOM_LOGE("GPU model/context initialization failed; retrying with CPU-only inference");
+            release_model_locked();
+            active_gpu_layers = 0;
+            if (!load_model_and_context(0)) {
+                AXIOM_LOGE("CPU fallback also failed for GGUF model: %s", model_path.c_str());
+                release_model_locked();
+                return JNI_FALSE;
+            }
+        } else {
+            AXIOM_LOGE("Failed to load GGUF model or create its context: %s", model_path.c_str());
+            release_model_locked();
+            return JNI_FALSE;
+        }
     }
 
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
@@ -162,7 +174,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, js
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(0.7f));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(0xA710ULL));
     g_loaded_path = model_path;
-    g_loaded_gpu_layers = active_gpu_layers;
+    g_requested_gpu_layers = active_gpu_layers;
     return JNI_TRUE;
 }
 
@@ -181,7 +193,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedModel(JNIEnv * env, jobject) 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedGpuLayers(JNIEnv *, jobject) {
     std::lock_guard<std::mutex> lock(g_model_mutex);
-    return g_loaded_gpu_layers;
+    return g_requested_gpu_layers;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
