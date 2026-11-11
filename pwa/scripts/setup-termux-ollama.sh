@@ -98,7 +98,7 @@ done
 PAIRING_TOKEN="$(cat "${HOME}/.config/axiom/gateway-token")"
 [[ "${#PAIRING_TOKEN}" -eq 64 ]] || fail "The gateway pairing credential is missing or invalid."
 info "Gateway is ready. Handing pairing securely to the installed Axiom app."
-am start -n com.axiom.mobile/.MainActivity -a android.intent.action.VIEW -d "axiom://gateway-pair?token=${PAIRING_TOKEN}" >/dev/null
+am start -n com.axiom.mobile/.MainActivity -a com.axiom.mobile.GATEWAY_PAIR --es axiom_gateway_token "$PAIRING_TOKEN" >/dev/null
 unset PAIRING_TOKEN
 info "Axiom will import the credential into Android Keystore and register its session automatically."
 info "Keep Termux running while using the gateway. Stop it with Ctrl+C."
