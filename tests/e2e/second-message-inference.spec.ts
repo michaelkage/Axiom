@@ -183,8 +183,17 @@ test.describe("Second Message Inference Bug", () => {
     await expect(submitButton).toBeEnabled({ timeout: 5000 });
     await submitButton.click();
 
+    // The fixture accepts the visible workflow plan through a locator handler.
+    // Wait for the second user message so that plan acceptance and prompt dispatch
+    // have completed before asserting on the transport request.
+    await expect(
+      webview
+        .getByRole("article", { name: "user message" })
+        .filter({ hasText: "what is 2+2" })
+    ).toBeVisible({ timeout: 15000 });
+
     // Wait for the request instead of relying on a fixed delay. On slower
-    // CI workers, the second POST can arrive just after a two-second sleep.
+    // CI workers, the second POST can arrive just after the UI confirms dispatch.
     await expect
       .poll(() => postRequests.length, { timeout: 10000 })
       .toBeGreaterThan(postsAfterFirst);
