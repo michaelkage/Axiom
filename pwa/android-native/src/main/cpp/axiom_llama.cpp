@@ -78,17 +78,64 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedModel(JNIEnv * env, jobject) 
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jstring prompt, jint max_tokens, jobject callback) {
-    const char * raw_prompt = env->GetStringUTFChars(prompt, nullptr);
-    if (!raw_prompt) return env->NewStringUTF("");
-    const std::string prompt_text(raw_prompt);
-    env->ReleaseStringUTFChars(prompt, raw_prompt);
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jobjectArray roles, jobjectArray contents, jint max_tokens, jobject callback) {
+    const jsize message_count = env->GetArrayLength(roles);
+    if (message_count <= 0 || message_count != env->GetArrayLength(contents)) {
+        jclass exception = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(exception, "At least one role/content message is required.");
+        return nullptr;
+    }
+
+    std::vector<std::string> role_values;
+    std::vector<std::string> content_values;
+    std::vector<llama_chat_message> chat;
+    size_t prompt_capacity = 1024;
+    for (jsize i = 0; i < message_count; ++i) {
+        auto role = static_cast<jstring>(env->GetObjectArrayElement(roles, i));
+        auto content = static_cast<jstring>(env->GetObjectArrayElement(contents, i));
+        const char * role_chars = env->GetStringUTFChars(role, nullptr);
+        const char * content_chars = env->GetStringUTFChars(content, nullptr);
+        role_values.emplace_back(role_chars ? role_chars : "user");
+        content_values.emplace_back(content_chars ? content_chars : "");
+        if (role_chars) env->ReleaseStringUTFChars(role, role_chars);
+        if (content_chars) env->ReleaseStringUTFChars(content, content_chars);
+        env->DeleteLocalRef(role);
+        env->DeleteLocalRef(content);
+        prompt_capacity += (role_values.back().size() + content_values.back().size()) * 2 + 64;
+    }
 
     std::lock_guard<std::mutex> lock(g_model_mutex);
     if (!g_model || !g_context || !g_sampler) {
         jclass exception = env->FindClass("java/lang/IllegalStateException");
         env->ThrowNew(exception, "Load a GGUF model before generating text.");
         return nullptr;
+    }
+
+    for (size_t i = 0; i < role_values.size(); ++i) {
+        chat.push_back({ role_values[i].c_str(), content_values[i].c_str() });
+    }
+    const char * template_source = llama_model_chat_template(g_model, nullptr);
+    std::vector<char> formatted(prompt_capacity);
+    int32_t formatted_size = template_source
+        ? llama_chat_apply_template(template_source, chat.data(), chat.size(), true, formatted.data(), static_cast<int32_t>(formatted.size()))
+        : -1;
+    std::string prompt_text;
+    if (formatted_size >= 0) {
+        if (static_cast<size_t>(formatted_size) > formatted.size()) {
+            formatted.resize(static_cast<size_t>(formatted_size) + 1);
+            formatted_size = llama_chat_apply_template(template_source, chat.data(), chat.size(), true, formatted.data(), static_cast<int32_t>(formatted.size()));
+        }
+        if (formatted_size < 0 || static_cast<size_t>(formatted_size) > formatted.size()) {
+            jclass exception = env->FindClass("java/lang/IllegalStateException");
+            env->ThrowNew(exception, "The model chat template could not format this conversation.");
+            return nullptr;
+        }
+        prompt_text.assign(formatted.data(), static_cast<size_t>(formatted_size));
+    } else {
+        for (size_t i = 0; i < role_values.size(); ++i) {
+            prompt_text += role_values[i] + ":\n" + content_values[i] + "\n\n";
+        }
+        prompt_text += "assistant:\n";
     }
 
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
@@ -100,17 +147,24 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jst
     }
     if (token_count <= 0) {
         jclass exception = env->FindClass("java/lang/IllegalArgumentException");
-        env->ThrowNew(exception, "Prompt could not be tokenized.");
+        env->ThrowNew(exception, "Conversation could not be tokenized.");
         return nullptr;
     }
     tokens.resize(static_cast<size_t>(token_count));
+    const uint32_t context_limit = llama_n_ctx(g_context);
+    const int generation_limit = std::clamp(max_tokens, 1, 4096);
+    const size_t prompt_limit = context_limit > static_cast<uint32_t>(generation_limit)
+        ? context_limit - static_cast<uint32_t>(generation_limit) : context_limit - 1;
+    if (tokens.size() > prompt_limit) {
+        tokens.erase(tokens.begin(), tokens.end() - static_cast<ptrdiff_t>(prompt_limit));
+    }
 
     llama_memory_clear(llama_get_memory(g_context), true);
     llama_sampler_reset(g_sampler);
     llama_batch batch = llama_batch_init(512, 0, 1);
     int32_t position = 0;
     for (size_t offset = 0; offset < tokens.size();) {
-        const size_t count = std::min<size_t>(batch.n_tokens > 0 ? batch.n_tokens : 512, tokens.size() - offset);
+        const size_t count = std::min<size_t>(512, tokens.size() - offset);
         batch.n_tokens = static_cast<int32_t>(count);
         for (size_t i = 0; i < count; ++i) {
             batch.token[i] = tokens[offset + i];
@@ -133,8 +187,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jst
     jmethodID cancelled_method = env->GetMethodID(callback_class, "isCancelled", "()Z");
     std::string output;
     char piece[256];
-    const int limit = std::clamp(max_tokens, 1, 4096);
-    for (int generated = 0; generated < limit; ++generated) {
+    for (int generated = 0; generated < generation_limit; ++generated) {
         if (env->CallBooleanMethod(callback, cancelled_method) == JNI_TRUE) break;
         const llama_token token = llama_sampler_sample(g_sampler, g_context, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
