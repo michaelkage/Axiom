@@ -17,12 +17,13 @@ permissions:
 
 concurrency:
   group: axiom-android-public-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   verify:
     name: Verify Android release candidate
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: pwa
@@ -50,7 +51,7 @@ jobs:
         run: npm run build
 
       - name: Install Chromium for mobile browser tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Run mobile browser tests
         run: npm run test:e2e:mobile
@@ -59,6 +60,7 @@ jobs:
     name: Build and publish Android APK
     needs: verify
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - name: Check out source
         uses: actions/checkout@v4
