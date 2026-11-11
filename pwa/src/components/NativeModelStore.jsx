@@ -14,6 +14,7 @@ export default function NativeModelStore({
   busy = false, onRefresh, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete
 }) {
   const [query, setQuery] = useState('Qwen2.5 1.5B GGUF');
+  const [contextSize, setContextSize] = useState('2048');
   const [results, setResults] = useState([]);
   const [filesByRepo, setFilesByRepo] = useState({});
   const [selectedFiles, setSelectedFiles] = useState({});
@@ -77,6 +78,7 @@ export default function NativeModelStore({
         <div className="text-[10px] text-slate-600">Free / {formatBytes(totalInstalled)} used by models</div>
       </div>
     </div>
+    {capabilities?.lowMemory && <div className="border border-amber-300/20 bg-amber-300/[.05] p-3 text-xs text-amber-200">Android reports low available memory. Close other apps and use a smaller GGUF/context before loading.</div>}
     {capabilities && <div className="border border-white/10 p-3 text-[11px] text-slate-500">
       <div className="flex justify-between gap-2"><span>Inference backend</span><span className="text-lime-200">{capabilities.inferenceBackend}</span></div>
       <div className="flex justify-between gap-2 mt-1"><span>Architecture</span><span>{capabilities.primaryAbi} · {capabilities.cpuCores} CPU cores</span></div>
@@ -88,6 +90,14 @@ export default function NativeModelStore({
         <div className="flex items-center gap-2"><HardDrive size={17} className="text-lime-300"/><h2 className="text-sm font-semibold">Private model library</h2></div>
         <button type="button" onClick={onRefresh} disabled={busy} aria-label="Refresh native models" className="p-2 border border-white/10 disabled:opacity-40"><RefreshCw size={14}/></button>
       </div>
+      <div className="mt-3">
+        <label htmlFor="native-context-size" className="block text-[10px] text-slate-500 mb-1">Inference context length</label>
+        <select id="native-context-size" value={contextSize} onChange={event => setContextSize(event.target.value)} className="w-full p-2 bg-[#090d14] border border-white/10 text-xs">
+          <option value="1024">1,024 tokens · lower memory</option>
+          <option value="2048">2,048 tokens · balanced</option>
+          <option value="4096">4,096 tokens · higher memory</option>
+        </select>
+      </div>
       {active && <div className="mt-3 p-3 border border-lime-300/20 bg-lime-300/[.05]">
         <div className="text-[10px] text-lime-200 uppercase tracking-widest">Loaded into memory</div>
         <div className="text-sm font-semibold break-all mt-1">{active.name}</div>
@@ -95,7 +105,7 @@ export default function NativeModelStore({
       </div>}
       {models.length ? <div className="divide-y divide-white/[.07] mt-2">{models.map(model => <article key={model.id} className="py-3">
         <div className="flex gap-2 items-start"><div className="flex-1 min-w-0"><div className="text-sm font-medium break-all">{model.name}</div><div className="text-[10px] text-slate-500 mt-1">{formatBytes(model.sizeBytes)} · {model.sha256 === 'not-verified' ? 'No checksum' : (model.sha256Verified ? 'SHA-256 verified ' : 'Local SHA-256 ') + (model.sha256 || '').slice(0, 12) + '…'}</div>{model.repo && <div className="text-[10px] text-slate-600 mt-1">{model.repo}</div>}</div>{model.loaded || model.id === loadedModel ? <span className="text-[10px] text-lime-200">Loaded</span> : null}</div>
-        <div className="flex gap-2 mt-2"><button type="button" onClick={() => onLoad(model.id)} disabled={busy || model.loaded || model.id === loadedModel} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">Load model</button><button type="button" onClick={() => onDelete(model.id)} disabled={busy || model.loaded || model.id === loadedModel} aria-label={'Delete ' + model.name} className="min-h-9 px-3 border border-red-300/20 text-red-200 disabled:opacity-30"><Trash2 size={14}/></button></div>
+        <div className="flex gap-2 mt-2"><button type="button" onClick={() => onLoad(model.id, Number(contextSize))} disabled={busy || model.loaded || model.id === loadedModel} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold disabled:opacity-40">Load model</button><button type="button" onClick={() => onDelete(model.id)} disabled={busy || model.loaded || model.id === loadedModel} aria-label={'Delete ' + model.name} className="min-h-9 px-3 border border-red-300/20 text-red-200 disabled:opacity-30"><Trash2 size={14}/></button></div>
       </article>)}</div> : <p className="text-xs text-slate-500 py-5 text-center">No native models installed yet.</p>}
     </div>
 
