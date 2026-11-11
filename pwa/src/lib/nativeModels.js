@@ -16,6 +16,10 @@ export async function listNativeModels() {
   requireAndroid();
   return (await NativeModels.listLocalModels()).models || [];
 }
+export async function importNativeModel() {
+  requireAndroid();
+  return NativeModels.importLocalModel();
+}
 export async function getNativeHuggingFaceFiles(repo) {
   requireAndroid();
   return (await NativeModels.getHuggingFaceModelFiles({ repo })).files || [];
