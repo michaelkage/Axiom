@@ -12,7 +12,8 @@
     "test:e2e:mobile": "playwright test --config=playwright.mobile.config.js",
     "gateway": "node gateway/server.mjs",
     "android:sync": "cap sync android",
-    "android:open": "cap open android"
+    "android:open": "cap open android",
+    "gateway:token": "node gateway/show-token.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
