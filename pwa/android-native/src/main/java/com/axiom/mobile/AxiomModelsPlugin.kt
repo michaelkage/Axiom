@@ -63,6 +63,7 @@ class AxiomModelsPlugin : Plugin() {
                 .put("name", file.name)
                 .put("sizeBytes", file.length())
                 .put("sha256", metadata.optString("sha256", "not-verified"))
+                .put("sha256Verified", metadata.optBoolean("sha256Verified", false))
                 .put("repo", metadata.optString("repo", ""))
                 .put("loaded", llamaLoadedModel() == file.absolutePath))
         }
@@ -165,7 +166,7 @@ class AxiomModelsPlugin : Plugin() {
                 if (expectedSha.isNotEmpty() && !digest.equals(expectedSha, true)) throw IllegalStateException("SHA-256 verification failed. The partial file was not installed.")
                 if (target.exists() && !target.delete()) throw IllegalStateException("Could not replace existing model.")
                 if (!partial.renameTo(target)) throw IllegalStateException("Could not atomically install downloaded model.")
-                File(modelRoot, id + ".json").writeText(org.json.JSONObject().put("repo", repo).put("sourceFile", remotePath).put("sha256", digest).put("sizeBytes", target.length()).toString())
+                File(modelRoot, id + ".json").writeText(org.json.JSONObject().put("repo", repo).put("sourceFile", remotePath).put("sha256", digest).put("sha256Verified", expectedSha.isNotEmpty()).put("sizeBytes", target.length()).toString())
                 notifyListeners("modelDownloadProgress", JSObject()
                     .put("id", id).put("downloadedBytes", target.length()).put("totalBytes", target.length())
                     .put("percent", 100).put("status", "Installed").put("sha256", digest))
