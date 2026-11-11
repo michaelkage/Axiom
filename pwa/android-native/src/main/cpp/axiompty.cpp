@@ -40,7 +40,7 @@ Java_com_axiom_mobile_AxiomRuntimePlugin_nativeStart(JNIEnv* env, jobject, jstri
     size.ws_col = static_cast<unsigned short>(cols);
     std::vector<std::string> environment;
     for (char** item = environ; item && *item; ++item) environment.emplace_back(*item);
-    putEnv(environment, "TERM", "xterm-256color");
+    putEnv(environment, "TERM", "vt100");
     putEnv(environment, "HOME", path);
     putEnv(environment, "PWD", path);
     putEnv(environment, "SHELL", "/system/bin/sh");
