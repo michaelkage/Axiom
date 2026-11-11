@@ -334,9 +334,13 @@ export async function ensureGatewayToken(env = process.env, logger = console, di
   try {
     await writeFile(tokenFile, generated + String.fromCharCode(10), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     env.AXIOM_GATEWAY_TOKEN = generated;
-    logger.warn?.('[axiom-gateway] FIRST RUN: copy this pairing token now. It will not be displayed again:');
-    logger.warn?.(generated);
-    logger.warn?.('[axiom-gateway] Token saved with owner-only permissions at ' + tokenFile);
+    if (env.AXIOM_GATEWAY_SILENT_TOKEN !== '1') {
+      logger.warn?.('[axiom-gateway] FIRST RUN: copy this pairing token now. It will not be displayed again:');
+      logger.warn?.(generated);
+      logger.warn?.('[axiom-gateway] Token saved with owner-only permissions at ' + tokenFile);
+    } else {
+      logger.info?.('[axiom-gateway] Pairing credential generated and stored with owner-only permissions.');
+    }
     return generated;
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
