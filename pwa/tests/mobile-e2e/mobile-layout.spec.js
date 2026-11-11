@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 
 test("keeps the chat composer and navigation reachable without horizontal overflow", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Your local copilot." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Think. Build. Verify." })).toBeVisible();
 
   const composer = page.getByRole("textbox", { name: "Message your local model" });
   const nav = page.getByRole("navigation");
@@ -37,10 +37,10 @@ test("keeps the chat composer and navigation reachable without horizontal overfl
 test("switches between all primary mobile sections", async ({ page }) => {
   await page.goto("/");
   for (const [label, heading] of [
-    ["Tools", "Tool registry"],
+    ["Tools", "Give Axiom tools."],
     ["MCP", "MCP servers"],
     ["Logs", "Execution logs"],
-    ["Chat", "Your local copilot."],
+    ["Chat", "Think. Build. Verify."],
   ]) {
     await page.getByRole("button", { name: label, exact: true }).click();
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -217,7 +217,7 @@ test("keeps generation cancellation available after navigating away from chat", 
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Tools", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Tool registry" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Give Axiom tools." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop generation" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Stop generation" }).first().click();
   await page.getByRole("button", { name: "Chat", exact: true }).click();
