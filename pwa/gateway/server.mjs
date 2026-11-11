@@ -315,9 +315,8 @@ export function createAxiomGateway({
   return server;
 }
 
-async function ensureGatewayToken(env = process.env, logger = console) {
+export async function ensureGatewayToken(env = process.env, logger = console, directory = join(homedir(), '.config', 'axiom')) {
   if (env.AXIOM_GATEWAY_TOKEN && env.AXIOM_GATEWAY_TOKEN.length >= 32) return env.AXIOM_GATEWAY_TOKEN;
-  const directory = join(homedir(), '.config', 'axiom');
   const tokenFile = join(directory, 'gateway-token');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(directory, 0o700);
