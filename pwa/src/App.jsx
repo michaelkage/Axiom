@@ -98,7 +98,7 @@ export default function App(){
  async function pullModel(name){
   const model=String(name||'').trim();
   if(!model||pullingModel)return;
-  const base=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl.replace(/\\/$/,'');
+  const configuredBase=gatewayToken?gatewayBase()+'/api/ollama':state.baseUrl;const base=configuredBase.endsWith('/')?configuredBase.slice(0,-1):configuredBase;
   setPullingModel(model);setPullProgress({status:'Connecting to model registry',percent:0});setNotice('');
   log('request','Model download started',model);
   try{
