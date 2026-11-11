@@ -72,7 +72,6 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
   assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /gateway:token/);
   assert.match(app, /prints the existing private token once in your terminal/);
-  assert.match(app, /prints the existing private token once in your terminal/);
 });
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
