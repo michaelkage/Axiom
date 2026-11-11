@@ -333,7 +333,7 @@ async function ensureGatewayToken(env = process.env, logger = console) {
   }
   const generated = randomBytes(32).toString('hex');
   try {
-    await writeFile(tokenFile, generated + '\\n', { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    await writeFile(tokenFile, generated + String.fromCharCode(10), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     env.AXIOM_GATEWAY_TOKEN = generated;
     logger.warn?.('[axiom-gateway] FIRST RUN: copy this pairing token now. It will not be displayed again:');
     logger.warn?.(generated);
