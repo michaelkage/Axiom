@@ -29,6 +29,14 @@ export async function runOllamaToolChat({
 
   const conversation = messages.map(message => ({ role: message.role, content: message.content }));
   let answer = '';
+  const runStartedAt = Date.now();
+  let firstTokenMs = null;
+  let modelLoadMs = 0;
+  let promptEvalMs = 0;
+  let generationMs = 0;
+  let promptTokens = 0;
+  let generatedTokens = 0;
+  let modelReportedTotalMs = 0;
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
     throwIfAborted(signal);
@@ -36,6 +44,7 @@ export async function runOllamaToolChat({
     if (tools.length) payload.tools = tools;
     onEvent({ type: 'request', endpoint: '/api/chat', turn, model, toolCount: tools.length });
 
+    const requestStartedAt = Date.now();
     const response = await fetchImpl(baseUrl.replace(/\/$/, '') + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,7 +57,6 @@ export async function runOllamaToolChat({
     let thinking = '';
     let firstTokenAt = null;
     let finalStats = null;
-    const requestStartedAt = Date.now();
     const calls = [];
     await consumeNdjsonStream(response, chunk => {
       finalStats = chunk;
@@ -63,19 +71,44 @@ export async function runOllamaToolChat({
       if (Array.isArray(part.tool_calls)) calls.push(...part.tool_calls);
     }, { signal });
 
-    const generationMs = Number(finalStats?.eval_duration || 0) / 1e6;
+    const turnGenerationMs = Number(finalStats?.eval_duration || 0) / 1e6;
+    const turnLoadMs = Number(finalStats?.load_duration || 0) / 1e6;
+    const turnPromptEvalMs = Number(finalStats?.prompt_eval_duration || 0) / 1e6;
+    const turnPromptTokens = Number(finalStats?.prompt_eval_count || 0);
+    const turnGeneratedTokens = Number(finalStats?.eval_count || 0);
+    const turnTotalMs = Number(finalStats?.total_duration || 0) / 1e6;
+    const turnFirstTokenMs = firstTokenAt === null ? null : firstTokenAt - requestStartedAt;
+    if (firstTokenMs === null && turnFirstTokenMs !== null) firstTokenMs = turnFirstTokenMs;
+    modelLoadMs += turnLoadMs;
+    promptEvalMs += turnPromptEvalMs;
+    generationMs += turnGenerationMs;
+    promptTokens += turnPromptTokens;
+    generatedTokens += turnGeneratedTokens;
+    modelReportedTotalMs += turnTotalMs;
     onEvent({ type: 'metrics', metrics: {
-      firstTokenMs: firstTokenAt === null ? null : firstTokenAt - requestStartedAt,
-      promptTokens: finalStats?.prompt_eval_count ?? null,
-      promptEvalMs: finalStats?.prompt_eval_duration == null ? null : Math.round(Number(finalStats.prompt_eval_duration) / 1e6),
-      generatedTokens: finalStats?.eval_count ?? null,
-      generationMs: generationMs ? Math.round(generationMs) : null,
-      tokensPerSecond: generationMs > 0 && Number.isFinite(Number(finalStats?.eval_count))
-        ? Math.round(Number(finalStats.eval_count) / (generationMs / 1000) * 10) / 10
-        : null
+      turn: turn + 1, firstTokenMs: turnFirstTokenMs,
+      promptTokens: turnPromptTokens || null,
+      promptEvalMs: turnPromptEvalMs ? Math.round(turnPromptEvalMs) : null,
+      promptTokensPerSecond: turnPromptEvalMs > 0 && turnPromptTokens > 0 ? Math.round(turnPromptTokens / (turnPromptEvalMs / 1000) * 10) / 10 : null,
+      generatedTokens: turnGeneratedTokens || null,
+      generationMs: turnGenerationMs ? Math.round(turnGenerationMs) : null,
+      tokensPerSecond: turnGenerationMs > 0 && turnGeneratedTokens > 0 ? Math.round(turnGeneratedTokens / (turnGenerationMs / 1000) * 10) / 10 : null,
+      modelLoadMs: turnLoadMs ? Math.round(turnLoadMs) : null,
+      modelReportedTotalMs: turnTotalMs ? Math.round(turnTotalMs) : null
     } });
     conversation.push({ role: 'assistant', thinking, content: turnContent, tool_calls: calls });
-    if (!calls.length) return { answer, conversation, turns: turn + 1 };
+    if (!calls.length) {
+      const metrics = {
+        firstTokenMs, promptTokens, promptEvalMs: Math.round(promptEvalMs),
+        promptTokensPerSecond: promptEvalMs > 0 && promptTokens > 0 ? Math.round(promptTokens / (promptEvalMs / 1000) * 10) / 10 : null,
+        generatedTokens, generationMs: Math.round(generationMs),
+        tokensPerSecond: generationMs > 0 && generatedTokens > 0 ? Math.round(generatedTokens / (generationMs / 1000) * 10) / 10 : null,
+        modelLoadMs: Math.round(modelLoadMs), modelReportedTotalMs: Math.round(modelReportedTotalMs),
+        wallTimeMs: Date.now() - runStartedAt, modelTurns: turn + 1
+      };
+      onEvent({ type: 'metrics.summary', metrics });
+      return { answer, conversation, turns: turn + 1, metrics };
+    }
 
     for (const call of calls) {
       throwIfAborted(signal);

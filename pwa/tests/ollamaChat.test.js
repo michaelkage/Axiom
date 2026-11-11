@@ -57,7 +57,7 @@ test('streams a normal answer and finishes when the model returns no tool calls'
 test('reports first-token latency and Ollama prompt/generation throughput', async () => {
   const harness = setup([streamResponse([
     assistant('Measured response'),
-    { ...assistant(), done: true, prompt_eval_count: 120, prompt_eval_duration: 500_000_000, eval_count: 80, eval_duration: 2_000_000_000 }
+    { ...assistant(), done: true, prompt_eval_count: 120, prompt_eval_duration: 500_000_000, eval_count: 80, eval_duration: 2_000_000_000, load_duration: 250_000_000, total_duration: 2_900_000_000 }
   ])]);
   await harness.run();
   const metrics = harness.events.find(event => event.type === 'metrics')?.metrics;
@@ -68,6 +68,11 @@ test('reports first-token latency and Ollama prompt/generation throughput', asyn
   assert.equal(metrics.generatedTokens, 80);
   assert.equal(metrics.generationMs, 2000);
   assert.equal(metrics.tokensPerSecond, 40);
+  assert.equal(metrics.modelLoadMs, 250);
+  assert.equal(metrics.modelReportedTotalMs, 2900);
+  assert.equal(metrics.modelTurns, 1);
+  assert.equal(metrics.promptTokensPerSecond, 240);
+  assert.ok(metrics.wallTimeMs >= metrics.firstTokenMs);
 });
 
 test('executes tool calls sequentially and sends serialized results back to Ollama', async () => {
@@ -167,4 +172,22 @@ test('supports ordinary multi-turn chat without registering tools', async () => 
   assert.equal(result.answer, 'Axiom');
   assert.deepEqual(harness.requests[0].payload.messages, history);
   assert.equal(Object.hasOwn(harness.requests[0].payload, 'tools'), false);
+});
+
+test('aggregates model metrics across tool turns', async () => {
+  const harness = setup([
+    streamResponse([{ ...assistant('', [toolCall('echo')]), done: true, prompt_eval_count: 40, prompt_eval_duration: 200_000_000, eval_count: 10, eval_duration: 500_000_000, load_duration: 100_000_000, total_duration: 900_000_000 }]),
+    streamResponse([{ ...assistant('Finished'), done: true, prompt_eval_count: 60, prompt_eval_duration: 300_000_000, eval_count: 20, eval_duration: 1_000_000_000, load_duration: 0, total_duration: 1_400_000_000 }])
+  ]);
+  const result = await harness.run();
+  assert.equal(result.metrics.promptTokens, 100);
+  assert.equal(result.metrics.generatedTokens, 30);
+  assert.equal(result.metrics.promptEvalMs, 500);
+  assert.equal(result.metrics.generationMs, 1500);
+  assert.equal(result.metrics.modelLoadMs, 100);
+  assert.equal(result.metrics.modelReportedTotalMs, 2300);
+  assert.equal(result.metrics.modelTurns, 2);
+  assert.equal(result.metrics.tokensPerSecond, 20);
+  assert.ok(result.metrics.firstTokenMs >= 0);
+  assert.ok(result.metrics.wallTimeMs >= result.metrics.firstTokenMs);
 });
