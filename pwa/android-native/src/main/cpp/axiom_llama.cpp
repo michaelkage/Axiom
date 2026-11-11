@@ -177,6 +177,12 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedModel(JNIEnv * env, jobject) 
     return env->NewStringUTF(g_loaded_path.c_str());
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadedGpuLayers(JNIEnv *, jobject) {
+    std::lock_guard<std::mutex> lock(g_model_mutex);
+    return g_loaded_gpu_layers;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, jobjectArray roles, jobjectArray contents, jint max_tokens, jobject callback) {
     const jsize message_count = env->GetArrayLength(roles);
