@@ -243,7 +243,7 @@ class AxiomModelsPlugin : Plugin() {
                 val resourceUrl = URL("https://huggingface.co/$repo/resolve/main/$encodedPath?download=true")
                 var connection = openHuggingFaceConnection(resourceUrl, range = if (existing > 0) "bytes=$existing-" else null)
                 var status = connection.responseCode
-                if (status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && existing > 0) {
+                if (status == 416 && existing > 0) {
                     connection.disconnect()
                     partial.delete()
                     existing = 0L
