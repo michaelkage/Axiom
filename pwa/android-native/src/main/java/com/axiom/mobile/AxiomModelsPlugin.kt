@@ -41,6 +41,7 @@ class AxiomModelsPlugin : Plugin() {
     private external fun llamaLoadedModel(): String
     private external fun llamaGenerate(roles: Array<String>, contents: Array<String>, maxTokens: Int, callback: Any): String
     private external fun isVulkanAvailable(): Boolean
+    private external fun vulkanDeviceName(): String
     private external fun gpuOffloadSupported(): Boolean
 
     override fun load() {
@@ -59,6 +60,7 @@ class AxiomModelsPlugin : Plugin() {
         val batteryTemperature = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)?.takeIf { it >= 0 }?.div(10.0)
         val thermalStatus = if (android.os.Build.VERSION.SDK_INT >= 29) (context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager).currentThermalStatus else -1
         val thermalLabel = when (thermalStatus) { 0 -> "none"; 1 -> "light"; 2 -> "moderate"; 3 -> "severe"; 4 -> "critical"; 5 -> "emergency"; 6 -> "shutdown"; else -> "unknown" }
+        val gpuName = vulkanDeviceName()
         call.resolve(JSObject()
             .put("platform", "android")
             .put("abis", JSArray().apply { android.os.Build.SUPPORTED_ABIS.forEach { put(it) } })
@@ -75,6 +77,8 @@ class AxiomModelsPlugin : Plugin() {
             .put("storageAvailableBytes", stat.availableBytes)
             .put("storageTotalBytes", stat.totalBytes)
             .put("vulkanLoaderAvailable", isVulkanAvailable())
+            .put("vulkanDeviceAvailable", gpuName.isNotBlank())
+            .put("vulkanDeviceName", gpuName)
             .put("inferenceBackend", if (gpuOffloadSupported()) "llama.cpp Vulkan + CPU fallback" else "llama.cpp CPU")
             .put("loadedModel", llamaLoadedModel().takeIf { it.isNotBlank() }?.let { File(it).name } ?: ""))
     }
