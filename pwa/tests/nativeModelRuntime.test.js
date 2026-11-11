@@ -22,8 +22,8 @@ test('Android inference builds pinned llama.cpp with Vulkan acceleration and CPU
   assert.match(cmake, /GGML_NATIVE OFF/);
   assert.match(cmake, /GGML_CPU_KLEIDIAI ON/);
   assert.ok(cmake.includes("set(AXIOM_ENABLE_VULKAN ON)"));
-  assert.match(cmake, /STREQUAL \"0\"/);
-  assert.match(cmake, /set\\(GGML_VULKAN \\\${AXIOM_ENABLE_VULKAN} CACHE BOOL \"\" FORCE\\)/);
+  assert.ok(cmake.includes('STREQUAL "0"'));
+  assert.ok(cmake.includes('set(GGML_VULKAN ${AXIOM_ENABLE_VULKAN} CACHE BOOL "" FORCE)'));
   assert.match(cmake, /SPIRV_HEADERS_CMAKE_DIR/);
   assert.match(cmake, /LLAMA_BUILD_SERVER OFF/);
   assert.match(cmake, /add_library\(axiompty SHARED axiompty\.cpp axiom_llama\.cpp\)/);
