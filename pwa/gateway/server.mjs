@@ -1,7 +1,7 @@
 import http from 'node:http';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod, rename, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 
@@ -72,7 +72,8 @@ export function createAxiomGateway({
   env = process.env,
   fetchImpl = fetch,
   logger = console,
-  now = Date.now
+  now = Date.now,
+  providerConfigPath = join(homedir(), '.config', 'axiom', 'provider-credentials.json')
 } = {}) {
   const token = env.AXIOM_GATEWAY_TOKEN;
   if (!token || token.length < 32) throw new Error('AXIOM_GATEWAY_TOKEN must be set to a random value of at least 32 characters.');
@@ -119,6 +120,84 @@ export function createAxiomGateway({
     const upstreamSignal = timeoutMs => AbortSignal.any([requestController.signal, AbortSignal.timeout(timeoutMs)]);
 
 
+    if (url.pathname === '/provider-config' && req.method === 'GET') {
+      return sendJson(res, 200, {
+        github: { configured: Boolean(env.GITHUB_TOKEN), repository: String(env.GITHUB_REPOSITORY || '') },
+        supabase: { configured: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY), url: String(env.SUPABASE_URL || '') }
+      });
+    }
+
+    if (url.pathname === '/provider-config' && req.method === 'PUT') {
+      const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
+      if (body === null) return;
+      let input;
+      try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return sendJson(res, 400, { error: 'Provider configuration must be an object.' });
+      const allowed = new Set(['githubToken', 'githubRepository', 'supabaseUrl', 'supabaseKey', 'clearGithub', 'clearSupabase']);
+      if (Object.keys(input).some(key => !allowed.has(key))) return sendJson(res, 400, { error: 'Unknown provider configuration field.' });
+
+      const next = {
+        githubToken: String(env.GITHUB_TOKEN || ''),
+        githubRepository: String(env.GITHUB_REPOSITORY || ''),
+        supabaseUrl: String(env.SUPABASE_URL || ''),
+        supabaseKey: String(env.SUPABASE_PUBLISHABLE_KEY || '')
+      };
+      if (input.clearGithub === true) { next.githubToken = ''; next.githubRepository = ''; }
+      if (input.clearSupabase === true) { next.supabaseUrl = ''; next.supabaseKey = ''; }
+      for (const field of ['githubToken', 'githubRepository', 'supabaseUrl', 'supabaseKey']) {
+        if (Object.hasOwn(input, field)) {
+          if (typeof input[field] !== 'string') return sendJson(res, 400, { error: field + ' must be a string.' });
+          next[field] = input[field].trim();
+        }
+      }
+      if (next.githubToken && (!next.githubRepository || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(next.githubRepository))) {
+        return sendJson(res, 400, { error: 'A valid GitHub repository in owner/repo format is required with the PAT.' });
+      }
+      if (next.githubToken.length > 512) return sendJson(res, 400, { error: 'GitHub token is too long.' });
+      if (Boolean(next.supabaseUrl) !== Boolean(next.supabaseKey)) return sendJson(res, 400, { error: 'Supabase project URL and publishable key must be provided together.' });
+      if (next.supabaseKey.startsWith('sb_secret_')) return sendJson(res, 400, { error: 'Use a Supabase publishable key or legacy anon key, never a secret/service_role key.' });
+      if (next.supabaseKey.length > 4096) return sendJson(res, 400, { error: 'Supabase key is too long.' });
+      if (next.supabaseKey.startsWith('eyJ')) {
+        try {
+          const claims = JSON.parse(Buffer.from(next.supabaseKey.split('.')[1], 'base64url').toString('utf8'));
+          if (claims.role !== 'anon') return sendJson(res, 400, { error: 'Legacy Supabase JWT must use the anon role, never service_role.' });
+        } catch {
+          return sendJson(res, 400, { error: 'Supabase publishable key is not a valid publishable key or anon JWT.' });
+        }
+      }
+      if (next.supabaseUrl) {
+        let parsed;
+        try { parsed = new URL(next.supabaseUrl); } catch { return sendJson(res, 400, { error: 'Supabase project URL is invalid.' }); }
+        const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+        if ((!['https:', 'http:'].includes(parsed.protocol) || (parsed.protocol !== 'https:' && !localHost)) || parsed.username || parsed.password || parsed.search || parsed.hash || (parsed.pathname !== '/' && parsed.pathname !== '')) {
+          return sendJson(res, 400, { error: 'Supabase URL must be an HTTPS project origin (HTTP is allowed only for localhost).' });
+        }
+        next.supabaseUrl = parsed.origin;
+      }
+
+      await mkdir(dirname(providerConfigPath), { recursive: true, mode: 0o700 });
+      await chmod(dirname(providerConfigPath), 0o700);
+      const temporaryPath = providerConfigPath + '.' + randomBytes(8).toString('hex') + '.tmp';
+      try {
+        await writeFile(temporaryPath, JSON.stringify(next) + String.fromCharCode(10), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+        await chmod(temporaryPath, 0o600);
+        await rename(temporaryPath, providerConfigPath);
+        await chmod(providerConfigPath, 0o600);
+      } catch (error) {
+        await rm(temporaryPath, { force: true }).catch(() => {});
+        throw error;
+      }
+      env.GITHUB_TOKEN = next.githubToken;
+      env.GITHUB_REPOSITORY = next.githubRepository;
+      env.SUPABASE_URL = next.supabaseUrl;
+      env.SUPABASE_PUBLISHABLE_KEY = next.supabaseKey;
+      return sendJson(res, 200, {
+        ok: true,
+        github: { configured: Boolean(next.githubToken), repository: next.githubRepository },
+        supabase: { configured: Boolean(next.supabaseUrl && next.supabaseKey), url: next.supabaseUrl }
+      });
+    }
+
     if (url.pathname === '/diagnostics' && req.method === 'GET') {
       const checkedAt = new Date(now()).toISOString();
       const check = async (name, configured, target, headers = {}) => {
@@ -160,7 +239,7 @@ export function createAxiomGateway({
           githubValid ? new URL('/repos/' + githubRepo, 'https://api.github.com') : new URL('/user', 'https://api.github.com'),
           env.GITHUB_TOKEN ? { authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } : {}),
         supabaseConfigError
-          ? Promise.resolve({ configured: Boolean(supabaseUrl || supabaseKey), reachable: false, authenticated: false, status: 'error', message: supabaseConfigError })
+          ? Promise.resolve({ configured: Boolean(supabaseUrl || supabaseKey), reachable: false, authenticated: false, status: supabaseUrl || supabaseKey ? 'error' : 'missing', message: supabaseConfigError })
           : check('Supabase', true, supabaseTarget, { apikey: supabaseKey, authorization: 'Bearer ' + supabaseKey, accept: 'application/json' })
       ]);
       const mcp = Object.keys(mcpServers).map(id => ({ id, configured: true, status: 'configured', message: 'MCP endpoint is configured. Run discovery from the MCP tab to verify protocol access.' }));
@@ -315,6 +394,21 @@ export function createAxiomGateway({
   return server;
 }
 
+export async function loadProviderCredentials(env = process.env, directory = join(homedir(), '.config', 'axiom')) {
+  const path = join(directory, 'provider-credentials.json');
+  try {
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    if (!env.GITHUB_TOKEN && typeof saved.githubToken === 'string') env.GITHUB_TOKEN = saved.githubToken;
+    if (!env.GITHUB_REPOSITORY && typeof saved.githubRepository === 'string') env.GITHUB_REPOSITORY = saved.githubRepository;
+    if (!env.SUPABASE_URL && typeof saved.supabaseUrl === 'string') env.SUPABASE_URL = saved.supabaseUrl;
+    if (!env.SUPABASE_PUBLISHABLE_KEY && typeof saved.supabaseKey === 'string') env.SUPABASE_PUBLISHABLE_KEY = saved.supabaseKey;
+    await chmod(path, 0o600);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('Could not load saved provider credentials: ' + error.message);
+  }
+  return { github: Boolean(env.GITHUB_TOKEN), supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY) };
+}
+
 export async function ensureGatewayToken(env = process.env, logger = console, directory = join(homedir(), '.config', 'axiom')) {
   if (env.AXIOM_GATEWAY_TOKEN && env.AXIOM_GATEWAY_TOKEN.length >= 32) return env.AXIOM_GATEWAY_TOKEN;
   const tokenFile = join(directory, 'gateway-token');
@@ -353,6 +447,7 @@ export async function ensureGatewayToken(env = process.env, logger = console, di
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   await ensureGatewayToken();
+  await loadProviderCredentials();
   const server = createAxiomGateway();
   const host = process.env.AXIOM_GATEWAY_HOST || '127.0.0.1';
   const port = Number(process.env.AXIOM_GATEWAY_PORT || 8787);
