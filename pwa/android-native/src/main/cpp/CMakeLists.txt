@@ -31,6 +31,22 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(llama_cpp)
 
+# llama.cpp's Vulkan backend includes the Vulkan-Hpp C++ bindings. Android's
+# NDK ships the C Vulkan headers and loader, but not vulkan.hpp. Use the host
+# Vulkan-Headers package for compile-time headers while linking against the
+# Android NDK Vulkan loader selected by FindVulkan.
+if(ANDROID AND TARGET ggml-vulkan)
+  find_path(AXIOM_VULKAN_HPP_INCLUDE_DIR
+    NAMES vulkan/vulkan.hpp
+    PATHS /usr/include /usr/local/include
+    NO_CMAKE_FIND_ROOT_PATH
+    REQUIRED
+  )
+  target_include_directories(ggml-vulkan SYSTEM BEFORE PRIVATE
+    "${AXIOM_VULKAN_HPP_INCLUDE_DIR}"
+  )
+endif()
+
 add_library(axiompty SHARED axiompty.cpp axiom_llama.cpp)
 target_compile_features(axiompty PRIVATE cxx_std_17)
 target_include_directories(axiompty PRIVATE ${llama_cpp_SOURCE_DIR}/include)
