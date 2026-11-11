@@ -24,7 +24,7 @@ class AxiomModelsPlugin : Plugin() {
     private external fun llamaLoadModel(path: String, contextSize: Int, threads: Int): Boolean
     private external fun llamaUnloadModel()
     private external fun llamaLoadedModel(): String
-    private external fun llamaGenerate(prompt: String, maxTokens: Int, callback: Any): String
+    private external fun llamaGenerate(roles: Array<String>, contents: Array<String>, maxTokens: Int, callback: Any): String
     private external fun isVulkanAvailable(): Boolean
 
     override fun load() {
@@ -236,7 +236,21 @@ class AxiomModelsPlugin : Plugin() {
 
     @PluginMethod
     fun generateLocal(call: PluginCall) {
-        val prompt = call.getString("prompt")?.takeIf { it.isNotBlank() } ?: return call.reject("Prompt is required.")
+        val messages = call.getArray("messages") ?: return call.reject("Conversation messages are required.")
+        if (messages.length() == 0 || messages.length() > 64) return call.reject("Conversation must contain 1-64 messages.")
+        val roles = ArrayList<String>(messages.length())
+        val contents = ArrayList<String>(messages.length())
+        try {
+            for (index in 0 until messages.length()) {
+                val message = messages.getJSONObject(index)
+                val role = message.optString("role", "user")
+                if (role !in setOf("system", "user", "assistant", "tool")) return call.reject("Unsupported conversation role.")
+                roles.add(role)
+                contents.add(message.optString("content", ""))
+            }
+        } catch (_: Exception) {
+            return call.reject("Conversation message format is invalid.")
+        }
         val maxTokens = (call.getInt("maxTokens") ?: 512).coerceIn(1, 4096)
         generationCancelled = false
         Thread({
@@ -249,7 +263,7 @@ class AxiomModelsPlugin : Plugin() {
                     @Suppress("unused")
                     fun isCancelled(): Boolean = generationCancelled
                 }
-                val output = llamaGenerate(prompt, maxTokens, callback)
+                val output = llamaGenerate(roles.toTypedArray(), contents.toTypedArray(), maxTokens, callback)
                 activity.runOnUiThread { call.resolve(JSObject().put("text", output).put("cancelled", generationCancelled)) }
             } catch (error: Exception) {
                 activity.runOnUiThread { call.reject(error.message ?: "Native inference failed.") }
