@@ -184,15 +184,14 @@ class AxiomRuntimePlugin : Plugin() {
     @PluginMethod
     fun consumeGatewayPairingIntent(call: PluginCall) {
         val intent = activity.intent
-        val data = intent?.data
-        if (data?.scheme != "axiom" || data.host != "gateway-pair") {
+        if (intent?.action != "com.axiom.mobile.GATEWAY_PAIR") {
             call.resolve(JSObject().put("paired", false))
             return
         }
-        val token = data.getQueryParameter("token").orEmpty()
+        val token = intent.getStringExtra("axiom_gateway_token").orEmpty()
         val gatewayUrl = call.getString("gatewayUrl").orEmpty().trimEnd('/')
         val parsedGateway = try { java.net.URL(gatewayUrl) } catch (_: Exception) {
-            intent.data = null
+            intent.removeExtra("axiom_gateway_token")
             return call.reject("Gateway URL must be a valid HTTP(S) URL.")
         }
         if (token.length != 64 || !token.matches(Regex("[A-Fa-f0-9]{64}")) ||
