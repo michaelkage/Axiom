@@ -177,7 +177,7 @@ test('diagnostics reports missing provider configuration and offline upstreams',
     const response = await fetch(base + '/diagnostics', { headers: { authorization: 'Bearer ' + TOKEN } });
     const data = await response.json();
     assert.equal(data.services.github.status, 'missing');
-    assert.equal(data.services.supabase.status, 'error');
+    assert.equal(data.services.supabase.status, 'missing');
     assert.match(data.services.supabase.message, /missing/);
     assert.equal(data.services.ollama.status, 'offline');
     assert.deepEqual(data.services.mcp, []);
