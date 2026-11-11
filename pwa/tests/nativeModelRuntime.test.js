@@ -81,19 +81,20 @@ test('native chat keeps Axiom tool execution behind the existing approval callba
 
 
 test('Termux pairing securely hands a local gateway credential to Android without a token URI', () => {
-  assert.match(runtimePlugin, /fun consumeGatewayPairingIntent/);
-  assert.match(runtimePlugin, /com\\.axiom\\.mobile\\.GATEWAY_PAIR/);
-  assert.match(runtimePlugin, /getStringExtra\\("axiom_gateway_token"\\)/);
-  assert.match(runtimePlugin, /setIntent\\(Intent\\(activity, activity\\.javaClass\\)/);
-  assert.match(runtimePlugin, /AndroidKeyStore/);
-  assert.match(runtimePlugin, /validatedGatewayUrl/);
-  assert.match(runtimePlugin, /instanceFollowRedirects = false/);
-  assert.match(runtimeBridge, /consumeGatewayPairingIntent\\(gatewayUrl\\)/);
-  assert.match(termuxSetup, /am start -n com\\.axiom\\.mobile\\/\\.MainActivity -a com\\.axiom\\.mobile\\.GATEWAY_PAIR --es axiom_gateway_token/);
-  assert.doesNotMatch(termuxSetup, /axiom:\\/\\/gateway-pair|gateway:token/);
-  assert.match(runtimeControls, /Automatic gateway pairing/);
-  assert.match(runtimeControls, /Advanced: pair a gateway on another device/);
-  assert.doesNotMatch(runtimeControls, /Recover the gateway pairing token/);
+  assert.ok(runtimePlugin.includes('fun consumeGatewayPairingIntent'));
+  assert.ok(runtimePlugin.includes('com.axiom.mobile.GATEWAY_PAIR'));
+  assert.ok(runtimePlugin.includes('getStringExtra("axiom_gateway_token")'));
+  assert.ok(runtimePlugin.includes('setIntent(Intent(activity, activity.javaClass)'));
+  assert.ok(runtimePlugin.includes('AndroidKeyStore'));
+  assert.ok(runtimePlugin.includes('validatedGatewayUrl'));
+  assert.ok(runtimePlugin.includes('instanceFollowRedirects = false'));
+  assert.ok(runtimeBridge.includes('consumeGatewayPairingIntent(gatewayUrl)'));
+  assert.ok(termuxSetup.includes('am start -n com.axiom.mobile/.MainActivity -a com.axiom.mobile.GATEWAY_PAIR --es axiom_gateway_token'));
+  assert.equal(termuxSetup.includes('axiom://gateway-pair'), false);
+  assert.equal(termuxSetup.includes('gateway:token'), false);
+  assert.ok(runtimeControls.includes('Automatic gateway pairing'));
+  assert.ok(runtimeControls.includes('Advanced: pair a gateway on another device'));
+  assert.equal(runtimeControls.includes('Recover the gateway pairing token'), false);
 });
 
 test('Android model store supports HF file inspection, installation, activation and deletion', () => {
