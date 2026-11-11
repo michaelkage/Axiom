@@ -4,8 +4,10 @@ import { readFile } from 'node:fs/promises';
 
 const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
 
-test('all chat messages use the conversation-aware Ollama chat runtime', () => {
-  assert.match(app, /runOllamaToolChat\(\{/);
+test('chat selects native or Ollama conversation runtime without losing message context', () => {
+  assert.match(app, /const chatRunner=nativeLoadedModel\?runNativeToolChat:runOllamaToolChat/);
+  assert.match(app, /runOllamaToolChat/);
+  assert.match(app, /runNativeToolChat/);
   assert.match(app, /messages:\[\.\.\.priorMessages,userMsg\]/);
   assert.match(app, /tools:availableTools/);
   assert.doesNotMatch(app, /\/api\/generate/);
