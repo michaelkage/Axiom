@@ -18,6 +18,7 @@ permissions:
 jobs:
   build-android:
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: pwa
