@@ -14,7 +14,7 @@ export default function NativeModelStore({
   busy = false, onRefresh, onSearch, onFiles, onDownload, onCancelDownload, onLoad, onUnload, onDelete,
   hfTokenConfigured = false, onSaveHfToken, onClearHfToken, onValidate, validation = null, validating = false, modelLoadReport = null, onCancelValidate
 }) {
-  const [query, setQuery] = useState('Qwen2.5 1.5B GGUF');
+  const [query, setQuery] = useState('');
   const [contextSize, setContextSize] = useState('2048');
   const [results, setResults] = useState([]);
   const [filesByRepo, setFilesByRepo] = useState({});
