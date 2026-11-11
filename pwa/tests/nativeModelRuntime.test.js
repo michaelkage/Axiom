@@ -66,6 +66,8 @@ test('native inference exposes model lifecycle, chat-template JNI and cancellati
   assert.match(nativeCpp, /if \(!load_model_and_context\(0\)\)/);
   assert.match(nativeCpp, /llama_supports_gpu_offload/);
   assert.match(nativeCpp, /vkEnumeratePhysicalDevices/);
+  assert.ok(cmake.includes('find_library(AXIOM_ANDROID_VULKAN_LIBRARY vulkan REQUIRED)'));
+  assert.ok(cmake.includes('target_link_libraries(axiompty PRIVATE llama ggml android log dl ${AXIOM_ANDROID_VULKAN_LIBRARY})'));
 });
 
 test('native chat keeps Axiom tool execution behind the existing approval callback', () => {

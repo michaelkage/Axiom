@@ -124,4 +124,11 @@ endif()
 add_library(axiompty SHARED axiompty.cpp axiom_llama.cpp)
 target_compile_features(axiompty PRIVATE cxx_std_17)
 target_include_directories(axiompty PRIVATE ${llama_cpp_SOURCE_DIR}/include)
-target_link_libraries(axiompty PRIVATE llama ggml android log dl)
+
+# axiom_llama.cpp probes Vulkan devices through the Vulkan 1.0 C entry points.
+# Android's NDK provides the loader stub as libvulkan; linking it resolves those
+# symbols while the loader still selects the device implementation at runtime.
+if(ANDROID)
+  find_library(AXIOM_ANDROID_VULKAN_LIBRARY vulkan REQUIRED)
+endif()
+target_link_libraries(axiompty PRIVATE llama ggml android log dl ${AXIOM_ANDROID_VULKAN_LIBRARY})
