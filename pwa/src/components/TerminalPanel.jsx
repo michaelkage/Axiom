@@ -132,7 +132,6 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
       event.preventDefault();
       setInput('');
       send('\u0003');
-      append('^C\r\n');
     } else if (event.key === 'd' && event.ctrlKey) {
       event.preventDefault();
       setInput('');
@@ -204,7 +203,7 @@ export default function TerminalPanel({ onNotice, terminalRows = 24, terminalCol
     </div>
     <div className="rounded-xl border border-amber-300/20 bg-amber-300/[.06] p-3 mb-3">
       <p className="text-xs font-semibold text-amber-100">Android app shell · not Termux</p>
-      <p className="text-[11px] leading-relaxed text-slate-300 mt-1">This is an isolated <code>/system/bin/sh</code> workspace. Basic Android commands such as <code>pwd</code>, <code>ls</code>, <code>cd</code>, <code>mkdir</code>, <code>cat</code> and <code>getprop</code> are available. Node.js, npm, pip and apt are not installed here. Use the separate Termux app for Node, Ollama and the gateway.</p>
+      <p className="text-[11px] leading-relaxed text-slate-300 mt-1">This is an isolated <code>/system/bin/sh</code> workspace. Basic Android commands such as <code>pwd</code>, <code>ls</code>, <code>cd</code>, <code>mkdir</code>, <code>cat</code> and <code>getprop</code> are available. Node.js, npm, pip and apt are not installed here. Full-screen terminal apps such as Vim are not supported by this lightweight terminal view. Use the separate Termux app for Node, Ollama and the gateway.</p>
       <p className="text-[11px] leading-relaxed text-slate-400 mt-2">Gateway token recovery in Termux: <code>cat ~/.config/axiom/gateway-token</code>. On the computer hosting the gateway: <code>cd pwa && npm run gateway:token</code>. Axiom's app shell cannot access either environment's files.</p>
       <a href="https://github.com/michaelkage/Axiom/blob/main/pwa/TERMUX_SETUP.md" target="_blank" rel="noreferrer" className="inline-flex mt-2 text-[11px] text-lime-200 underline underline-offset-4">Termux setup instructions</a>
     </div>
