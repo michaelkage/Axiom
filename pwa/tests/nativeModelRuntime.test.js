@@ -113,10 +113,13 @@ test('Android model store supports HF file inspection, installation, activation 
 });
 
 
-test('first-run onboarding can be reopened and missed gateway tokens can be recovered safely', () => {
+test('first-run onboarding can be reopened and explains automatic gateway pairing', () => {
   assert.match(app, /axiom\.onboarding\.v2\.dismissed/);
   assert.match(app, /Open setup guide/);
-  assert.match(app, /gateway:token/);
+  assert.match(app, /Connect the local gateway automatically/);
+  assert.match(app, /setup-termux-ollama\.sh/);
+  assert.match(app, /No copying, pasting, or token screen/);
+  assert.doesNotMatch(app, /gateway:token/);
   assert.match(tokenRecovery, /\.config.*axiom.*gateway-token/);
   assert.match(tokenRecovery, /process\.stdout\.write/);
   assert.doesNotMatch(tokenRecovery, /writeFile|randomBytes/);
