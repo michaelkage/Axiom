@@ -11,7 +11,6 @@ info() { printf '\n[Axiom setup] %s\n' "$*"; }
 [[ -n "${PREFIX:-}" && -d "${PREFIX:-/nonexistent}" ]] || fail "Run this script inside the Termux app, not Android shell or Axiom's built-in terminal."
 [[ "$(uname -m)" == "aarch64" ]] || fail "This Ollama Termux build currently targets 64-bit ARM (aarch64). Detected: $(uname -m)."
 command -v pkg >/dev/null 2>&1 || fail "Termux package manager 'pkg' was not found."
-command -v curl >/dev/null 2>&1 || fail "curl is required. Install Termux from F-Droid or the official Termux GitHub releases first."
 
 OLLAMA_TERMUX_VERSION="0.33.1-termux"
 AXIOM_RUNTIME_DIR="${HOME}/.local/share/axiom-gateway-runtime"
