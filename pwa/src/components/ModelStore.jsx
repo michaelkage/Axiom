@@ -3,7 +3,7 @@ import { Download, ExternalLink, LoaderCircle, Package, RefreshCw, Search, Serve
 
 const QUANTIZATIONS = ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'F16'];
 
-export default function ModelStore({ models = [], connection = 'unknown', onRefresh, onPullModel, onSelectModel, pullingModel = '', pullProgress = null, disabled = false }) {
+export default function ModelStore({ models = [], connection = 'unknown', baseUrl = '', onBaseUrlChange, onRefresh, onPullModel, onSelectModel, pullingModel = '', pullProgress = null, disabled = false }) {
   const [registryName, setRegistryName] = useState('');
   const [query, setQuery] = useState('');
   const [quantization, setQuantization] = useState('Q4_K_M');
@@ -43,13 +43,21 @@ export default function ModelStore({ models = [], connection = 'unknown', onRefr
     </div>
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
+      <div className="flex items-center gap-2"><Server size={17} className="text-lime-300"/><h2 className="text-sm font-semibold">Connect a model server</h2></div>
+      <p className="text-xs text-slate-500 mt-1">Point Axiom at an existing Ollama API. Use the host address reachable from this device, not a model name. Axiom discovers only models installed on that server.</p>
+      <label htmlFor="ollama-server-url" className="block text-xs text-slate-400 mt-3 mb-1">Ollama server URL</label>
+      <input id="ollama-server-url" type="url" inputMode="url" autoCapitalize="none" spellCheck="false" value={baseUrl} onChange={event => onBaseUrlChange?.(event.target.value)} placeholder="http://192.168.1.20:11434" className="w-full p-3 bg-black/30 border border-white/10 text-sm outline-none"/>
+      <button type="button" onClick={onRefresh} disabled={disabled} className="w-full mt-2 min-h-10 border border-lime-300/20 text-lime-200 text-xs font-semibold disabled:opacity-40">Connect and discover installed models</button>
+    </div>
+
+    <div className="border border-white/[.09] bg-white/[.025] p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2"><Server size={17} className="text-lime-300"/><span className="text-sm font-semibold">Runtime library</span></div>
         <span className={'text-[10px] uppercase tracking-wide ' + (connection === 'online' ? 'text-lime-300' : 'text-amber-200')}>{connection === 'online' ? 'Connected' : 'Not connected'}</span>
       </div>
       <p className="text-xs text-slate-500 mt-1">Installed models on the configured Ollama host.</p>
       <button type="button" onClick={onRefresh} disabled={disabled} className="mt-3 min-h-10 px-3 border border-white/10 text-xs flex items-center gap-2 disabled:opacity-40"><RefreshCw size={14}/> Refresh library</button>
-      {models.length ? <div className="mt-3 divide-y divide-white/[.07]">{models.map(model => <div key={model} className="py-3 flex items-center gap-3"><Package size={17} className="text-slate-500"/><span className="text-sm flex-1 break-all">{model}</span><button type="button" onClick={() => onSelectModel(model)} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold">Use</button></div>)}</div> : <p className="mt-4 py-5 text-center text-xs text-slate-500">{connection === 'online' ? 'No models installed. Install one below to start chatting.' : connection === 'offline' ? 'Cannot read the model library. Connect to the Ollama runtime and refresh.' : 'Checking the installed model library…'}</p>}
+      {models.length ? <div className="mt-3 divide-y divide-white/[.07]">{models.map(model => <div key={model} className="py-3 flex items-center gap-3"><Package size={17} className="text-slate-500"/><span className="text-sm flex-1 break-all">{model}</span><button type="button" onClick={() => onSelectModel(model)} className="min-h-9 px-3 bg-lime-300 text-slate-950 text-xs font-semibold">Use</button></div>)}</div> : <p className="mt-4 py-5 text-center text-xs text-slate-500">{connection === 'online' ? 'No models installed. Connect a model server or install a model below to start chatting.' : connection === 'offline' ? 'Cannot read the model library. Connect to the Ollama runtime and refresh.' : 'Checking the installed model library…'}</p>}
     </div>
 
     <div className="border border-white/[.09] bg-white/[.025] p-4">
