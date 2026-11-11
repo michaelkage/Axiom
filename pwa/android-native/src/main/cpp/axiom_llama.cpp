@@ -104,16 +104,18 @@ static llama_model * g_model = nullptr;
 static llama_context * g_context = nullptr;
 static llama_sampler * g_sampler = nullptr;
 static std::string g_loaded_path;
+static int g_loaded_gpu_layers = 0;
 
 static void release_model_locked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_context) { llama_free(g_context); g_context = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
     g_loaded_path.clear();
+    g_loaded_gpu_layers = 0;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, jstring path, jint context_size, jint threads) {
+Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, jstring path, jint context_size, jint threads, jint gpu_layers) {
     const char * raw_path = env->GetStringUTFChars(path, nullptr);
     if (!raw_path) return JNI_FALSE;
     std::string model_path(raw_path);
@@ -125,7 +127,18 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, js
 
     llama_backend_init();
     llama_model_params model_params = llama_model_default_params();
+    const int requested_gpu_layers = std::clamp(static_cast<int>(gpu_layers), -1, 999);
+    model_params.n_gpu_layers = requested_gpu_layers;
     g_model = llama_model_load_from_file(model_path.c_str(), model_params);
+    int active_gpu_layers = requested_gpu_layers;
+    if (!g_model && requested_gpu_layers != 0) {
+        AXIOM_LOGE("Vulkan/GPU model load failed; retrying with CPU-only inference");
+        release_model_locked();
+        model_params = llama_model_default_params();
+        model_params.n_gpu_layers = 0;
+        g_model = llama_model_load_from_file(model_path.c_str(), model_params);
+        active_gpu_layers = 0;
+    }
     if (!g_model) {
         AXIOM_LOGE("Failed to load GGUF model: %s", model_path.c_str());
         return JNI_FALSE;
@@ -148,6 +161,7 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaLoadModel(JNIEnv * env, jobject, js
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(0.7f));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(0xA710ULL));
     g_loaded_path = model_path;
+    g_loaded_gpu_layers = active_gpu_layers;
     return JNI_TRUE;
 }
 
@@ -302,6 +316,11 @@ Java_com_axiom_mobile_AxiomModelsPlugin_llamaGenerate(JNIEnv * env, jobject, job
     llama_batch_free(batch);
     output.resize(valid_utf8_prefix(output));
     return utf8_to_jstring(env, output);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_axiom_mobile_AxiomModelsPlugin_gpuOffloadSupported(JNIEnv *, jobject) {
+    return llama_supports_gpu_offload() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
