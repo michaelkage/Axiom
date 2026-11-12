@@ -16,6 +16,7 @@ import {
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
 import { loadRelevantWorkerProjectMemories, runOpenCodeSubAgentTasks } from "../services/opencodeTaskOrchestrator";
 import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
+import { createOpenCodeWorkerExecutionProvider } from "../services/opencodeWorkerExecutionProvider";
 import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 
@@ -193,14 +194,16 @@ function createOpenCode() {
         const agentResponse = await c.app.agents();
         return (agentResponse.data ?? []).map(agent => agent.name);
       },
-      createWorktree: createAgentWorktree,
-      createSession: input => c.session.create(input),
-      promptSession: input => c.session.prompt(input),
-      abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
-      getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
-        data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
-      }>,
-      subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
+      workerProvider: createOpenCodeWorkerExecutionProvider({
+        createWorktree: createAgentWorktree,
+        createSession: input => c.session.create(input),
+        promptSession: input => c.session.prompt(input),
+        abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
+        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
+          data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
+        }>,
+        subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
+      }),
     });
   }
 
