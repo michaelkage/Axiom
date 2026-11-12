@@ -26,6 +26,9 @@ export interface AxiomPlatformAdapter {
     read(relativePath: string): Promise<string>;
     write(relativePath: string, content: string): Promise<unknown>;
   };
+  documents: {
+    pick(options?: { multiple?: boolean }): Promise<{ files: Array<{ name: string; path: string; size: number }> }>;
+  };
   git: {
     listWorkspaces(): Promise<unknown[]>;
     createWorktree(taskId: string): Promise<string>;
