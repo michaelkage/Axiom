@@ -78,7 +78,11 @@ export async function runOpenCodeWorkerLifecycle(
     const entry = (options.now?.() ?? new Date()).toISOString() + " " + line.slice(0, 1800);
     logs.push(entry);
     if (logs.length > 200) logs.shift();
-    options.onLog?.(task.id, entry);
+    try {
+      options.onLog?.(task.id, entry);
+    } catch {
+      // Observers must not be able to interrupt worker execution.
+    }
   };
   log("Worker session created: " + sessionId);
   log("Isolated worktree: " + worktreePath);
@@ -100,7 +104,9 @@ export async function runOpenCodeWorkerLifecycle(
   const stopEvents = options.subscribe(event => {
     let serialized: string;
     try {
-      serialized = JSON.stringify(event);
+      const encoded = JSON.stringify(event);
+      if (typeof encoded !== "string") return;
+      serialized = encoded;
     } catch {
       return;
     }
@@ -110,7 +116,7 @@ export async function runOpenCodeWorkerLifecycle(
     log("[" + type + "] " + serialized.slice(0, 1400));
   }, worktreePath);
 
-  const cleanup = () => {
+  const cleanupPrompt = () => {
     signal?.removeEventListener("abort", abortWorker);
     stopEvents();
   };
@@ -119,7 +125,7 @@ export async function runOpenCodeWorkerLifecycle(
     try {
       await abortWorker();
     } finally {
-      cleanup();
+      cleanupPrompt();
     }
     throw taskError("Parallel task cancelled before prompting the worker.");
   }
@@ -137,7 +143,7 @@ export async function runOpenCodeWorkerLifecycle(
     throw taskError(errorMessage(error));
   } finally {
     if (signal?.aborted) await abortWorker();
-    cleanup();
+    cleanupPrompt();
   }
 
   log("Worker prompt completed.");
@@ -165,7 +171,7 @@ export async function runOpenCodeWorkerLifecycle(
     // Transcript retrieval is diagnostic; a successful prompt remains successful.
   } finally {
     if (signal?.aborted) await abortWorker();
-    cleanup();
+    signal?.removeEventListener("abort", abortWorker);
   }
 
   return { sessionId, taskId: task.id, title: task.title, ...(options.agent ? { agent: options.agent } : {}),
