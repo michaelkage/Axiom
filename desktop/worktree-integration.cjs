@@ -42,7 +42,7 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
 
 function parseGitStatusPorcelainZ(output) {
   if (typeof output !== "string") throw new TypeError("Git status output must be text.");
-  const records = output.split("\\0");
+  const records = output.split("\0");
   const changes = [];
   for (let index = 0; index < records.length; index++) {
     const record = records[index];
