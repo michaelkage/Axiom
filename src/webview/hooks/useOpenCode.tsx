@@ -209,7 +209,7 @@ function createOpenCode() {
         }>;
         const historyItems: Array<{ id: string; content: string; relevance: number; updatedAt: number }> = [];
         for (const message of history.slice(-30)) {
-          const text = (message.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\\n");
+          const text = (message.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n");
           if (!text.trim()) continue;
           const role = message.info?.role ?? "unknown";
           historyItems.push({
