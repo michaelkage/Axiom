@@ -38,8 +38,8 @@ export default function IntegrationGuide({ gatewayUrl, paired, onOpenSettings })
         <li>Generate it and copy it immediately. GitHub will not show the full token again.</li>
         <li>Open Axiom Settings → Provider credentials, paste the token into the GitHub field, enter the exact <code>owner/repo</code>, and save.</li>
       </ol>
-      <p className="text-[11px] text-slate-300 mt-2">Axiom sends the token over the authenticated gateway. The gateway stores it in a private file with owner-only permissions and only permits content operations on the configured repository. The app never reads the saved token back.</p>
-      <p className="text-[10px] text-slate-500 mt-2">Try in Chat: “Read README.md from my configured GitHub repository.” File writes require approval.</p>
+      <p className="text-[11px] text-slate-300 mt-2">Axiom sends the token over the authenticated gateway. The gateway stores it in a private file with owner-only permissions. Axiom can browse files and folders, inspect repository metadata, list branches and commits, review issues and pull requests, and search code, all restricted to the configured repository. File writes require explicit approval. The app never reads the saved token back.</p>
+      <p className="text-[10px] text-slate-500 mt-2">Try in Chat: “Inspect my configured GitHub repository and show its files,” “List the open pull requests,” or “Search the code for gateway diagnostics.” File writes require approval.</p>
     </div>
     <div className="mt-3 rounded-xl bg-black/20 p-3">
       <div className="flex items-center gap-2 text-sm font-semibold"><Database size={15}/> 4. Supabase URL and publishable key</div>
