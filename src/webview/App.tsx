@@ -59,6 +59,7 @@ interface SelectionAttachment {
 import { hostBridge } from "./utils/hostBridge";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
+import { applyThemePreferences, loadThemePreferences, saveThemePreferences, type AxiomTheme } from "./utils/theme";
 import { extractMentions } from "./utils/editorContent";
 import {
   encodeFileMentionReference,
@@ -73,6 +74,8 @@ function App() {
   
   // Local UI-only state
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
+  const [themePreferences, setThemePreferences] = createSignal(loadThemePreferences());
+  createEffect(() => { const preferences = themePreferences(); applyThemePreferences(preferences); saveThemePreferences(preferences); });
   const [workflowRun, setWorkflowRun] = createSignal<{ prompt: string; status: "running" | "complete" | "failed" } | null>(null);
   const [workflowError, setWorkflowError] = createSignal<string | null>(null);
   const [parallelPlan, setParallelPlan] = createSignal<{ model: string; tasks: import("../shared/axiomRuntime").AxiomSubTask[]; fallbackUsed?: boolean; routingExplanation?: string; discoveryWarning?: string } | null>(null);
@@ -1610,6 +1613,10 @@ function App() {
         onSessionSelect={handleSessionSelect}
         onNewSession={handleNewSession}
         onRefreshSessions={refreshSessions}
+        theme={themePreferences().theme}
+        accent={themePreferences().accent}
+        onThemeChange={(theme: AxiomTheme) => setThemePreferences(previous => ({ ...previous, theme }))}
+        onAccentChange={(accent: string) => setThemePreferences(previous => ({ ...previous, accent }))}
       />
 
       <Show when={desktopApi()?.project}>
