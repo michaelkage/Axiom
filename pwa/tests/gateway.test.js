@@ -351,3 +351,58 @@ test('provider configuration rejects Supabase secret keys and non-HTTPS remote U
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('companion pairing issues a restricted credential and supports explicit approval decisions', async () => {
+  await withServer({ fetchImpl: async () => new Response('{}', { status: 200 }) }, async base => {
+    const desktopHeaders = { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' };
+    const inviteResponse = await fetch(base + '/companion/pairing', { method: 'POST', headers: desktopHeaders });
+    assert.equal(inviteResponse.status, 201);
+    const invite = await inviteResponse.json();
+    assert.match(invite.code, /^\\d{8}$/);
+    assert.equal(invite.expiresIn, 90);
+
+    const claimResponse = await fetch(base + '/companion/pairing/claim', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: invite.code, deviceName: 'Android phone' })
+    });
+    assert.equal(claimResponse.status, 201);
+    const paired = await claimResponse.json();
+    assert.equal(paired.deviceName, 'Android phone');
+    assert.equal(paired.expiresIn, 43200);
+
+    const blockedProxy = await fetch(base + '/api/ollama/api/tags', { headers: { authorization: 'Bearer ' + paired.token } });
+    assert.equal(blockedProxy.status, 403);
+    const blockedQueue = await fetch(base + '/companion/approvals', { headers: { authorization: 'Bearer ' + paired.token } });
+    assert.equal(blockedQueue.status, 403);
+
+    const requestResponse = await fetch(base + '/companion/approvals', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + paired.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ capability: 'shell.execute', summary: 'Run the test suite', command: 'npm test' })
+    });
+    assert.equal(requestResponse.status, 201);
+    const approval = await requestResponse.json();
+    assert.equal(approval.status, 'pending');
+
+    const queueResponse = await fetch(base + '/companion/approvals', { headers: { authorization: 'Bearer ' + TOKEN } });
+    const queue = await queueResponse.json();
+    assert.equal(queue.approvals.length, 1);
+    assert.equal(queue.approvals[0].id, approval.id);
+
+    const decisionResponse = await fetch(base + '/companion/approvals/' + approval.id + '/decision', {
+      method: 'POST', headers: desktopHeaders, body: JSON.stringify({ decision: 'approved' })
+    });
+    assert.equal(decisionResponse.status, 200);
+    assert.equal((await decisionResponse.json()).status, 'approved');
+
+    const statusResponse = await fetch(base + '/companion/approvals/' + approval.id, { headers: { authorization: 'Bearer ' + paired.token } });
+    assert.equal((await statusResponse.json()).status, 'approved');
+
+    const revoked = await fetch(base + '/companion/pairs/' + paired.pairId, { method: 'DELETE', headers: { authorization: 'Bearer ' + TOKEN } });
+    assert.equal(revoked.status, 200);
+    assert.equal((await revoked.json()).revoked, true);
+    const afterRevoke = await fetch(base + '/companion/approvals/' + approval.id, { headers: { authorization: 'Bearer ' + paired.token } });
+    assert.equal(afterRevoke.status, 401);
+  });
+});
