@@ -127,6 +127,11 @@ export function createCompanionCoordinator({ now = Date.now } = {}) {
     return publicApproval(approval);
   }
 
+  function isCompanionSession(token) {
+    prune();
+    return sessions.has(token);
+  }
+
   function revokePair(ownerToken, pairId) {
     const removedTokens = [];
     for (const [token, session] of sessions) {
@@ -141,5 +146,5 @@ export function createCompanionCoordinator({ now = Date.now } = {}) {
     return removedTokens;
   }
 
-  return Object.freeze({ createInvite, claimInvite, createApproval, listApprovals, decideApproval, getApproval, revokePair });
+  return Object.freeze({ createInvite, claimInvite, isCompanionSession, createApproval, listApprovals, decideApproval, getApproval, revokePair });
 }
