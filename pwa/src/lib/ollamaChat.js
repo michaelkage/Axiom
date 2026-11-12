@@ -1,4 +1,5 @@
 import { consumeNdjsonStream } from './ndjson.js';
+import { requestWithRetry } from './requestRetry.js';
 
 function throwIfAborted(signal) {
   if (signal?.aborted) throw signal.reason || new DOMException('Operation aborted', 'AbortError');
@@ -45,12 +46,14 @@ export async function runOllamaToolChat({
   confirmTool = async () => true,
   onText = () => {},
   onEvent = () => {},
-  maxTurns = 5
+  maxTurns = 5,
+  maxRetries = 2,
+  onRetry = () => {}
 }) {
   if (typeof executeTool !== 'function') throw new TypeError('executeTool is required');
   if (!Number.isInteger(maxTurns) || maxTurns < 1) throw new TypeError('maxTurns must be a positive integer');
 
-  const conversation = messages.map(message => ({ role: message.role, content: message.content }));
+  const conversation = messages.map(message => ({ role: message.role, content: message.content, ...(Array.isArray(message.images) && message.images.length ? { images: message.images } : {}) }));
   let answer = '';
   const runStartedAt = Date.now();
   let firstTokenMs = null;
@@ -68,12 +71,12 @@ export async function runOllamaToolChat({
     onEvent({ type: 'request', endpoint: '/api/chat', turn, model, toolCount: tools.length });
 
     const requestStartedAt = Date.now();
-    const response = await fetchImpl(baseUrl.replace(/\/$/, '') + '/api/chat', {
+    const response = await requestWithRetry(fetchImpl, baseUrl.replace(/\/$/, '') + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal
-    });
+    }, { retries: maxRetries, signal, onRetry: event => { onRetry(event); onEvent({ type: 'retry', ...event }); } });
     if (!response.ok) throw await ollamaHttpError(response);
 
     let turnContent = '';
