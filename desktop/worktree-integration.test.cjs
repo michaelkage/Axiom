@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 
 test("normalizes safe workspace-relative paths and rejects traversal or ambiguous paths", () => {
   assert.equal(normalizeWorkspaceRelativePath("src\\feature.ts"), "src/feature.ts");
@@ -30,6 +30,24 @@ test("rejects symlinks in parent and leaf components while allowing missing file
     await fs.symlink(path.join(outside, "secret.txt"), path.join(root, "secret-link.ts"));
     await assert.rejects(() => resolveSafeWorkspaceFile(root, "secret-link.ts"), /symbolic links/);
     await assert.rejects(() => resolveSafeWorkspaceFile(root, "src/safe.ts/child"), /not a directory/);
+  } finally {
+    await fs.rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("opens regular files without following a replaced symlink leaf", async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-worktree-nofollow-"));
+  try {
+    const rootFile = path.join(temporary, "safe.txt");
+    const outsideFile = path.join(temporary, "outside.txt");
+    const link = path.join(temporary, "link.txt");
+    await fs.writeFile(rootFile, "safe");
+    await fs.writeFile(outsideFile, "outside");
+    const read = await readRegularFileNoFollow(rootFile);
+    assert.equal(read.content.toString("utf8"), "safe");
+    assert.equal(read.size, 4);
+    await fs.symlink(outsideFile, link);
+    await assert.rejects(() => readRegularFileNoFollow(link));
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });
   }
