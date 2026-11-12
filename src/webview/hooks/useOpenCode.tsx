@@ -284,7 +284,7 @@ function createOpenCode() {
       });
       let workerAbortPromise: Promise<unknown> | undefined;
       const abortWorker = () => {
-        workerAbortPromise ??= c.session.abort({ sessionID: childSessionId });
+        workerAbortPromise ??= c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
         return workerAbortPromise;
       };
       const packed = contextForSpecialist({
