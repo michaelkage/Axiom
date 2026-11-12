@@ -106,7 +106,7 @@ test('chat never assumes a model that the runtime has not confirmed installed', 
   assert.match(app, /models\.includes\(state\.model\)/);
   assert.match(app, /No models installed/);
   assert.match(app, /!nativeLoadedModel&&!selectedOllamaModel/);
-  assert.match(app, /disabled=\{\(!draft\.trim\(\)&&!draftAttachments\.length\)\|\|!activeModel\}/);
+  assert.match(app, /disabled=\{\(!draft\.trim\(\)&&!draftAttachments\.length\)\|\|\(!activeModel&&navigator\.onLine\)\}/);
   assert.doesNotMatch(app, /model:'qwen2\.5:1\.5b'/);
   assert.doesNotMatch(app, /aria-label="Default model"/);
 });
