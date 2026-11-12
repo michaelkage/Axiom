@@ -61,25 +61,25 @@ export function createHostWorktreeRequester(
           }
         }
       };
-      const finish = (error?: Error, path?: string) => {
+      const finish = (result: { ok: true; path: string } | { ok: false; error: Error }) => {
         if (settled) return;
         settled = true;
         cleanup();
-        if (error) reject(error);
-        else resolve(path as string);
+        if (result.ok) resolve(result.path);
+        else reject(result.error);
       };
       const onMessage = (event: { data: WorktreeHostResult }) => {
         const data = event.data;
         if (data?.type !== "agent-worktree-result" || data.requestId !== requestId) return;
-        if (data.ok && typeof data.path === "string" && data.path.length > 0) finish(undefined, data.path);
-        else finish(new Error(data.error || "The host could not create an isolated worktree."));
+        if (data.ok && typeof data.path === "string" && data.path.length > 0) finish({ ok: true, path: data.path });
+        else finish({ ok: false, error: new Error(data.error || "The host could not create an isolated worktree.") });
       };
       try {
         transport.addMessageListener(onMessage);
-        timeout = transport.setTimeout(() => finish(new Error("Timed out while creating the isolated agent worktree.")), timeoutMs);
+        timeout = transport.setTimeout(() => finish({ ok: false, error: new Error("Timed out while creating the isolated agent worktree.") }), timeoutMs);
         transport.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot });
       } catch (cause) {
-        finish(cause instanceof Error ? cause : new Error(String(cause)));
+        finish({ ok: false, error: cause instanceof Error ? cause : new Error(String(cause)) });
       }
     });
   };
