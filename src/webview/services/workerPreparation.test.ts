@@ -47,7 +47,7 @@ describe("worker preparation", () => {
   it("uses preferred agent only when no specialist match exists", () => {
     expect(resolveWorkerAgent(
       { ...task, title: "Handle an unusual maintenance task", scope: "Update a small internal note." },
-      ["implementation", "review"],
+      ["review"],
       "review",
     )).toEqual({ agent: "review", roleHint: "implementation" });
   });
