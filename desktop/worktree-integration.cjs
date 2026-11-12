@@ -6,10 +6,10 @@ const path = require("node:path");
 
 function normalizeWorkspaceRelativePath(value) {
   if (typeof value !== "string" || !value || value.length > 512 || value !== value.trim()
-    || /[\\x00-\\x1f\\x7f]/.test(value)) {
+    || /[\x00-\x1f\x7f]/.test(value)) {
     throw new Error("Invalid workspace-relative file path.");
   }
-  const portable = value.replace(/\\\\/g, "/");
+  const portable = value.replace(/\\/g, "/");
   const segments = portable.split("/");
   if (portable.startsWith("/") || /^[a-z]:/i.test(portable)
     || segments.some(segment => !segment || segment === "." || segment === ".." || segment.includes(":"))) {
