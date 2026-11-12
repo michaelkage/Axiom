@@ -36,9 +36,10 @@ export function validateOfflinePrompt(payload) {
     prompt: redactSecrets(payload.prompt).slice(0, 100000),
     attachments: Array.isArray(payload.attachments) ? payload.attachments.slice(0, 8).map(item => {
       if (!item || !["image", "text"].includes(item.kind) || typeof item.name !== "string") throw new TypeError("Invalid offline attachment.");
+      const id = typeof item.id === "string" && item.id ? item.id.slice(0, 100) : (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
       return item.kind === "image"
-        ? { kind: "image", name: item.name.slice(0, 180), type: String(item.type || "image/jpeg"), size: Number(item.size) || 0, base64: String(item.base64 || "") }
-        : { kind: "text", name: item.name.slice(0, 180), type: String(item.type || "text/plain"), size: Number(item.size) || 0, text: redactSecrets(String(item.text || "")) };
+        ? { id, kind: "image", name: item.name.slice(0, 180), type: String(item.type || "image/jpeg"), size: Number(item.size) || 0, base64: String(item.base64 || "") }
+        : { id, kind: "text", name: item.name.slice(0, 180), type: String(item.type || "text/plain"), size: Number(item.size) || 0, text: redactSecrets(String(item.text || "")) };
     }) : [],
     createdAt: Number.isFinite(payload.createdAt) ? payload.createdAt : Date.now()
   };
