@@ -35,3 +35,11 @@ test('outcome summary clearly marks missing verification as unknown', () => {
   const summary = buildOutcomeSummary([{ role: 'user', content: 'Update a component.' }, { role: 'assistant', content: 'Updated the component.' }], []);
   assert.match(summary, /No explicit verification result was found/);
 });
+
+test('user claims alone do not count as verification evidence', () => {
+  const summary = buildOutcomeSummary([
+    { role: 'user', content: 'The build passed, please review it.' },
+    { role: 'assistant', content: 'Updated the requested component.' }
+  ], []);
+  assert.match(summary, /No explicit verification result was found/);
+});
