@@ -422,3 +422,22 @@ test('companion coordinator bounds paired sessions and reclaims expired slots', 
   assert.equal(companion.isCompanionSession('not-a-session'), false);
   assert.doesNotThrow(() => claim(101));
 });
+
+
+test('companion pairing claim enforces the per-source rolling rate limit', async () => {
+  await withServer({}, async base => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await fetch(base + '/companion/pairing/claim', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: '00000000', deviceName: 'Untrusted device' })
+      });
+      assert.equal(response.status, 401);
+    }
+    const limited = await fetch(base + '/companion/pairing/claim', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: '00000000', deviceName: 'Untrusted device' })
+    });
+    assert.equal(limited.status, 429);
+    assert.match((await limited.json()).error, /Too many pairing attempts/);
+  });
+});
