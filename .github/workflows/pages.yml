@@ -1,0 +1,57 @@
+name: Publish Axiom product site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/site/**"
+      - ".github/workflows/pages.yml"
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: axiom-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate current release catalog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/site/generate-releases.mjs
+
+      - name: Validate site and release catalog
+        run: node --test scripts/site/*.test.mjs
+
+      - name: Upload product site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy product site
+        id: deployment
+        uses: actions/deploy-pages@v4
