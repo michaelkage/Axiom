@@ -15,20 +15,15 @@ import {
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
 import { loadRelevantWorkerProjectMemories, runOpenCodeSubAgentTasks } from "../services/opencodeTaskOrchestrator";
-
-import { runtimeEventSource } from "../utils/runtimeEventSource";
+import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
+import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
 export type PromptPartInput = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput;
 
-export type SSEStatus = {
-  status: "connecting" | "connected" | "reconnecting" | "closed";
-  attempt?: number;
-  nextRetryMs?: number;
-  reason?: "aborted" | "error" | "manual";
-};
+export type SSEStatus = RuntimeEventStatus;
 
 interface GlobalConfig {
   serverUrl: string;
@@ -156,35 +151,7 @@ function createOpenCode() {
     return { model: route.model, models: discovery.models, tasks, discoveryWarning: discovery.warning, fallbackUsed: route.fallbackUsed, routingExplanation: route.explanation };
   }
 
-  async function createAgentWorktree(taskId: string, root: string): Promise<string> {
-    if (!hasAxiomDesktopApi) throw new Error("Isolated agent worktrees are available only in the Axiom desktop app.");
-    const requestId = "axiom-worktree-" + crypto.randomUUID();
-    return new Promise<string>((resolve, reject) => {
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const cleanup = () => {
-        window.removeEventListener("message", onMessage);
-        if (timeout) clearTimeout(timeout);
-      };
-      const onMessage = (event: MessageEvent) => {
-        const data = event.data as { type?: string; requestId?: string; ok?: boolean; path?: string; error?: string };
-        if (data?.type !== "agent-worktree-result" || data.requestId !== requestId) return;
-        cleanup();
-        if (data.ok && data.path) resolve(data.path);
-        else reject(new Error(data.error ?? "The host could not create an isolated worktree."));
-      };
-      timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error("Timed out while creating the isolated agent worktree."));
-      }, 35000);
-      window.addEventListener("message", onMessage);
-      try {
-        hostBridge.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
-      } catch (error) {
-        cleanup();
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }
+  const createAgentWorktree = createHostWorktreeRequester();
 
   async function runSubAgentTasks(parentSessionId: string, tasks: AxiomSubTask[], preferredAgent?: string | null, orchestration?: { request: string; planSteps?: string[]; signal?: AbortSignal; onOutcome?: (record: import("../../shared/axiomRuntime").TaskExecutionRecord) => void; onLog?: (taskId: string, line: string) => void }) {
     const c = client();
@@ -239,36 +206,9 @@ function createOpenCode() {
 
   // Subscribe to events for the workspace directly from the standalone renderer
   // (native EventSource has CORS issues in webview)
-  function subscribeToEvents(
-    onEvent: (event: Event) => void,
-    onStatus?: (status: SSEStatus) => void,
-    directoryOverride?: string
-  ): () => void {
-    const baseUrl = serverUrl();
-    const dir = directoryOverride ?? workspaceRoot();
-    if (!baseUrl) throw new Error("Not connected");
-
-    const url = new URL("/event", baseUrl);
-    if (dir) {
-      url.searchParams.set("directory", dir);
-    }
-
-    return runtimeEventSource(
-      url.toString(),
-      (data) => {
-        try {
-          const parsed = JSON.parse(data);
-          onEvent(parsed as Event);
-        } catch (err) {
-          console.error("[SSE] Failed to parse event:", err);
-        }
-      },
-      (err) => {
-        console.error("[SSE] EventSource error:", err);
-      },
-      onStatus
-    );
-  }
+  const subscribeToEvents = createOpenCodeEventSubscriber<Event>(
+    () => ({ serverUrl: serverUrl(), workspaceRoot: workspaceRoot() }),
+  );
 
   // Respond to permission request
   async function respondToPermission(
