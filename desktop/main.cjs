@@ -494,14 +494,16 @@ async function inspectWorktree(event, message) {
     if (diff.exitCode !== 0) throw new Error(diff.output || "Could not read the actual Git diff.");
     let patch = diff.output;
     for (const file of files.filter(item => item.status === "??")) {
-      const full = path.resolve(message.worktreePath, file.path);
-      if (!insidePath(message.worktreePath, full)) throw new Error("A changed file path escaped the task worktree.");
       try {
-        const stat = await fs.promises.lstat(full);
-        if (!stat.isFile() || stat.isSymbolicLink()) continue;
-        const content = (await fs.promises.readFile(full, "utf8")).slice(0, 30000);
-        patch += "\n\n--- NEW FILE: " + file.path + " ---\n" + content;
-      } catch {}
+        const full = await resolveSafeWorkspaceFile(message.worktreePath, file.path);
+        const inspected = await readRegularFileNoFollow(full);
+        patch += "\n\n--- NEW FILE: " + file.path + " ---\n";
+        patch += inspected.size > 1024 * 1024
+          ? "[Preview omitted: untracked file exceeds the 1 MiB review-preview limit.]"
+          : inspected.content.toString("utf8").slice(0, 30000);
+      } catch (error) {
+        patch += "\n\n--- UNREADABLE NEW FILE: " + file.path + " ---\n" + String(error.message || error).slice(0, 500);
+      }
     }
     const whitespace = await run("git", ["diff", "--check", "HEAD", "--"], message.worktreePath);
     sendHostMessage(event, {
