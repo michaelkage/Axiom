@@ -220,3 +220,8 @@ body:has([data-theme="light"]) { background: #f4f3ed; color: #171812; }
 [data-theme="high-contrast"] input:focus-visible,
 [data-theme="high-contrast"] textarea:focus-visible,
 [data-theme="high-contrast"] select:focus-visible { outline: 3px solid var(--acid) !important; outline-offset: 3px; }
+
+html[data-theme="light"] { color-scheme: light; background: #f4f3ed; }
+html[data-theme="light"] body { background: #f4f3ed; color: #171812; }
+html[data-theme="light"] #root { background: #f4f3ed; }
+html[data-theme="high-contrast"] { color-scheme: dark; }
