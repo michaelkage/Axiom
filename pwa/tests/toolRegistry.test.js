@@ -58,6 +58,13 @@ test('serializes normal tool results as JSON', () => {
   assert.equal(serializeToolResult({ ok: true, count: 2 }), '{"ok":true,"count":2}');
 });
 
+test('redacts secrets from serialized tool results before returning them to a model', () => {
+  const result = serializeToolResult({ token: 'ghp_abcdefghijklmnopqrstuvwxyz123456', output: 'API_KEY=private-value' });
+  assert.doesNotMatch(result, /ghp_abcdefghijklmnopqrstuvwxyz123456/);
+  assert.doesNotMatch(result, /private-value/);
+  assert.match(result, /\\[REDACTED\\]/);
+});
+
 test('rejects circular and BigInt tool results with a useful error', () => {
   const circular = {};
   circular.self = circular;
