@@ -275,7 +275,7 @@ function createOpenCode() {
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
         "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
         "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
-      ].join("\\n\\n");
+      ].join("\n\n");
       const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
       const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
       const agent = task.agentHint && availableAgentNames.has(task.agentHint)
@@ -289,6 +289,7 @@ function createOpenCode() {
         workspaceRoot: directory,
         buildPrompt: buildTaskPrompt,
         agent: workerAgent,
+        diagnostics: { contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent },
         signal,
         createWorktree: createAgentWorktree,
         createSession: input => c.session.create(input),
