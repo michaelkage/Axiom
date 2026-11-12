@@ -36,6 +36,7 @@ export default function CodeEditor() {
   const [notice, setNotice] = useState('');
   const [showReplace, setShowReplace] = useState(false);
   const inputRef = useRef(null);
+  const gutterRef = useRef(null);
   const editorRef = useRef(null);
   const highlightRef = useRef(null);
 
@@ -119,6 +120,7 @@ export default function CodeEditor() {
     if (!highlightRef.current) return;
     highlightRef.current.scrollTop = event.currentTarget.scrollTop;
     highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+    if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
   }
 
   return <section className="space-y-4">
@@ -148,7 +150,7 @@ export default function CodeEditor() {
         <button type="button" onClick={replaceAll} className="min-h-9 border border-white/15 text-xs">Replace all</button>
       </div>}
       <div className="code-editor-shell flex relative" style={{ height: 'min(58dvh, 620px)', minHeight: 280 }}>
-        <div aria-hidden="true" className="code-editor-gutter select-none text-right py-3 px-2 text-[11px] leading-6 text-slate-600 border-r border-white/10 bg-black/20">{Array.from({ length: lineCount }, (_, index) => <div key={index}>{index + 1}</div>)}</div>
+        <div ref={gutterRef} aria-hidden="true" className="code-editor-gutter select-none text-right py-3 px-2 text-[11px] leading-6 text-slate-600 border-r border-white/10 bg-black/20 overflow-hidden">{Array.from({ length: lineCount }, (_, index) => <div key={index}>{index + 1}</div>)}</div>
         <div className="relative flex-1 min-w-0 overflow-hidden">
           <pre ref={highlightRef} aria-hidden="true" className="code-editor-highlight absolute inset-0 m-0 p-3 overflow-hidden text-[12px] leading-6 font-mono whitespace-pre pointer-events-none"><code><HighlightedCode value={value + '\n'}/></code></pre>
           <textarea ref={editorRef} aria-label="Code editor" spellCheck={false} autoCapitalize="off" autoCorrect="off" value={value} onChange={event => { setValue(event.target.value); setDirty(event.target.value !== original); }} onScroll={handleScroll} className="code-editor-input absolute inset-0 w-full h-full resize-none m-0 p-3 text-[12px] leading-6 font-mono whitespace-pre overflow-auto bg-transparent outline-none" placeholder="// Open a source file to begin editing…"/>
