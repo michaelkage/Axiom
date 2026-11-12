@@ -247,52 +247,8 @@ function createOpenCode() {
     return executeTaskBatches(tasks, async (task, completed, signal) => {
       if (signal?.aborted) throw new Error("Parallel task cancelled before worker startup.");
       if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
-      const taskDirectory = await createAgentWorktree(task.id, directory);
-      if (signal?.aborted) throw Object.assign(new Error("Parallel task cancelled after worktree setup."), { worktreePath: taskDirectory });
-      let created: Awaited<ReturnType<typeof c.session.create>>;
-      try {
-        created = await c.session.create({
-          directory: taskDirectory,
-          parentID: parentSessionId,
-          title: "Axiom: " + task.title,
-        });
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw Object.assign(
-          new Error(`Could not create child session for "${task.title}": ${detail.slice(0, 1000)}`),
-          { worktreePath: taskDirectory },
-        );
-      }
-      if (created.error || !created.data?.id) {
-        throw Object.assign(
-          new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error).slice(0, 1000) : "missing session ID"}`),
-          { worktreePath: taskDirectory },
-        );
-      }
-      const childSessionId = created.data.id;
-      const workerLogs: string[] = [];
-      const logWorker = (line: string) => {
-        const entry = new Date().toISOString() + " " + line.slice(0, 1800);
-        workerLogs.push(entry);
-        if (workerLogs.length > 200) workerLogs.shift();
-        orchestration?.onLog?.(task.id, entry);
-      };
-      logWorker("Worker session created: " + childSessionId);
-      logWorker("Isolated worktree: " + taskDirectory);
+
       let workerAgent: string | undefined;
-      let contextMetrics: { contextEstimatedTokensBefore: number; contextEstimatedTokensAfter: number; contextSavingsPercent: number } | undefined;
-      const taskError = (message: string) => Object.assign(new Error(message), {
-        sessionId: childSessionId,
-        worktreePath: taskDirectory,
-        ...(workerAgent ? { agent: workerAgent } : {}),
-        ...(contextMetrics ?? {}),
-        logs: workerLogs.slice(),
-      });
-      let workerAbortPromise: Promise<unknown> | undefined;
-      const abortWorker = () => {
-        workerAbortPromise ??= c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
-        return workerAbortPromise;
-      };
       const packed = contextForSpecialist({
         request: orchestration?.request ?? task.scope,
         taskTitle: task.title,
@@ -308,17 +264,12 @@ function createOpenCode() {
         })),
         constraints: ["Do not overlap with sibling tasks. Preserve unrelated behavior.", "Run focused checks where available and report exact commands and observed outcomes."],
       });
-      contextMetrics = {
-        contextEstimatedTokensBefore: packed.inputEstimatedTokens,
-        contextEstimatedTokensAfter: packed.estimatedTokens,
-        contextSavingsPercent: packed.estimatedSavingsPercent,
-      };
       const taskPrompt = [
         "Axiom parallel task: " + task.title,
         "Task scope: " + task.scope,
         "Declared target files: " + (task.targetFiles.length ? task.targetFiles.join(", ") : "(none declared; keep the scope narrow)"),
         "Acceptance criteria (each must be addressed and evidenced): " + (task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((criterion, index) => (index + 1) + ". " + criterion).join("; ") : "Implement the declared scope and report concrete verification evidence."),
-        "Isolated worktree path: " + taskDirectory,
+        "Isolated worktree path: created for this task",
         "Context budget: approximately " + packed.inputEstimatedTokens + " tokens before packing and " + packed.estimatedTokens + " after packing; estimated savings " + packed.estimatedSavingsTokens + " tokens (" + packed.estimatedSavingsPercent + "%). These are heuristic estimates, not provider-reported usage.",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
         "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
@@ -330,64 +281,30 @@ function createOpenCode() {
         ? task.agentHint
         : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
       workerAgent = agent;
-      if (signal?.aborted) throw taskError("Parallel task cancelled before prompting the worker.");
-      signal?.addEventListener("abort", abortWorker, { once: true });
-      const stopWorkerEvents = subscribeToEvents(event => {
-        const serialized = JSON.stringify(event);
-        if (!serialized.includes(childSessionId)) return;
-        const type = String(event.type || "runtime.event");
-        if (!/message\.|session\.(error|status|idle|updated)|tool\./.test(type)) return;
-        logWorker("[" + type + "] " + serialized.slice(0, 1400));
-      }, undefined, taskDirectory);
-      if (signal?.aborted) {
-        stopWorkerEvents();
-        await abortWorker().catch(() => undefined);
-        signal?.removeEventListener("abort", abortWorker);
-        throw taskError("Parallel task cancelled before prompting the worker.");
-      }
-      let result: { error?: unknown };
-      try {
-        result = await c.session.prompt({
-          sessionID: childSessionId,
-          parts: [{ type: "text", text: taskPrompt }],
-          ...(agent ? { agent } : {}),
-        });
-      } catch (error) {
-        if (signal?.aborted) await abortWorker().catch(() => undefined);
-        throw taskError(error instanceof Error ? error.message : String(error));
-      } finally {
-        if (signal?.aborted) await abortWorker().catch(() => undefined);
-        signal?.removeEventListener("abort", abortWorker);
-        stopWorkerEvents();
-      }
-      logWorker("Worker prompt completed.");
-      if (signal?.aborted) throw taskError("Parallel task was cancelled while the worker was running.");
-      if (result.error) {
-        throw taskError("Task \"" + task.title + "\" failed: " + JSON.stringify(result.error));
-      }
-      let summary = "Agent prompt was accepted; review workspace changes and verification before merging.";
-      if (signal?.aborted) throw taskError("Parallel task was cancelled before collecting the worker transcript.");
-      signal?.addEventListener("abort", abortWorker, { once: true });
-      try {
-        const messagesResponse = await c.session.messages({ sessionID: childSessionId });
-        const messages = (messagesResponse.data ?? []) as unknown as Array<{
-          info?: { role?: string };
-          parts?: Array<{ type?: string; text?: string }>;
-        }>;
-        const assistantMessages = messages.filter(message => message.info?.role === "assistant");
-        const latest = assistantMessages[assistantMessages.length - 1];
-        const text = (latest?.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n").trim();
-        if (text) {
-          summary = text.slice(0, 1200);
-          logWorker("Assistant transcript: " + text.slice(0, 12000));
-        }
-      } catch {
-        // A missing transcript must not turn a successful prompt response into a false failure.
-      } finally {
-        if (signal?.aborted) await abortWorker().catch(() => undefined);
-        signal?.removeEventListener("abort", abortWorker);
-      }
-      return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, logs: workerLogs.slice(), contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
+
+      const worker = await runOpenCodeWorkerLifecycle({
+        task,
+        parentSessionId,
+        workspaceRoot: directory,
+        prompt: taskPrompt,
+        agent: workerAgent,
+        signal,
+        createWorktree: createAgentWorktree,
+        createSession: input => c.session.create(input),
+        promptSession: input => c.session.prompt(input),
+        abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
+        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as Promise<{
+          data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
+        }>,
+        subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
+        onLog: orchestration?.onLog,
+      });
+      return {
+        ...worker,
+        contextEstimatedTokensBefore: packed.inputEstimatedTokens,
+        contextEstimatedTokensAfter: packed.estimatedTokens,
+        contextSavingsPercent: packed.estimatedSavingsPercent,
+      };
     }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });
   }
 
