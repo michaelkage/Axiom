@@ -40,6 +40,7 @@ describe("Axiom runtime helpers", () => {
     const base = { id: "bounded", title: "Task", scope: "Implement safely", targetFiles: ["src/task.ts"], dependsOn: [], acceptanceCriteria: ["Tests pass"] };
     expect(() => parseSubTasks(Array.from({ length: 51 }, (_, index) => ({ ...base, id: "task-" + index })))).toThrow(/more than 50 tasks/);
     expect(() => parseSubTasks([{ ...base, targetFiles: Array.from({ length: 101 }, (_, index) => "src/" + index + ".ts") }])).toThrow(/too many target files/);
+    expect(() => parseSubTasks([{ ...base, targetFiles: Array.from({ length: 10_000 }, () => null) }])).toThrow(/too many target files/);
     expect(() => parseSubTasks([{ ...base, acceptanceCriteria: Array.from({ length: 21 }, () => "criterion") }])).toThrow(/concise, non-empty acceptance criteria/);
     expect(() => parseSubTasks([{ ...base, title: "x".repeat(241) }])).toThrow(/overlong title/);
   });
