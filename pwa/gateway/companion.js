@@ -48,7 +48,7 @@ export function createCompanionCoordinator({ now = Date.now } = {}) {
   function claimInvite(input = {}) {
     prune();
     const code = boundedString(input.code, 8, 'Pairing code');
-    if (!/^\\d{8}$/.test(code)) fail('Pairing code is invalid.', 401);
+    if (!/^\d{8}$/.test(code)) fail('Pairing code is invalid.', 401);
     const invite = invites.get(code);
     if (!invite) fail('Pairing code is invalid, expired, or already used.', 401);
     invites.delete(code);
