@@ -225,3 +225,19 @@ html[data-theme="light"] { color-scheme: light; background: #f4f3ed; }
 html[data-theme="light"] body { background: #f4f3ed; color: #171812; }
 html[data-theme="light"] #root { background: #f4f3ed; }
 html[data-theme="high-contrast"] { color-scheme: dark; }
+
+/* Source editor: syntax layer and transparent editable input share one scroll surface. */
+.code-editor-gutter { min-width: 42px; }
+.code-editor-highlight, .code-editor-input { tab-size: 2; font-family: var(--mono); }
+.code-editor-input { color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--acid); }
+.code-editor-input::selection { background: rgba(213,255,53,.28); }
+.code-editor-highlight { color: #d7d9d2; }
+.editor-keyword { color: #d7a6ff; }
+.editor-string { color: #b7dc88; }
+.editor-comment { color: #788477; font-style: italic; }
+.editor-number { color: #e7b77d; }
+[data-theme="light"] .code-editor-highlight { color: #202119; }
+[data-theme="light"] .editor-keyword { color: #7137a4; }
+[data-theme="light"] .editor-string { color: #386c25; }
+[data-theme="light"] .editor-comment { color: #777b70; }
+[data-theme="light"] .editor-number { color: #96551e; }
