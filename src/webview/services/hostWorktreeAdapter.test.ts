@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createHostWorktreeRequester, type WorktreeHostTransport, type WorktreeHostMessage } from "./hostWorktreeAdapter";
+import { createHostWorktreeRequester, type WorktreeHostTransport, type WorktreeHostMessage, type WorktreeHostResult } from "./hostWorktreeAdapter";
 
 function setup() {
-  const listeners = new Set<(event: { data: any }) => void>();
+  const listeners = new Set<(event: { data: WorktreeHostResult }) => void>();
   const sent: WorktreeHostMessage[] = [];
   const transport: WorktreeHostTransport = {
     postMessage: vi.fn(message => { sent.push(message); }),
