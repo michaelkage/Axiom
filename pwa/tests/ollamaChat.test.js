@@ -38,6 +38,7 @@ function setup(fetchResponses, overrides = {}) {
       executeTool: async () => ({ ok: true }),
       onEvent: event => events.push(event),
       onText: value => text.push(value),
+      maxRetries: 0,
       ...overrides,
       ...options
     })
