@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 
 test("normalizes safe workspace-relative paths and rejects traversal or ambiguous paths", () => {
   assert.equal(normalizeWorkspaceRelativePath("src\\feature.ts"), "src/feature.ts");
@@ -33,6 +33,19 @@ test("rejects symlinks in parent and leaf components while allowing missing file
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });
   }
+});
+
+test("parses NUL-delimited Git status without corrupting unusual filenames or renames", () => {
+  assert.deepEqual(parseGitStatusPorcelainZ(" M normal\\0??  leading\\0?? file name\\0"), [
+    { status: "M", path: "normal" },
+    { status: "??", path: " leading" },
+    { status: "??", path: "file name" }
+  ]);
+  assert.deepEqual(parseGitStatusPorcelainZ("R  new-name\\0old-name\\0"), [
+    { status: "D", path: "old-name" },
+    { status: "A", path: "new-name" }
+  ]);
+  assert.throws(() => parseGitStatusPorcelainZ("R  new-name\\0"), /incomplete rename/);
 });
 
 test("opens regular files without following a replaced symlink leaf", async () => {
