@@ -11,10 +11,11 @@ const [manifestText, worker, html, entry, app, modelStore, nativeModelStore] = a
   readFile(new URL('../src/components/ModelStore.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/NativeModelStore.jsx', import.meta.url), 'utf8')
 ]);
-const [codeEditor, skillsMarketplace, skillRegistry] = await Promise.all([
+const [codeEditor, skillsMarketplace, skillRegistry, workspaceCapture] = await Promise.all([
   readFile(new URL('../src/components/CodeEditor.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/SkillsMarketplace.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/lib/skillRegistry.js', import.meta.url), 'utf8')
+  readFile(new URL('../src/lib/skillRegistry.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/lib/workspaceCapture.js', import.meta.url), 'utf8')
 ]);
 
 const manifest = JSON.parse(manifestText);
@@ -62,7 +63,7 @@ test('manifest registers a multipart Web Share Target for text, URLs and project
 test('mobile workspace exposes voice, attachments, theme controls, retries and summaries', () => {
   assert.match(app, /VoiceCapture/);
   assert.match(app, /prepareAttachments/);
-  assert.match(app, /MAX_ATTACHMENT_BYTES/);
+  assert.match(workspaceCapture, /MAX_ATTACHMENT_BYTES/);
   assert.match(app, /axiom-theme/);
   assert.match(app, /axiom-accent/);
   assert.match(app, /axiom-retries/);
@@ -103,7 +104,7 @@ test('chat never assumes a model that the runtime has not confirmed installed', 
   assert.match(app, /models\.includes\(state\.model\)/);
   assert.match(app, /No models installed/);
   assert.match(app, /!nativeLoadedModel&&!selectedOllamaModel/);
-  assert.match(app, /disabled=\{!draft\.trim\(\)\|\|!activeModel\}/);
+  assert.match(app, /disabled=\{\(!draft\.trim\(\)&&!draftAttachments\.length\)\|\|!activeModel\}/);
   assert.doesNotMatch(app, /model:'qwen2\.5:1\.5b'/);
   assert.doesNotMatch(app, /aria-label="Default model"/);
 });
