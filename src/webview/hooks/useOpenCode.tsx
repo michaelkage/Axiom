@@ -160,11 +160,12 @@ function createOpenCode() {
 
   async function createAgentWorktree(taskId: string, root: string): Promise<string> {
     if (!hasAxiomDesktopApi) throw new Error("Isolated agent worktrees are available only in the Axiom desktop app.");
-    const requestId = "axiom-worktree-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    const requestId = "axiom-worktree-" + crypto.randomUUID();
     return new Promise<string>((resolve, reject) => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
         window.removeEventListener("message", onMessage);
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
       };
       const onMessage = (event: MessageEvent) => {
         const data = event.data as { type?: string; requestId?: string; ok?: boolean; path?: string; error?: string };
@@ -173,12 +174,17 @@ function createOpenCode() {
         if (data.ok && data.path) resolve(data.path);
         else reject(new Error(data.error ?? "The host could not create an isolated worktree."));
       };
-      const timeout = setTimeout(() => {
+      timeout = setTimeout(() => {
         cleanup();
         reject(new Error("Timed out while creating the isolated agent worktree."));
       }, 35000);
       window.addEventListener("message", onMessage);
-      hostBridge.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
+      try {
+        hostBridge.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot: root });
+      } catch (error) {
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
