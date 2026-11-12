@@ -537,26 +537,12 @@ async function runQualityGate(event, message) {
     await addCheck("Git whitespace and conflict-marker check", "git", ["diff", "--check", "HEAD", "--"], message.worktreePath, 30000);
 
     const untracked = (await changedFiles(message.worktreePath)).filter(file => file.status === "??");
-    let untrackedIssues = [];
+    const untrackedIssues = [];
     for (const file of untracked) {
-      const full = path.resolve(message.worktreePath, file.path);
-      if (!insidePath(message.worktreePath, full)) continue;
       try {
-        const stat = await fs.promises.lstat(full);
-        if (stat.isSymbolicLink()) {
-          untrackedIssues.push(file.path + ": symbolic links are not allowed in worker changes");
-          continue;
-        }
-        if (!stat.isFile()) {
-          untrackedIssues.push(file.path + ": only regular files can be integrated");
-          continue;
-        }
-        if (stat.size > 5 * 1024 * 1024) {
-          untrackedIssues.push(file.path + ": exceeds the 5 MiB untracked-file quality inspection limit");
-          continue;
-        }
-        const text = await fs.promises.readFile(full, "utf8");
-        const lines = text.split(/\r?\n/);
+        const full = await resolveSafeWorkspaceFile(message.worktreePath, file.path);
+        const inspected = await readRegularFileNoFollow(full, 5 * 1024 * 1024);
+        const lines = inspected.content.toString("utf8").split(/\r?\n/);
         lines.forEach((line, index) => {
           if (/[ \t]+$/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": trailing whitespace");
           if (/^(<<<<<<< |=======|>>>>>>> )/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": possible unresolved conflict marker");
@@ -705,7 +691,7 @@ async function applyWorktreeChanges(event, message) {
           if (taskBaseBlob == null) throw new Error("Integration blocked for " + relative + ": worker source is missing and this is not a tracked deletion.");
         }
         if (destinationStat?.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the 25 MiB rollback limit.");
-        const destinationBackup = destinationStat ? await readRegularFileNoFollow(destination) : null;
+        const destinationBackup = destinationStat ? await readRegularFileNoFollow(destination, maxFileBytes) : null;
         if (destinationBackup && (destinationBackup.dev !== destinationStat.dev || destinationBackup.ino !== destinationStat.ino)) {
           throw new Error("Integration blocked for " + relative + ": destination changed during preflight.");
         }
