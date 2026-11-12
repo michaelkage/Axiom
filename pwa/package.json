@@ -18,7 +18,8 @@
     "prebuild": "node scripts/sync-skills.mjs",
     "ios:add": "cap add ios",
     "ios:sync": "cap sync ios",
-    "ios:configure": "ruby scripts/configure-ios-project.rb"
+    "ios:configure": "ruby scripts/configure-ios-project.rb",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
