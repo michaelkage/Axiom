@@ -1,4 +1,4 @@
-import type { AxiomPlatformAdapter } from "../../shared/platform";
+import type { AxiomFileEntry, AxiomPlatformAdapter } from "../../shared/platform";
 
 type DesktopBridge = {
   secureStorage: {
@@ -8,22 +8,27 @@ type DesktopBridge = {
   };
   project: {
     bootstrap(): Promise<{ workspaceRoot: string | null; platform: string }>;
-    listFiles(path?: string): Promise<unknown[]>;
-    readFile(path: string): Promise<string>;
-    writeFile(path: string, content: string): Promise<unknown>;
+    listFiles(path?: string): Promise<Array<{ name: string; path: string; kind: string }>>;
+    readFile(path: string): Promise<{ path: string; content: string; size: number }>;
+    writeFile(path: string, content: string): Promise<{ path: string; size: number }>;
   };
-  remoteWorkspace: { list(): Promise<unknown[]> };
+  remoteWorkspace: {
+    list(): Promise<unknown[]>;
+    create(request: unknown): Promise<unknown>;
+    retryClone(id: string): Promise<unknown>;
+    commitAndPush(request: unknown): Promise<unknown>;
+    reconcile(id: string): Promise<unknown>;
+    pushRecovered(request: unknown): Promise<unknown>;
+    cancel(id: string): Promise<unknown>;
+    cleanup(id: string): Promise<unknown>;
+  };
   postMessage(message: unknown): void;
-};
-
-declare global {
-  interface Window { axiomDesktop?: DesktopBridge }
 }
 
 const unavailable = () => Promise.reject(new Error("Axiom's Electron platform bridge is unavailable."));
 
 export function createDesktopPlatformAdapter(): AxiomPlatformAdapter {
-  const bridge = typeof window !== "undefined" ? window.axiomDesktop : undefined;
+  const bridge = typeof window !== "undefined" ? (window as Window & { axiomDesktop?: DesktopBridge }).axiomDesktop : undefined;
   const platform = "electron" as const;
   const createWorktree = async (taskId: string): Promise<string> => {
     if (!bridge) throw new Error("Git worktrees require the installed Axiom desktop application.");
@@ -55,15 +60,15 @@ export function createDesktopPlatformAdapter(): AxiomPlatformAdapter {
       shareTarget: typeof navigator !== "undefined" && !!navigator.share
     }),
     secureStorage: {
-      get: (namespace, key) => bridge ? bridge.secureStorage.get(namespace, key) : unavailable(),
-      set: async (namespace, key, value) => { if (!bridge) return unavailable(); await bridge.secureStorage.set(namespace, key, value); },
-      remove: (namespace, key) => bridge ? bridge.secureStorage.remove(namespace, key) : unavailable()
+      get: (namespace: string, key: string) => bridge ? bridge.secureStorage.get(namespace, key) : unavailable(),
+      set: async (namespace: string, key: string, value: string) => { if (!bridge) return unavailable(); await bridge.secureStorage.set(namespace, key, value); },
+      remove: (namespace: string, key: string) => bridge ? bridge.secureStorage.remove(namespace, key) : unavailable()
     },
     documents: { pick: async () => { throw new Error('Use the desktop project file picker to select workspace files.'); } },
     files: {
-      list: (relativePath = "") => bridge ? bridge.project.listFiles(relativePath) as Promise<never[]> : unavailable(),
-      read: relativePath => bridge ? bridge.project.readFile(relativePath) : unavailable(),
-      write: (relativePath, content) => bridge ? bridge.project.writeFile(relativePath, content) : unavailable()
+      list: (relativePath = "") => bridge ? bridge.project.listFiles(relativePath) as Promise<AxiomFileEntry[]> : unavailable(),
+      read: (relativePath: string) => bridge ? bridge.project.readFile(relativePath).then(result => result.content) : unavailable(),
+      write: (relativePath: string, content: string) => bridge ? bridge.project.writeFile(relativePath, content) : unavailable()
     },
     git: {
       listWorkspaces: () => bridge ? bridge.remoteWorkspace.list() : unavailable(),
