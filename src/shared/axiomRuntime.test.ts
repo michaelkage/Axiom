@@ -33,7 +33,7 @@ describe("Axiom runtime helpers", () => {
   it("rejects planner tasks without explicit acceptance criteria", () => {
     expect(() => parseSubTasks([
       { id: "missing-criteria", title: "Task", scope: "Do work", targetFiles: ["src/task.ts"], dependsOn: [] },
-    ])).toThrow(/explicit, non-empty acceptance criteria/);
+    ])).toThrow(/1-20 concise, non-empty acceptance criteria/);
   });
 
   it("bounds planner output before it can expand worker fan-out or prompt size", () => {
@@ -259,7 +259,7 @@ describe("Axiom runtime helpers", () => {
     await expect(executeTaskBatches(tasks, async (_task, _completed, signal) => {
       receivedSignal = signal;
       return new Promise<string>(() => {});
-    }, record => outcomes.push(record.status), { timeoutMs: 5, abortDrainTimeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
+    }, record => outcomes.push(record.status), { timeoutMs: 5, abortDrainTimeoutMs: 5 })).rejects.toThrow(/abort was not confirmed/i);
     expect(receivedSignal?.aborted).toBe(true);
     expect(outcomes).toContain("timed_out");
   });
