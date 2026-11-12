@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 
 test("normalizes safe workspace-relative paths and rejects traversal or ambiguous paths", () => {
   assert.equal(normalizeWorkspaceRelativePath("src\\feature.ts"), "src/feature.ts");
@@ -33,6 +33,14 @@ test("rejects symlinks in parent and leaf components while allowing missing file
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });
   }
+});
+
+test("requires passing project-level evidence before marking worker output review-ready", () => {
+  const passing = [{ name: "targeted tests", state: "passed", exitCode: 0 }];
+  assert.equal(resolveWorkerQualityStatus(passing, true), "Ready to review");
+  assert.equal(resolveWorkerQualityStatus(passing, false), "Needs fixes");
+  assert.equal(resolveWorkerQualityStatus([{ name: "tests", state: "failed", exitCode: 1 }], true), "Needs fixes");
+  assert.equal(resolveWorkerQualityStatus([], true), "Needs fixes");
 });
 
 test("parses NUL-delimited Git status without corrupting unusual filenames or renames", () => {
