@@ -21,10 +21,10 @@ function compactIssue(issue) {
   };
 }
 
-export function registerGitHubTools({ token, repository, baseUrl = 'https://api.github.com' }) {
+export function registerGitHubTools({ token, repository, baseUrl = 'https://api.github.com', fetchImpl = globalThis.fetch }) {
   if (!token) throw new Error('A paired gateway session is required to use GitHub.');
   if (!REPOSITORY_PATTERN.test(repository || '')) throw new Error('Configure a valid GitHub repository in owner/repo format in Settings.');
-  const octokit = new Octokit({ auth: token, baseUrl, userAgent: 'Axiom-Mobile/1.0' });
+  const octokit = new Octokit({ auth: token, baseUrl, userAgent: 'Axiom-Mobile/1.0', request: fetchImpl ? { fetch: fetchImpl } : undefined });
   const [owner, repo] = repository.split('/');
   const unregister = [];
   const register = (definition, handler) => unregister.push(registerTool(definition, handler));
