@@ -46,7 +46,7 @@ describe("Axiom runtime helpers", () => {
 
   it("rejects ambiguous normalized paths and malformed task identifiers", () => {
     const base = { id: "safe-task", title: "Task", scope: "Implement safely", targetFiles: ["src/task.ts"], dependsOn: [], acceptanceCriteria: ["Tests pass"] };
-    expect(() => parseSubTasks([{ ...base, targetFiles: ["src/task.ts", "src\\\\task.ts"] }])).toThrow(/duplicate target paths/);
+    expect(() => parseSubTasks([{ ...base, targetFiles: ["src/task.ts", "src\\task.ts"] }])).toThrow(/duplicate target paths/);
     expect(() => parseSubTasks([{ ...base, targetFiles: ["src//task.ts"] }])).toThrow(/unsafe workspace-relative target path/);
     expect(() => parseSubTasks([{ ...base, id: "../escape" }])).toThrow(/invalid or overlong ID/);
     expect(() => parseSubTasks([{ ...base, dependsOn: ["safe-task", "safe-task"] }])).toThrow(/duplicate dependency/);
