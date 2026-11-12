@@ -120,7 +120,7 @@ export async function runOpenCodeWorkerLifecycle(
         }
         if (!serialized.includes(sessionId)) return;
         const type = String((event as { type?: unknown } | null)?.type ?? "runtime.event");
-        if (!/message\\.|session\\.(error|status|idle|updated)|tool\\./.test(type)) return;
+        if (!/message\.|session\.(error|status|idle|updated)|tool\./.test(type)) return;
         log("[" + type + "] " + serialized.slice(0, 1400));
       }, worktreePath);
     } catch (error) {
