@@ -24,6 +24,8 @@ test("macOS release workflow builds both architectures and accepts signing crede
   assert.match(platformWorkflow, /APPLE_CERTIFICATE_P12_BASE64/);
   assert.match(platformWorkflow, /APPLE_APP_SPECIFIC_PASSWORD/);
   assert.match(platformWorkflow, /APPLE_TEAM_ID/);
+  assert.match(platformWorkflow, /--publish never/);
+  assert.match(platformWorkflow, /env\.APPLE_CERTIFICATE_P12_BASE64 !=/);
   assert.match(platformWorkflow, /branches:\s*\n\s*- "main"/);
 });
 
