@@ -282,8 +282,10 @@ function createOpenCode() {
         ...(contextMetrics ?? {}),
         logs: workerLogs.slice(),
       });
+      let workerAbortPromise: Promise<unknown> | undefined;
       const abortWorker = () => {
-        void c.session.abort({ sessionID: childSessionId }).catch(() => undefined);
+        workerAbortPromise ??= c.session.abort({ sessionID: childSessionId });
+        return workerAbortPromise;
       };
       const packed = contextForSpecialist({
         request: orchestration?.request ?? task.scope,
@@ -333,7 +335,7 @@ function createOpenCode() {
       }, undefined, taskDirectory);
       if (signal?.aborted) {
         stopWorkerEvents();
-        abortWorker();
+        await abortWorker().catch(() => undefined);
         signal?.removeEventListener("abort", abortWorker);
         throw taskError("Parallel task cancelled before prompting the worker.");
       }
@@ -345,8 +347,10 @@ function createOpenCode() {
           ...(agent ? { agent } : {}),
         });
       } catch (error) {
+        if (signal?.aborted) await abortWorker().catch(() => undefined);
         throw taskError(error instanceof Error ? error.message : String(error));
       } finally {
+        if (signal?.aborted) await abortWorker().catch(() => undefined);
         signal?.removeEventListener("abort", abortWorker);
         stopWorkerEvents();
       }
@@ -374,6 +378,7 @@ function createOpenCode() {
       } catch {
         // A missing transcript must not turn a successful prompt response into a false failure.
       } finally {
+        if (signal?.aborted) await abortWorker().catch(() => undefined);
         signal?.removeEventListener("abort", abortWorker);
       }
       return { sessionId: childSessionId, taskId: task.id, title: task.title, agent, summary, worktreePath: taskDirectory, logs: workerLogs.slice(), contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent };
