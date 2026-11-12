@@ -106,6 +106,40 @@ describe("runOpenCodeSubAgentTasks", () => {
     expect(calls.promptSession).toHaveBeenCalledWith(expect.not.objectContaining({ agent: expect.anything() }));
   });
 
+  it("executes through an injected provider without requiring OpenCode SDK methods", async () => {
+    const execute = vi.fn(async request => ({
+      sessionId: "remote-session",
+      taskId: request.task.id,
+      title: request.task.title,
+      summary: "Executed by an independent provider.",
+      worktreePath: "/remote/workspaces/api-tests",
+      logs: ["remote worker accepted task"],
+    }));
+    const { options, calls } = setup({
+      workerProvider: {
+        id: "remote-test",
+        capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
+        execute,
+      },
+    });
+
+    const results = await runSubAgentTasks(options);
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0][0]).toMatchObject({
+      task: { id: "api-tests" },
+      parentSessionId: "parent-session",
+      workspaceRoot: "/workspace/project",
+      agent: "testing",
+    });
+    expect(results[0].result).toMatchObject({
+      sessionId: "remote-session",
+      worktreePath: "/remote/workspaces/api-tests",
+      summary: "Executed by an independent provider.",
+    });
+    expect(calls.createSession).not.toHaveBeenCalled();
+  });
+
   it("does not begin context acquisition when already cancelled", async () => {
     const controller = new AbortController();
     controller.abort();
