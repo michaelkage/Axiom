@@ -301,10 +301,28 @@ export async function executeTaskBatches<T>(
               ]);
               if (drainTimer) clearTimeout(drainTimer);
               if (!runnerSettled) {
-                throw Object.assign(
+                const quarantineError = Object.assign(
                   new Error("Worker abort was not confirmed before the cleanup deadline; the worker remains quarantined."),
                   { workerAbortUnconfirmed: true, cause: error },
                 );
+                // The execution slot is released and the task is quarantined now, but the
+                // underlying runner may eventually return useful session/worktree diagnostics.
+                // Emit those as a same-attempt timed_out update; never turn late completion
+                // into success or make the task eligible for automatic retry.
+                const emitLateDiagnostics = (value: unknown) => {
+                  const detail = value && typeof value === "object" ? value as Record<string, unknown> : {};
+                  emit({
+                    taskId: task.id, title: task.title, status: "timed_out", attempt, startedAt,
+                    finishedAt: Date.now(), error: quarantineError.message,
+                    ...(typeof detail.sessionId === "string" ? { sessionId: detail.sessionId } : {}),
+                    ...(typeof detail.worktreePath === "string" ? { worktreePath: detail.worktreePath } : {}),
+                    ...(typeof detail.agent === "string" ? { agent: detail.agent } : {}),
+                    ...(typeof detail.summary === "string" ? { summary: detail.summary.slice(0, 1200) } : {}),
+                    ...(Array.isArray(detail.logs) ? { logs: detail.logs.filter((line): line is string => typeof line === "string").slice(-200) } : {}),
+                  });
+                };
+                void runnerPromise.then(emitLateDiagnostics, emitLateDiagnostics);
+                throw quarantineError;
               }
             }
             const advice = classifyRecovery(error);
