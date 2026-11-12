@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "debugging",
+  "name": "Root-Cause Debugging",
+  "version": "1.0.0",
+  "description": "Trace failures to their source and propose the smallest safe fix with regression coverage.",
+  "requiredTools": [],
+  "modelHints": ["reasoning", "code"],
+  "permissions": ["read-context"],
+  "instructionsUrl": "./SKILL.md"
+}
