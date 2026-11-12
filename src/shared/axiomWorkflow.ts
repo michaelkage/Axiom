@@ -44,31 +44,52 @@ export interface PlannedTask {
 }
 export interface TaskOutcome { taskId: string; status: "succeeded" | "failed" | "blocked"; summary?: string; }
 export function validateTaskPlan(tasks: PlannedTask[]): PlannedTask[] {
+  const limits = { tasks: 50, taskId: 128, title: 240, scope: 4_000, filesPerTask: 100, path: 512, dependencies: 50, criteria: 20, criterion: 500, agentHint: 80 };
   if (!Array.isArray(tasks) || !tasks.length) throw new Error("Task plan cannot be empty.");
+  if (tasks.length > limits.tasks) throw new Error(`Task plan cannot exceed ${limits.tasks} tasks.`);
   const byId = new Map<string, PlannedTask>();
   for (const task of tasks) {
-    if (!task || typeof task !== "object" || typeof task.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(task.id) || byId.has(task.id)) {
+    if (!task || typeof task !== "object" || typeof task.id !== "string" || task.id.length > limits.taskId
+      || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(task.id) || byId.has(task.id)) {
       throw new Error(`Duplicate, empty, or invalid task id: ${task?.id ?? "(missing)"}`);
     }
-    if (typeof task.title !== "string" || !task.title.trim() || typeof task.scope !== "string" || !task.scope.trim()) throw new Error(`Task ${task.id} needs a title and scope.`);
-    if (!Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn) || !Array.isArray(task.acceptanceCriteria)) throw new Error(`Task ${task.id} has an invalid task-plan shape.`);
-    if (!task.acceptanceCriteria.length || task.acceptanceCriteria.some(c => !c || typeof c.id !== "string" || !c.id.trim() || typeof c.description !== "string" || !c.description.trim())) throw new Error(`Task ${task.id} needs explicit acceptance criteria.`);
+    if (typeof task.title !== "string" || !task.title.trim() || task.title.length > limits.title
+      || /[\x00-\x1f\x7f]/.test(task.title)
+      || typeof task.scope !== "string" || !task.scope.trim() || task.scope.length > limits.scope
+      || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(task.scope)) {
+      throw new Error(`Task ${task.id} needs a valid, bounded title and scope.`);
+    }
+    if (!Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn) || !Array.isArray(task.acceptanceCriteria)) {
+      throw new Error(`Task ${task.id} has an invalid task-plan shape.`);
+    }
+    if (task.targetFiles.length > limits.filesPerTask || task.dependsOn.length > limits.dependencies) {
+      throw new Error(`Task ${task.id} exceeds its target-file or dependency limit.`);
+    }
+    if (!task.acceptanceCriteria.length || task.acceptanceCriteria.length > limits.criteria
+      || task.acceptanceCriteria.some(c => !c || typeof c !== "object" || typeof c.id !== "string"
+        || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(c.id) || typeof c.description !== "string"
+        || !c.description.trim() || c.description.length > limits.criterion
+        || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(c.description))) {
+      throw new Error(`Task ${task.id} needs 1-${limits.criteria} valid, bounded acceptance criteria.`);
+    }
     const criterionIds = task.acceptanceCriteria.map(c => c.id);
     if (new Set(criterionIds).size !== criterionIds.length) throw new Error(`Task ${task.id} contains duplicate acceptance-criterion ids.`);
+    if (task.agentHint !== undefined && (typeof task.agentHint !== "string" || task.agentHint.length > limits.agentHint
+      || /[\x00-\x1f\x7f]/.test(task.agentHint))) throw new Error(`Task ${task.id} contains an invalid agent hint.`);
     const normalizedFiles = task.targetFiles.map(file => {
-      if (typeof file !== "string" || !file.trim() || file.includes("\0")) throw new Error(`Unsafe target path in task ${task.id}: ${String(file)}`);
-      const portablePath = file.trim().replace(/\\/g, "/");
-      if (portablePath.startsWith("/") || /^[a-z]:/i.test(portablePath) || portablePath.split("/").some(segment => segment === "..")) {
+      if (typeof file !== "string" || !file.trim() || file !== file.trim() || file.length > limits.path
+        || /[\x00-\x1f\x7f]/.test(file)) throw new Error(`Unsafe target path in task ${task.id}: ${String(file)}`);
+      const portablePath = file.replace(/\\/g, "/");
+      const segments = portablePath.split("/");
+      if (portablePath.startsWith("/") || /^[a-z]:/i.test(portablePath)
+        || segments.some(segment => !segment || segment === "." || segment === "..")) {
         throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
       }
-      const normalized = normalizePath(portablePath);
-      if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/")) {
-        throw new Error(`Unsafe target path in task ${task.id}: ${file}`);
-      }
-      return normalized;
+      return normalizePath(portablePath);
     });
     if (new Set(normalizedFiles).size !== normalizedFiles.length) throw new Error(`Task ${task.id} contains duplicate target paths.`);
-    if (task.dependsOn.some(dep => typeof dep !== "string" || !dep.trim()) || new Set(task.dependsOn).size !== task.dependsOn.length) {
+    if (task.dependsOn.some(dep => typeof dep !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(dep))
+      || new Set(task.dependsOn).size !== task.dependsOn.length) {
       throw new Error(`Task ${task.id} contains an invalid or duplicate dependency.`);
     }
     byId.set(task.id, task);
