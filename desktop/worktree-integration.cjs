@@ -39,6 +39,70 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
   return current;
 }
 
+async function applyStagedWorkspaceFiles(staged, options = {}) {
+  const io = options.fs || fs;
+  const appliedPaths = [];
+  try {
+    try {
+      for (const item of staged) {
+        if (item.content === null) continue;
+        item.temporary = item.destination + ".axiom-" + process.pid + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".tmp";
+        await io.writeFile(item.temporary, item.content, { flag: "wx", mode: item.sourceMode });
+        await io.chmod(item.temporary, item.sourceMode);
+      }
+    } catch (prepareError) {
+      for (const item of staged) if (item.temporary) { try { await io.unlink(item.temporary); } catch {} }
+      throw new Error("Integration preflight could not stage every file; no destination files were changed. " + prepareError.message);
+    }
+
+    try {
+      for (const item of staged) {
+        if (options.beforeApply) await options.beforeApply(item);
+        if (item.content === null) {
+          try { await io.unlink(item.destination); }
+          catch (error) { if (error.code !== "ENOENT") throw error; }
+        } else {
+          await io.rename(item.temporary, item.destination);
+          item.temporary = null;
+        }
+        appliedPaths.push(item.relative);
+      }
+      return appliedPaths;
+    } catch (applyError) {
+      const rollbackErrors = [];
+      for (const item of [...staged].reverse()) {
+        if (!appliedPaths.includes(item.relative)) continue;
+        try {
+          if (item.existed) {
+            const rollbackPath = item.destination + ".axiom-rollback-" + process.pid + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".tmp";
+            try {
+              await io.writeFile(rollbackPath, item.backup, { flag: "wx", mode: item.backupMode });
+              await io.chmod(rollbackPath, item.backupMode);
+              await io.rename(rollbackPath, item.destination);
+            } finally {
+              try { await io.unlink(rollbackPath); } catch {}
+            }
+          } else {
+            try { await io.unlink(item.destination); }
+            catch (error) { if (error.code !== "ENOENT") throw error; }
+          }
+        } catch (rollbackError) {
+          rollbackErrors.push(item.relative + ": " + rollbackError.message);
+        }
+      }
+      const pathsStillApplied = new Set(rollbackErrors.map(entry => entry.slice(0, entry.indexOf(": "))));
+      const residue = appliedPaths.filter(relative => pathsStillApplied.has(relative));
+      const failure = new Error("Integration transaction failed: " + applyError.message + (rollbackErrors.length
+        ? ". Rollback failed for " + rollbackErrors.join("; ")
+        : ". Applied files were rolled back."));
+      failure.appliedPaths = residue;
+      throw failure;
+    }
+  } finally {
+    for (const item of staged) if (item.temporary) { try { await io.unlink(item.temporary); } catch {} }
+  }
+}
+
 const workspaceLocks = new Map();
 async function withWorkspaceIntegrationLock(root, operation) {
   const key = path.resolve(root);
@@ -55,4 +119,4 @@ async function withWorkspaceIntegrationLock(root, operation) {
   }
 }
 
-module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, withWorkspaceIntegrationLock };
+module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
