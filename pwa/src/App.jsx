@@ -9,14 +9,17 @@ import TerminalPanel from './components/TerminalPanel.jsx';
 import RuntimeControls from './components/RuntimeControls.jsx';
 import ModelStore from './components/ModelStore.jsx';
 import IntegrationGuide from './components/IntegrationGuide.jsx';
+import VoiceCapture from './components/VoiceCapture.jsx';
+import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary } from './lib/workspaceCapture.js';
+import { consumeSharedPayload } from './lib/shareTarget.js';
 import { consumeGatewayPairingIntent, isNativeAndroid, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
-import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Copy, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Copy, Cpu, Database, ExternalLink, FileCode2, Github, Globe2, HardDrive, KeyRound, Layers3, LoaderCircle, Menu, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Send, Server, Settings2, Shield, Smartphone, Sparkles, Square, Terminal, Trash2, Wrench, X, Zap, Paperclip, FileText } from 'lucide-react';
 
 const STORE = 'axiom.mobile.v1';
-const defaults = { baseUrl:'http://localhost:11434', model:'', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,gatewayUrl:'http://127.0.0.1:8787',githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:''} };
+const defaults = { baseUrl:'http://localhost:11434', model:'', activeTab:'chat', chats:[], tools:[{id:'github',name:'GitHub',description:'Read files, inspect repositories and publish commits.',enabled:false,icon:'github'},{id:'supabase',name:'Supabase',description:'Inspect schemas and run SQL against your project.',enabled:false,icon:'database'}], servers:[], logs:[], settings:{temperature:0.7,stream:true,gatewayUrl:'http://127.0.0.1:8787',githubToken:'',githubRepo:'michaelkage/Axiom',supabaseUrl:'',supabaseKey:'',theme:'dark',accentColor:'#d5ff35',retryAttempts:2} };
 const uid = () => Math.random().toString(36).slice(2,10);
 const stamp = () => new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 function loadState(){ try { const saved=JSON.parse(localStorage.getItem(STORE)||'{}'); const settings={...defaults.settings,...(saved.settings||{}),githubToken:'',supabaseKey:''}; const servers=(saved.servers||[]).map(({authToken,...server})=>({...server,authToken:''})); return {...defaults,...saved,servers,settings}; } catch { return defaults; } }
@@ -26,6 +29,10 @@ export default function App(){
  const [state,setState]=useState(loadState);
  const [tab,setTab]=useState(state.activeTab||'chat');
  const [draft,setDraft]=useState('');
+ const [draftAttachments,setDraftAttachments]=useState([]);
+ const [retryStatus,setRetryStatus]=useState(null);
+ const [bootStatus,setBootStatus]=useState('initializing');
+ const attachmentInputRef=useRef(null);
  const [busy,setBusy]=useState(false);
  const [models,setModels]=useState([]);
  const [pullingModel,setPullingModel]=useState('');
@@ -106,7 +113,7 @@ export default function App(){
   const interval=setInterval(renew,6*60*60*1000);
   return()=>{active=false;clearInterval(pairingPoll);document.removeEventListener('visibilitychange',renew);window.removeEventListener('online',renew);clearInterval(interval);};
  },[state.settings?.gatewayUrl]);
- useEffect(()=>{const timer=setTimeout(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));const chats=(state.chats||[]).slice(0,40).map(chat=>({...chat,messages:(chat.messages||[]).slice(-300)}));const persisted={...state,chats,logs:(state.logs||[]).slice(0,100),settings,servers,activeTab:tab};try{localStorage.setItem(STORE,JSON.stringify(persisted));}catch(error){setNotice('Local storage is full. Export or remove older conversations to keep saving new messages.');}},650);return()=>clearTimeout(timer);},[state,tab]);
+ useEffect(()=>{const timer=setTimeout(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));const chats=(state.chats||[]).slice(0,40).map(chat=>({...chat,messages:(chat.messages||[]).slice(-300)}));const persisted={...state,chats:chats.map(chat=>({...chat,messages:chat.messages.map(({images,...message})=>message)})),logs:(state.logs||[]).slice(0,100),settings,servers,activeTab:tab};try{localStorage.setItem(STORE,JSON.stringify(persisted));}catch(error){setNotice('Local storage is full. Export or remove older conversations to keep saving new messages.');}},650);return()=>clearTimeout(timer);},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:busy?'auto':'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
@@ -430,7 +437,7 @@ export default function App(){
   }catch(error){log('error','Model download failed',error.message);setNotice('Model install failed: '+error.message);}
   finally{setPullingModel('');setPullProgress(null);}
  }
- useEffect(()=>{checkOllama({silent:true});},[state.baseUrl,state.settings?.gatewayUrl,gatewayToken]);
+ useEffect(()=>{let active=true;setBootStatus('checking');const timeout=setTimeout(()=>{if(active)setBootStatus('offline');},8000);checkOllama({silent:true}).then(()=>{if(active){clearTimeout(timeout);setBootStatus('ready');}}).catch(()=>{if(active){clearTimeout(timeout);setBootStatus('offline');}});return()=>{active=false;clearTimeout(timeout);};},[state.baseUrl,state.settings?.gatewayUrl,gatewayToken]);
  useEffect(()=>{
   const retry=()=>{if(document.visibilityState==='visible')checkOllama({silent:true});};
   const interval=setInterval(retry,connection==='online'?30000:8000);
@@ -480,7 +487,7 @@ export default function App(){
   controller.abort(new DOMException('Stopped by user','AbortError'));
  }
  async function sendMessage(){
-  const prompt=draft.trim(); if(!prompt||busy)return;
+  const prompt=(draft.trim()+buildAttachmentPrompt(draftAttachments)).trim(); if((!draft.trim()&&!draftAttachments.length)||busy)return;
   if(!nativeLoadedModel&&!selectedOllamaModel){setNotice(models.length?'Select an installed model before starting chat.':connection==='online'?'No models installed. Open Models to connect a server, import a GGUF file, or install a model before chatting.':'Connect to a model runtime before starting chat.');return;}
   if(nativeValidating){setNotice('Wait for the on-device validation run to finish before starting chat.');return;}
   const controller=new AbortController();
@@ -489,7 +496,10 @@ export default function App(){
   const chatId=currentChat?.id||uid();
   if(!currentChat)setState(s=>({...s,chats:[{id:chatId,title:'New conversation',messages:[]},...s.chats]}));
   setDraft(''); setBusy(true);
-  const userMsg={id:uid(),role:'user',content:prompt,time:stamp()};
+  const imageAttachments=draftAttachments.filter(item=>item.kind==='image');
+  const userMsg={id:uid(),role:'user',content:prompt,time:stamp(),attachments:draftAttachments.map(({id,name,type,size,kind})=>({id,name,type,size,kind})),...(!nativeLoadedModel&&imageAttachments.length?{images:imageAttachments.map(item=>item.base64)}:{})};
+  if(nativeLoadedModel&&imageAttachments.length)userMsg.content+='\n\nNote: the active native model currently accepts text only; image pixels were not sent to it.';
+  setDraftAttachments([]);
   const priorMessages=(currentChat?.messages||[]).slice(-12);
   patchChat(old=>[...old,userMsg],chatId);
   setState(s=>({...s,chats:s.chats.map(chat=>chat.id===chatId?{...chat,title:chat.title==='New conversation'?prompt.slice(0,36):chat.title}:chat)}));
@@ -511,6 +521,8 @@ export default function App(){
     getToolMeta:name=>listTools().find(tool=>tool.name===name),
     confirmTool:(name,args,{signal}={})=>new Promise(resolve=>{const finish=allowed=>{signal?.removeEventListener('abort',onAbort);approvalResolver.current=null;setPendingApproval(null);resolve(allowed);};const onAbort=()=>finish(false);approvalResolver.current=finish;setPendingApproval({name,args});if(signal?.aborted)onAbort();else signal?.addEventListener('abort',onAbort,{once:true});}),
     onText:value=>{answer=value;if(streamTimerRef.current===null)streamTimerRef.current=setTimeout(()=>{streamTimerRef.current=null;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},100);},
+    maxRetries:Math.max(0,Math.min(5,Number(state.settings?.retryAttempts??2))),
+    onRetry:event=>setRetryStatus(event),
     onEvent:event=>{
      if(event.type==='request')log('request',nativeLoadedModel?'Native llama.cpp inference':'Ollama /api/chat',JSON.stringify({model:event.model,toolCount:event.toolCount,turn:event.turn,stream:true},null,2));
      else if(event.type==='metrics')log('info','Model performance',JSON.stringify(event.metrics,null,2));
@@ -525,7 +537,7 @@ export default function App(){
    patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer,metrics:runResult.metrics||null}:m),chatId);
    log('success','Generation complete',(nativeLoadedModel?'Native · ':'Ollama · ')+(nativeLoadedModel||selectedOllamaModel));
   }catch(e){if(streamTimerRef.current!==null){clearTimeout(streamTimerRef.current);streamTimerRef.current=null;}if(answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);if(signal.aborted){if(!answer)patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:'Generation stopped.'}:m),chatId);log('info','Generation cancelled','Partial assistant output was preserved.');}else{patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:(answer?answer+'\n\n':'')+'**Generation error**\n\n'+e.message}:m),chatId);log('error','Generation failed',e.message);}}
-  finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);}
+  finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);setRetryStatus(null);}
  }
  function toggleIntegration(id){
   if(!gatewayToken){setNotice('Connect the authenticated gateway in Settings before enabling integrations.');return;}
@@ -583,7 +595,9 @@ export default function App(){
  useEffect(()=>{if(mcpRestoreStarted.current)return;mcpRestoreStarted.current=true;for(const server of state.servers.filter(s=>s.status==='connected'))discoverServer(server.id);},[]);
  useEffect(()=>{const reconnect=()=>{if(document.visibilityState!=='visible'||!navigator.onLine)return;for(const server of state.servers.filter(item=>item.status==='error'))discoverServer(server.id);};window.addEventListener('online',reconnect);document.addEventListener('visibilitychange',reconnect);return()=>{window.removeEventListener('online',reconnect);document.removeEventListener('visibilitychange',reconnect);};},[state.servers]);
  const nav=[{id:'chat',label:'Chat',icon:MessageSquare},{id:'models',label:'Models',icon:Cpu},{id:'terminal',label:'Terminal',icon:Terminal},{id:'tools',label:'Tools',icon:Wrench},{id:'mcp',label:'MCP',icon:NetworkIcon},{id:'logs',label:'Logs',icon:Activity}];
- return <div className="min-h-[100dvh] text-slate-100 flex flex-col max-w-3xl mx-auto relative">
+ const theme=state.settings?.theme||'dark';
+ const accentColor=/^#[0-9a-f]{6}$/i.test(state.settings?.accentColor||'')?state.settings.accentColor:'#d5ff35';
+ return <div data-theme={theme} style={{'--acid':accentColor}} className="min-h-[100dvh] text-slate-100 flex flex-col max-w-3xl mx-auto relative">
   <header className="safe-top sticky top-0 z-30 glass border-b border-white/[.07]">
    <div className="h-[66px] px-4 flex items-center justify-between">
     <button onClick={()=>setTab('chat')} className="flex items-center gap-3 text-left"><div className="w-9 h-9 rounded-xl bg-lime-300 text-slate-950 grid place-items-center shadow-[0_0_28px_rgba(163,230,53,.2)]"><Zap size={21} fill="currentColor"/></div><div><div className="font-bold tracking-[.18em] text-[15px]">AXIOM</div><div className="text-[10px] tracking-[.16em] text-slate-500 uppercase">LOCAL-FIRST / PERSONAL COMPUTING</div></div></button>
