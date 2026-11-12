@@ -59,6 +59,7 @@ test("opens regular files without following a replaced symlink leaf", async () =
     const read = await readRegularFileNoFollow(rootFile);
     assert.equal(read.content.toString("utf8"), "safe");
     assert.equal(read.size, 4);
+    await assert.rejects(() => readRegularFileNoFollow(rootFile, 3), /safe read limit/);
     await fs.symlink(outsideFile, link);
     await assert.rejects(() => readRegularFileNoFollow(link));
   } finally {
