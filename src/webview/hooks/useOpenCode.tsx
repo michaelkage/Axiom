@@ -295,7 +295,7 @@ function createOpenCode() {
         createSession: input => c.session.create(input),
         promptSession: input => c.session.prompt(input),
         abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
-        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as Promise<{
+        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
           data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
         }>,
         subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
