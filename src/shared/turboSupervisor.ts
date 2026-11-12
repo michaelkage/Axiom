@@ -76,12 +76,28 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   }
 
   const active = tasks.filter(task => task.status === "running").length;
-  const failed = tasks.filter(task => task.status === "failed" || task.status === "timed_out");
+  // A timeout only proves that the local wait expired. It does not prove that a remote
+  // OpenCode session stopped mutating its isolated worktree. Never retry timed-out work
+  // automatically; doing so can create concurrent writers against the same task scope.
+  const timedOut = tasks.filter(task => task.status === "timed_out");
+  const failed = tasks.filter(task => task.status === "failed");
   const retryable = failed.filter(task => task.attempts < task.maxAttempts && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
   if (retryable.length && active < Math.max(1, policy.maxParallelWorkers)) {
     return { action: "retry", taskIds: retryable.slice(0, Math.max(1, policy.maxParallelWorkers) - active).map(task => task.id), reason: "Retry failed work within its per-task attempt limit." };
   }
   const exhausted = failed.filter(task => task.attempts >= task.maxAttempts);
+  // Drain sibling workers before surfacing a timeout. The timed-out worker itself remains
+  // quarantined and requires explicit inspection; a replan must not race its live session.
+  if (timedOut.length && active > 0) {
+    return { action: "wait", reason: "A worker timed out; wait for active sibling workers to finish before requiring intervention." };
+  }
+  if (timedOut.length) {
+    return {
+      action: "blocked",
+      taskIds: timedOut.map(task => task.id),
+      reason: "A worker timed out, but Axiom cannot confirm its remote session has stopped. Inspect its session and isolated worktree before retrying.",
+    };
+  }
   // Do not replan while sibling workers are still running: their eventual outcomes may
   // change which dependencies are blocked and what work remains. Drain active work first.
   if (exhausted.length && active > 0 && (retryable.length === 0 || active >= Math.max(1, policy.maxParallelWorkers))) {
