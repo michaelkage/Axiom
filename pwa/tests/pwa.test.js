@@ -80,7 +80,7 @@ test('document exposes install metadata and a viewport that supports display cut
 
 test('service worker precaches the app shell and removes obsolete cache versions', () => {
   assert.match(worker, /const CACHE = 'axiom-shell-v\d+'/);
-  assert.match(worker, /const SHELL = \['\/', '\/index\.html', '\/manifest\.webmanifest', '\/axiom\.svg'\]/);
+  assert.match(worker, /const SHELL = \['\/', '\/index\.html', '\/manifest\.webmanifest', '\/axiom\.svg', '\/skills\/registry\.json'\]/);
   assert.match(worker, /keys\.filter\(key => key !== CACHE\)/);
   assert.match(worker, /cache\.addAll\(SHELL\)/);
 });
@@ -88,6 +88,7 @@ test('service worker precaches the app shell and removes obsolete cache versions
 test('service worker limits caching to same-origin GET app resources', () => {
   assert.match(worker, /request\.method !== 'GET'/);
   assert.match(worker, /new URL\(request\.url\)\.origin !== self\.location\.origin/);
+  assert.match(worker, /url\.pathname === '\/skills\/registry\.json'/);
   assert.match(worker, /url\.pathname\.startsWith\('\/assets\/'\)/);
   assert.match(worker, /if \(!isNavigation && !isStaticAsset\) return/);
 });
