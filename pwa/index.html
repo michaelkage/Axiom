@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#10110e" />
+    <script>
+      try {
+        const saved = JSON.parse(localStorage.getItem('axiom.mobile.v1') || '{}');
+        const settings = saved.settings || {};
+        const theme = ['dark', 'light', 'high-contrast'].includes(settings.theme) ? settings.theme : 'dark';
+        document.documentElement.dataset.theme = theme;
+        if (/^#[0-9a-f]{6}$/i.test(settings.accentColor || '')) {
+          document.documentElement.style.setProperty('--acid', settings.accentColor);
+        }
+      } catch {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
     <meta name="description" content="A local-first workbench for thinking, building, and verification." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/axiom.svg" type="image/svg+xml" />
