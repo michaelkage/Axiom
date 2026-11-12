@@ -304,6 +304,37 @@ describe("Axiom runtime helpers", () => {
     expect(outcomes).toContain("timed_out");
   });
 
+  it("persists late session and worktree diagnostics after quarantining an unresponsive worker", async () => {
+    const tasks = parseSubTasks([
+      { id: "late-diagnostics", title: "Late diagnostics", scope: "finish startup cleanup", targetFiles: ["late.ts"], dependsOn: [], acceptanceCriteria: ["Late worker metadata remains visible"] },
+    ]);
+    const controller = new AbortController();
+    const outcomes: Array<Record<string, unknown>> = [];
+    const execution = executeTaskBatches(tasks, async () => new Promise(resolve => {
+      setTimeout(() => resolve({
+        sessionId: "late-child-session",
+        worktreePath: "/tmp/axiom-late-worktree",
+        logs: ["child session eventually returned"],
+      }), 25);
+    }), record => outcomes.push(record as unknown as Record<string, unknown>), {
+      signal: controller.signal,
+      abortDrainTimeoutMs: 5,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    await expect(execution).rejects.toThrow(/abort was not confirmed/i);
+    expect(outcomes.find(record => record.status === "timed_out")).toMatchObject({ taskId: "late-diagnostics" });
+    await new Promise(resolve => setTimeout(resolve, 35));
+    const late = outcomes.filter(record => record.status === "timed_out").at(-1);
+    expect(late).toMatchObject({
+      taskId: "late-diagnostics",
+      sessionId: "late-child-session",
+      worktreePath: "/tmp/axiom-late-worktree",
+      logs: ["child session eventually returned"],
+    });
+  });
+
   it("cancels workers queued for a concurrency slot without starting them", async () => {
     const tasks = parseSubTasks(["first", "second"].map(id => ({
       id, title: id, scope: "independent", targetFiles: [id + ".ts"], dependsOn: [], acceptanceCriteria: ["Queued work cancels promptly"],
