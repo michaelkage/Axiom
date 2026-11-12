@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOpenCodeEventSubscriber } from "./opencodeEventTransport";
+import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "./opencodeEventTransport";
+
+type MessageHandler = (data: string) => void;
+type ErrorHandler = (error: Error) => void;
+type StatusHandler = (status: RuntimeEventStatus) => void;
+type OpenStream = (url: string, onMessage: MessageHandler, onError?: ErrorHandler, onStatus?: StatusHandler) => () => void;
 
 describe("createOpenCodeEventSubscriber", () => {
   it("builds a directory-scoped event URL and parses typed event payloads", () => {
-    const openStream = vi.fn((_url, _message, _error, _status) => () => undefined);
+    const openStream = vi.fn<OpenStream>((_url, _message, _error, _status) => () => undefined);
     const reportError = vi.fn();
     const subscriber = createOpenCodeEventSubscriber<{ type: string }>(
       () => ({ serverUrl: "http://127.0.0.1:4096/base", workspaceRoot: "/workspace" }),
@@ -21,7 +26,7 @@ describe("createOpenCodeEventSubscriber", () => {
   });
 
   it("reports malformed payloads without throwing into the event source", () => {
-    const openStream = vi.fn((_url, _message) => () => undefined);
+    const openStream = vi.fn<OpenStream>((_url, _message) => () => undefined);
     const reportError = vi.fn();
     const subscriber = createOpenCodeEventSubscriber(() => ({ serverUrl: "http://localhost:4096" }), openStream, reportError);
     subscriber(vi.fn());
@@ -30,7 +35,7 @@ describe("createOpenCodeEventSubscriber", () => {
   });
 
   it("requires a connected runtime", () => {
-    const openStream = vi.fn();
+    const openStream = vi.fn<OpenStream>(() => () => undefined);
     const subscriber = createOpenCodeEventSubscriber(() => ({}), openStream);
     expect(() => subscriber(vi.fn())).toThrow(/not connected/i);
     expect(openStream).not.toHaveBeenCalled();
