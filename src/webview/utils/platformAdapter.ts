@@ -66,7 +66,7 @@ export function createDesktopPlatformAdapter(): AxiomPlatformAdapter {
     },
     documents: { pick: async () => { throw new Error('Use the desktop project file picker to select workspace files.'); } },
     files: {
-      list: (relativePath = "") => bridge ? bridge.project.listFiles(relativePath) as Promise<AxiomFileEntry[]> : unavailable(),
+      list: async (relativePath = ""): Promise<AxiomFileEntry[]> => { if (!bridge) return unavailable(); const entries = await bridge.project.listFiles(relativePath); return entries.map(entry => ({ name: entry.name, path: entry.path, type: entry.kind === "directory" ? "directory" : "file" })); },
       read: (relativePath: string) => bridge ? bridge.project.readFile(relativePath).then(result => result.content) : unavailable(),
       write: (relativePath: string, content: string) => bridge ? bridge.project.writeFile(relativePath, content) : unavailable()
     },
