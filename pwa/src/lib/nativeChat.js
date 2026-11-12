@@ -46,7 +46,7 @@ export async function runNativeToolChat({
     const required = ['github_get_repository', 'github_list_directory'];
     const missing = required.filter(name => !available.has(name));
     if (missing.length) {
-      throw new Error('GitHub was requested, but its tools are not active. Pair the gateway, save and verify the GitHub PAT plus owner/repo in Settings, then enable GitHub under Tools. Missing: ' + missing.join(', ') + '.');
+      throw Object.assign(new Error('GitHub was requested, but its tools are not active. Pair the gateway, save and verify the GitHub PAT plus owner/repo in Settings, then enable GitHub under Tools. Missing: ' + missing.join(', ') + '.'), { code: 'INTEGRATION_NOT_ENABLED' });
     }
     for (const [name, args] of [['github_get_repository', {}], ['github_list_directory', { path: '' }]]) {
       abortError(signal);
@@ -85,18 +85,25 @@ export async function runNativeToolChat({
       ];
       let turnText = '';
       let firstAt = null;
-      const listener = await addNativeModelListener('nativeModelToken', event => {
+      let listener;
+      try {
+        listener = await addNativeModelListener('nativeModelToken', event => {
         if (signal?.aborted) return;
         if (firstAt === null) firstAt = Date.now();
         turnText += event.token || '';
         generatedTokens += 1;
         onText(turnText);
-      });
+        });
+      } catch (error) {
+        throw Object.assign(new Error('Could not attach to the on-device model runtime: ' + (error?.message || String(error))), { code: 'NATIVE_INFERENCE_FAILED' });
+      }
       onEvent({ type: 'request', model, turn, toolCount: tools.length, backend: 'llama.cpp' });
       try {
         const result = await generateNativeText(promptMessages, { maxTokens });
         turnText = result.text || turnText;
         if (turn === 0 && firstAt !== null) firstTokenMs = firstAt - startedAt;
+      } catch (error) {
+        throw Object.assign(new Error('On-device llama.cpp inference failed: ' + (error?.message || String(error))), { code: 'NATIVE_INFERENCE_FAILED' });
       } finally {
         await listener.remove();
       }
