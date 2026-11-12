@@ -11,7 +11,32 @@ const [manifestText, worker, html, entry, app, modelStore, nativeModelStore] = a
   readFile(new URL('../src/components/ModelStore.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/NativeModelStore.jsx', import.meta.url), 'utf8')
 ]);
+const [codeEditor, skillsMarketplace, skillRegistry] = await Promise.all([
+  readFile(new URL('../src/components/CodeEditor.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/SkillsMarketplace.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/lib/skillRegistry.js', import.meta.url), 'utf8')
+]);
+
 const manifest = JSON.parse(manifestText);
+
+test('workspace editor provides import, syntax highlighting, find/replace, save and revert', () => {
+  assert.match(app, /tab==='workspace'/);
+  assert.match(codeEditor, /HighlightedCode/);
+  assert.match(codeEditor, /Replace next/);
+  assert.match(codeEditor, /Replace all/);
+  assert.match(codeEditor, /showSaveFilePicker/);
+  assert.match(codeEditor, /setValue\(original\)/);
+  assert.match(codeEditor, /1024 \* 1024/);
+});
+
+test('skills marketplace inspects manifests and exposes per-task activation', () => {
+  assert.match(app, /tab==='skills'/);
+  assert.match(app, /skillIds/);
+  assert.match(skillsMarketplace, /Read full SKILL\.md instructions/);
+  assert.match(skillsMarketplace, /Activate .* for this task/);
+  assert.match(skillRegistry, /validateSkillManifest/);
+  assert.match(skillRegistry, /MAX_INSTRUCTIONS_CHARS/);
+});
 
 test('PWA manifest declares a standalone, portrait-first mobile app', () => {
   assert.equal(manifest.name, 'Axiom AI Command Center');
