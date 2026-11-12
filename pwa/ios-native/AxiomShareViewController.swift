@@ -73,6 +73,8 @@ final class AxiomShareViewController: UIViewController {
         let directory = container.appendingPathComponent("SharedFiles", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values.isRegularFile == true, (values.fileSize ?? 0) <= 1_048_576 else { return nil }
             let destination = directory.appendingPathComponent(UUID().uuidString + "-" + source.lastPathComponent)
             try FileManager.default.copyItem(at: source, to: destination)
             return destination.path
