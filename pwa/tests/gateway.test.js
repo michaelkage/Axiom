@@ -359,7 +359,7 @@ test('companion pairing issues a restricted credential and supports explicit app
     const inviteResponse = await fetch(base + '/companion/pairing', { method: 'POST', headers: desktopHeaders });
     assert.equal(inviteResponse.status, 201);
     const invite = await inviteResponse.json();
-    assert.match(invite.code, /^\\d{8}$/);
+    assert.match(invite.code, /^\d{8}$/);
     assert.equal(invite.expiresIn, 90);
 
     const claimResponse = await fetch(base + '/companion/pairing/claim', {
