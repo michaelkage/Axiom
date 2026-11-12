@@ -376,49 +376,33 @@ export function createAxiomGateway({
       const repoRoot = '/repos/' + owner + '/' + repo;
       const requestedPath = url.pathname.slice(githubPrefix.length);
       const contentMatch = requestedPath.match(/^\/repos\/([^/]+)\/([^/]+)\/contents(?:\/(.*))?$/);
-      const repoScopedPath = requestedPath.toLowerCase();
-      const allowedReadPaths = new Set([
-        repoRoot.toLowerCase(),
-        (repoRoot + '/branches').toLowerCase(),
-        (repoRoot + '/commits').toLowerCase(),
-        (repoRoot + '/issues').toLowerCase(),
-        (repoRoot + '/pulls').toLowerCase()
-      ]);
-      const treeMatch = requestedPath.match(new RegExp('^' + repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\    const githubMatch = url.pathname.match(/^\/api\/github\/repos\/([^/]+)\/([^/]+)\/contents\/(.+)$/);
-    if (githubMatch) {
-      const configuredRepo = env.GITHUB_REPOSITORY || '';
-      const requestedRepo = githubMatch[1] + '/' + githubMatch[2];
-      if (!env.GITHUB_TOKEN || !configuredRepo || requestedRepo.toLowerCase() !== configuredRepo.toLowerCase()) {
-        return sendJson(res, 403, { error: 'GitHub repository is not configured for this gateway.' });
-      }
-      if (!['GET', 'PUT'].includes(req.method)) return sendJson(res, 405, { error: 'GitHub method not allowed.' });
-      const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => {
-        sendJson(res, error.status || 400, { error: error.message }); return null;
-      });
+      const matchesConfiguredRepo = requested => String(requested || '').toLowerCase() === configuredRepo.toLowerCase();
+      const validContentRepo = contentMatch && matchesConfiguredRepo(contentMatch[1] + '/' + contentMatch[2]);
+      const contentPath = contentMatch?.[3] || '';
+      const validContentPath = Boolean(validContentRepo) && contentPath.split('/').every(segment => segment !== '.' && segment !== '..') && !contentPath.includes('\\\\');
+      const allowedReadPaths = new Set([repoRoot.toLowerCase(), (repoRoot + '/branches').toLowerCase(), (repoRoot + '/commits').toLowerCase(), (repoRoot + '/issues').toLowerCase(), (repoRoot + '/pulls').toLowerCase()]);
+      const treeSuffix = requestedPath.slice(repoRoot.length);
+      const validTreePath = requestedPath.toLowerCase().startsWith((repoRoot + '/git/trees/').toLowerCase()) && /^\/git\/trees\/[A-Za-z0-9._-]+$/.test(treeSuffix);
+      const validRepoRoute = allowedReadPaths.has(requestedPath.toLowerCase()) || validTreePath;
+      const validSearch = requestedPath === '/search/code' && req.method === 'GET' && String(url.searchParams.get('q') || '').split(/\s+/).some(part => part.toLowerCase() === ('repo:' + configuredRepo).toLowerCase());
+      if (!validContentPath && !validRepoRoute && !validSearch) return sendJson(res, 403, { error: 'GitHub access is restricted to the configured repository and supported read endpoints.' });
+      if (validContentPath ? !['GET', 'PUT'].includes(req.method) : req.method !== 'GET') return sendJson(res, 405, { error: 'GitHub method not allowed for this endpoint.' });
+      const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
       if (body === null) return;
-      const contentPath = decodeURIComponent(githubMatch[3]);
-      if (contentPath.split('/').some(segment => segment === '.' || segment === '..') || contentPath.includes('\\\\')) {
-        return sendJson(res, 400, { error: 'Invalid GitHub content path.' });
-      }
-      const target = new URL('/repos/' + requestedRepo + '/contents/' + contentPath + url.search, 'https://api.github.com');
+      const upstreamPath = validSearch ? '/search/code' : requestedPath;
+      const target = new URL(upstreamPath + url.search, 'https://api.github.com');
       try {
-        const upstream = await fetchImpl(target, {
-          method: req.method,
-          headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
-          body,
-          signal: upstreamSignal(60000)
-        });
+        const upstream = await fetchImpl(target, { method: req.method, headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }, body, signal: upstreamSignal(60000) });
         res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
         if (!upstream.body) return res.end();
         for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
         return res.end();
       } catch (error) {
         logger.error?.('[axiom-gateway] GitHub upstream failed:', error.message);
-        return sendJson(res, 502, { error: 'GitHub upstream unavailable.' });
+        return sendJson(res, 502, { error: 'GitHub upstream unavailable. Check gateway connectivity to api.github.com.' });
       }
     }
-
-') + '/git/trees/[A-Za-z0-9._-]+    const supabasePrefix = '/api/supabase/rest/v1/';
+    const supabasePrefix = '/api/supabase/rest/v1/';
     if (url.pathname.startsWith(supabasePrefix)) {
       const key = env.SUPABASE_PUBLISHABLE_KEY || '';
       if (!env.SUPABASE_URL || !key) return sendJson(res, 503, { error: 'Supabase publishable-key upstream is not configured.' });
