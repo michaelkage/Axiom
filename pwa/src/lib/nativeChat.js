@@ -39,8 +39,8 @@ export async function runNativeToolChat({
 
   const conversation = messages.map(message => ({ role: message.role, content: message.content || '' }));
   const githubRequest = messages.slice().reverse().find(message => message.role === 'user')?.content || '';
-  const asksForGitHub = /\\b(github|repository|repo)\\b/i.test(githubRequest) &&
-    /\\b(access|see|view|browse|inspect|explore|list|show|read|search|find|check|review|connect|look)\\b/i.test(githubRequest);
+  const asksForGitHub = /\b(github|repository|repo)\b/i.test(githubRequest) &&
+    /\b(access|see|view|browse|inspect|explore|list|show|read|search|find|check|review|connect|look)\b/i.test(githubRequest);
   if (asksForGitHub) {
     const available = new Set(tools.map(tool => tool.function?.name || tool.name));
     const required = ['github_get_repository', 'github_list_directory'];
