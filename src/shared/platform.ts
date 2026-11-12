@@ -23,7 +23,7 @@ export interface AxiomPlatformAdapter {
   };
   files: {
     list(relativePath?: string): Promise<AxiomFileEntry[]>;
-    read(relativePath: string): Promise<string>;
+    read(relativePath: string): Promise<{ path: string; content: string; size: number }>;
     write(relativePath: string, content: string): Promise<unknown>;
   };
   documents: {
