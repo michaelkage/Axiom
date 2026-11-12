@@ -378,8 +378,9 @@ export function createAxiomGateway({
       const contentMatch = requestedPath.match(/^\/repos\/([^/]+)\/([^/]+)\/contents(?:\/(.*))?$/);
       const matchesConfiguredRepo = requested => String(requested || '').toLowerCase() === configuredRepo.toLowerCase();
       const validContentRepo = contentMatch && matchesConfiguredRepo(contentMatch[1] + '/' + contentMatch[2]);
-      const contentPath = contentMatch?.[3] || '';
-      const validContentPath = Boolean(validContentRepo) && contentPath.split('/').every(segment => segment !== '.' && segment !== '..') && !contentPath.includes('\\\\');
+      let contentPath = contentMatch?.[3] || '';
+      try { contentPath = decodeURIComponent(contentPath); } catch { return sendJson(res, 400, { error: 'Invalid GitHub content path encoding.' }); }
+      const validContentPath = Boolean(validContentRepo) && contentPath.split('/').every(segment => segment !== '.' && segment !== '..') && !contentPath.includes('\\');
       const allowedReadPaths = new Set([repoRoot.toLowerCase(), (repoRoot + '/branches').toLowerCase(), (repoRoot + '/commits').toLowerCase(), (repoRoot + '/issues').toLowerCase(), (repoRoot + '/pulls').toLowerCase()]);
       const treeSuffix = requestedPath.slice(repoRoot.length);
       const validTreePath = requestedPath.toLowerCase().startsWith((repoRoot + '/git/trees/').toLowerCase()) && /^\/git\/trees\/[A-Za-z0-9._-]+$/.test(treeSuffix);
