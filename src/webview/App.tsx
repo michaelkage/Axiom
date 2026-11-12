@@ -483,6 +483,8 @@ function App() {
     setTaskOutcomes([]);
     setTaskAcceptanceCriteria(Object.fromEntries(parallel.tasks.map(task => [task.id, task.acceptanceCriteria ?? ["Implement scope and report concrete verification evidence."]])));
     setWorkflowPlan(null);
+    const workerPersistenceByTask = new Map<string, Promise<void>>();
+    const latestWorkerRecordByTask = new Map<string, TaskExecutionRecord>();
     try {
       let parentSessionId = sync.currentSessionId();
       if (!parentSessionId) {
@@ -497,8 +499,6 @@ function App() {
       // Serialize worker persistence per task. Worker log callbacks and terminal outcomes can
       // arrive close together; fire-and-forget writes must not let an older snapshot overwrite
       // a newer terminal status in the project store.
-      const workerPersistenceByTask = new Map<string, Promise<void>>();
-      const latestWorkerRecordByTask = new Map<string, TaskExecutionRecord>();
       const enqueueWorkerPersistence = (taskId: string) => {
         const previous = workerPersistenceByTask.get(taskId) ?? Promise.resolve();
         const next = previous.catch(() => undefined).then(async () => {
@@ -771,6 +771,10 @@ function App() {
       if (!allWorkersSucceeded) {
         throw new Error("The worker batch returned without a confirmed succeeded lifecycle event for every planned task. Review worker diagnostics before treating this run as complete. " + completed);
       }
+      // Do not report completion until every worker's latest lifecycle snapshot is durable.
+      // The callbacks enqueue writes without blocking worker streaming, so explicitly drain
+      // the per-task queues at this transaction boundary.
+      await Promise.all([...workerPersistenceByTask.values()]);
       setParallelPlan(null);
       setWorkflowRun({ prompt: plan.prompt, status: "complete" });
       setInput("");
@@ -780,6 +784,12 @@ function App() {
       setWorkflowError(`${abortController.signal.aborted ? "Parallel execution cancelled" : "Parallel execution stopped"}: ${message}. Some sibling tasks may already have changed files; review the workspace before retrying.`);
       setWorkflowRun({ prompt: plan.prompt, status: "failed" });
     } finally {
+      const persistenceResults = await Promise.allSettled([...workerPersistenceByTask.values()]);
+      for (const result of persistenceResults) {
+        if (result.status === "rejected") {
+          logger.error("Worker lifecycle persistence did not fully flush before execution ended", { error: result.reason });
+        }
+      }
       setParallelAbortController(null);
     }
   };
