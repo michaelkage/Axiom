@@ -21,7 +21,6 @@ export interface WorkerExecutionResult {
   summary: string;
   worktreePath: string;
   logs: string[];
-  [diagnostic: string]: unknown;
 }
 
 /**
