@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AxiomSubTask, TaskExecutionRecord } from "../../shared/axiomRuntime";
-import type { TaskOrchestratorOptions } from "./opencodeTaskOrchestrator";
-import { runSubAgentTasks } from "./opencodeTaskOrchestrator";
+import type { TaskOrchestratorOptions } from "./workerTaskOrchestrator";
+import { runSubAgentTasks } from "./workerTaskOrchestrator";
 import { createOpenCodeWorkerExecutionProvider } from "./opencodeWorkerExecutionProvider";
 
 const task: AxiomSubTask = {
