@@ -86,12 +86,13 @@ function createWebSecureStorage() {
 export function createPlatformAdapter() {
   const desktop = desktopBridge();
   const native = Capacitor.isNativePlatform();
+  const nativeIOS = native && Capacitor.getPlatform() === 'ios';
   const platform = desktop ? 'electron' : native ? Capacitor.getPlatform() : 'web';
   const secureStorage = desktop ? {
     get: (namespace, key) => desktop.secureStorage.get(namespace, key),
     set: (namespace, key, value) => desktop.secureStorage.set(namespace, key, value),
     remove: (namespace, key) => desktop.secureStorage.remove(namespace, key)
-  } : native ? {
+  } : nativeIOS ? {
     get: (namespace, key) => NativeSecureStorage.get({ namespace, key }).then(result => result.value ?? null),
     set: (namespace, key, value) => NativeSecureStorage.set({ namespace, key, value }),
     remove: (namespace, key) => NativeSecureStorage.remove({ namespace, key }).then(result => result.removed === true)
@@ -134,13 +135,13 @@ export function createPlatformAdapter() {
       secureStorage: !!desktop || !!globalThis.crypto?.subtle,
       projectFiles: !!desktop,
       gitWorktrees: !!desktop,
-      nativeSpeech: native,
+      nativeSpeech: nativeIOS,
       shareTarget: typeof navigator !== 'undefined' && !!navigator.share
     }),
     secureStorage,
     files,
     documents: Object.freeze({
-      pick: options => native && Capacitor.getPlatform() === 'ios' ? NativeSecureStorage.pickDocuments(options || { multiple: true }) : Promise.reject(new Error('The native document picker is available in the iOS app.'))
+      pick: options => nativeIOS ? NativeSecureStorage.pickDocuments(options || { multiple: true }) : Promise.reject(new Error('The native document picker is available in the iOS app.'))
     }),
     git: Object.freeze({
       listWorkspaces: async () => desktop ? desktop.remoteWorkspace.list() : [],
