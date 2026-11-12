@@ -62,7 +62,7 @@ test('redacts secrets from serialized tool results before returning them to a mo
   const result = serializeToolResult({ token: 'ghp_abcdefghijklmnopqrstuvwxyz123456', output: 'API_KEY=private-value' });
   assert.doesNotMatch(result, /ghp_abcdefghijklmnopqrstuvwxyz123456/);
   assert.doesNotMatch(result, /private-value/);
-  assert.match(result, /\\[REDACTED\\]/);
+  assert.match(result, /\[REDACTED\]/);
 });
 
 test('rejects circular and BigInt tool results with a useful error', () => {
