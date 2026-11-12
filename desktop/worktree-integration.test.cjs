@@ -36,16 +36,16 @@ test("rejects symlinks in parent and leaf components while allowing missing file
 });
 
 test("parses NUL-delimited Git status without corrupting unusual filenames or renames", () => {
-  assert.deepEqual(parseGitStatusPorcelainZ(" M normal\\0??  leading\\0?? file name\\0"), [
+  assert.deepEqual(parseGitStatusPorcelainZ(" M normal\0??  leading\0?? file name\0"), [
     { status: "M", path: "normal" },
     { status: "??", path: " leading" },
     { status: "??", path: "file name" }
   ]);
-  assert.deepEqual(parseGitStatusPorcelainZ("R  new-name\\0old-name\\0"), [
+  assert.deepEqual(parseGitStatusPorcelainZ("R  new-name\0old-name\0"), [
     { status: "D", path: "old-name" },
     { status: "A", path: "new-name" }
   ]);
-  assert.throws(() => parseGitStatusPorcelainZ("R  new-name\\0"), /incomplete rename/);
+  assert.throws(() => parseGitStatusPorcelainZ("R  new-name\0"), /incomplete rename/);
 });
 
 test("opens regular files without following a replaced symlink leaf", async () => {
