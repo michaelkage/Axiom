@@ -526,7 +526,10 @@ async function runQualityGate(event, message) {
     const root = await gitRoot(message.workspaceRoot);
     if (await gitRoot(message.worktreePath) !== root) throw new Error("Task worktree belongs to a different Git repository.");
     if (message.forceIntegration === true) await appendRuntimeLog(`User requested force integration for task ${String(message.taskId || "unknown")} (quality-gate bypass only).`);
-    const paths = Array.isArray(message.changedPaths) ? message.changedPaths : [];
+    const paths = Array.isArray(message.changedPaths)
+      ? message.changedPaths.map(normalizeWorkspaceRelativePath)
+      : [];
+    for (const relative of paths) await resolveSafeWorkspaceFile(message.worktreePath, relative);
     await addCheck("Git whitespace and conflict-marker check", "git", ["diff", "--check", "HEAD", "--"], message.worktreePath, 30000);
 
     const untracked = (await changedFiles(message.worktreePath)).filter(file => file.status === "??");
@@ -536,7 +539,14 @@ async function runQualityGate(event, message) {
       if (!insidePath(message.worktreePath, full)) continue;
       try {
         const stat = await fs.promises.lstat(full);
-        if (!stat.isFile() || stat.isSymbolicLink()) continue;
+        if (stat.isSymbolicLink()) {
+          untrackedIssues.push(file.path + ": symbolic links are not allowed in worker changes");
+          continue;
+        }
+        if (!stat.isFile()) {
+          untrackedIssues.push(file.path + ": only regular files can be integrated");
+          continue;
+        }
         const text = await fs.promises.readFile(full, "utf8");
         const lines = text.split(/\r?\n/);
         lines.forEach((line, index) => {
@@ -736,7 +746,8 @@ async function applyWorktreeChanges(event, message) {
             rollbackErrors.push(item.relative + ": " + rollbackError.message);
           }
         }
-        if (rollbackErrors.length === 0) appliedPaths.length = 0;
+        const pathsStillApplied = new Set(rollbackErrors.map(entry => entry.slice(0, entry.indexOf(": "))));
+        appliedPaths.splice(0, appliedPaths.length, ...appliedPaths.filter(relative => pathsStillApplied.has(relative)));
         throw new Error("Integration transaction failed: " + applyError.message + (rollbackErrors.length
           ? ". Rollback failed for " + rollbackErrors.join("; ")
           : ". Applied files were rolled back."));
