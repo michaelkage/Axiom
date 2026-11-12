@@ -14,6 +14,7 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
+import { runOpenCodeWorkerLifecycle } from "../services/opencodeWorkerLifecycle";
 
 import { runtimeEventSource } from "../utils/runtimeEventSource";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
@@ -264,17 +265,17 @@ function createOpenCode() {
         })),
         constraints: ["Do not overlap with sibling tasks. Preserve unrelated behavior.", "Run focused checks where available and report exact commands and observed outcomes."],
       });
-      const taskPrompt = [
+      const buildTaskPrompt = (worktreePath: string) => [
         "Axiom parallel task: " + task.title,
         "Task scope: " + task.scope,
         "Declared target files: " + (task.targetFiles.length ? task.targetFiles.join(", ") : "(none declared; keep the scope narrow)"),
         "Acceptance criteria (each must be addressed and evidenced): " + (task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((criterion, index) => (index + 1) + ". " + criterion).join("; ") : "Implement the declared scope and report concrete verification evidence."),
-        "Isolated worktree path: created for this task",
+        "Isolated worktree path: " + worktreePath,
         "Context budget: approximately " + packed.inputEstimatedTokens + " tokens before packing and " + packed.estimatedTokens + " after packing; estimated savings " + packed.estimatedSavingsTokens + " tokens (" + packed.estimatedSavingsPercent + "%). These are heuristic estimates, not provider-reported usage.",
         ...packed.items.map(item => "[" + item.kind + "] " + item.content),
         "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
         "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
-      ].join("\n\n");
+      ].join("\\n\\n");
       const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
       const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
       const agent = task.agentHint && availableAgentNames.has(task.agentHint)
@@ -286,7 +287,7 @@ function createOpenCode() {
         task,
         parentSessionId,
         workspaceRoot: directory,
-        prompt: taskPrompt,
+        buildPrompt: buildTaskPrompt,
         agent: workerAgent,
         signal,
         createWorktree: createAgentWorktree,
