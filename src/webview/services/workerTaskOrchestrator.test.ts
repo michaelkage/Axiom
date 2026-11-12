@@ -13,7 +13,7 @@ const task: AxiomSubTask = {
   acceptanceCriteria: ["Cover successful and failed requests."],
 };
 
-function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
+function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
   const outcomes: TaskExecutionRecord[] = [];
   const calls = {
     loadConversation: vi.fn(async () => [{ id: "history-1", content: "Use the shared fetch wrapper.", relevance: 80 }]),
@@ -28,7 +28,7 @@ function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
     })),
     subscribe: vi.fn(() => () => undefined),
   };
-  const options: OpenCodeTaskOrchestratorOptions = {
+  const options: TaskOrchestratorOptions = {
     parentSessionId: "parent-session",
     tasks: [task],
     workspaceRoot: "/workspace/project",
@@ -50,17 +50,17 @@ function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
   return { options, calls, outcomes };
 }
 
-describe("runOpenCodeSubAgentTasks", () => {
+describe("runSubAgentTasks", () => {
   it("rejects a missing workspace before loading context or starting workers", async () => {
     const { options, calls } = setup({ workspaceRoot: undefined });
-    await expect(runOpenCodeSubAgentTasks(options)).rejects.toThrow(/workspace root/i);
+    await expect(runSubAgentTasks(options)).rejects.toThrow(/workspace root/i);
     expect(calls.loadConversation).not.toHaveBeenCalled();
     expect(calls.createWorktree).not.toHaveBeenCalled();
   });
 
   it("prepares context, selects an advertised specialist, and executes an isolated worker", async () => {
     const { options, calls, outcomes } = setup();
-    const results = await runOpenCodeSubAgentTasks(options);
+    const results = await runSubAgentTasks(options);
 
     expect(calls.loadConversation).toHaveBeenCalledTimes(1);
     expect(calls.loadProjectMemories).toHaveBeenCalledWith("Improve API reliability");
@@ -99,7 +99,7 @@ describe("runOpenCodeSubAgentTasks", () => {
       loadProjectMemories: vi.fn(() => { throw new Error("memory store unavailable"); }),
       loadAvailableAgents: vi.fn(async () => { throw new Error("agent catalogue unavailable"); }),
     });
-    const results = await runOpenCodeSubAgentTasks(options);
+    const results = await runSubAgentTasks(options);
 
     expect(results).toHaveLength(1);
     expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({ sessionID: "child-session" }));
@@ -144,7 +144,7 @@ describe("runOpenCodeSubAgentTasks", () => {
     const controller = new AbortController();
     controller.abort();
     const { options, calls } = setup({ signal: controller.signal });
-    await expect(runOpenCodeSubAgentTasks(options)).rejects.toThrow(/cancelled/i);
+    await expect(runSubAgentTasks(options)).rejects.toThrow(/cancelled/i);
     expect(calls.loadConversation).not.toHaveBeenCalled();
     expect(calls.createWorktree).not.toHaveBeenCalled();
   });
