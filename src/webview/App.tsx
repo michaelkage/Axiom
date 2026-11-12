@@ -494,8 +494,9 @@ function App() {
         parentSessionId = session.id;
         sync.setCurrentSessionId(parentSessionId);
       }
-      // Keep successful work intact. Retry only workers with a confirmed failed or timed-out
-      // terminal event, once, and never retry blocked/cancelled work automatically.
+      // Keep successful work intact. Retry confirmed failures once. Timed-out sessions are
+      // quarantined because a local timeout cannot prove that the remote worker stopped; never
+      // start another writer against that task scope until its session/worktree is inspected.
       // Serialize worker persistence per task. Worker log callbacks and terminal outcomes can
       // arrive close together; fire-and-forget writes must not let an older snapshot overwrite
       // a newer terminal status in the project store.
@@ -626,7 +627,7 @@ function App() {
           const selectedTasks = supervisorTasks.filter(task => decision.taskIds.includes(task.id));
           const runnable = selectedTasks.filter(task => {
             const status = taskOutcomes().find(item => item.taskId === task.id)?.status ?? "queued";
-            if (decision.action === "retry") return (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask && ["failed", "timed_out"].includes(status);
+            if (decision.action === "retry") return (attemptsByTask.get(task.id) ?? 0) < maxAttemptsPerTask && status === "failed";
             return status === "queued" || status === "blocked";
           });
           if (!runnable.length) throw new Error("Turbo supervisor requested " + decision.action + " but no task has a matching runnable state. " + decision.reason);
