@@ -47,7 +47,7 @@ The native configuration script adds:
 
 - A Capacitor plugin backed by iOS Keychain for provider credentials.
 - SFSpeechRecognizer and AVAudioSession speech dictation events.
-- UIDocumentPicker imports copied into Axiom's private Documents/Imports directory.
+- UIDocumentPicker imports copied into Axiom's private Documents/Imports directory and exposed through Capacitor-safe webview URLs.
 - An iOS Share Extension target using the shared app group `group.com.axiom.mobile`.
 
 The Share Extension writes text, URLs and shared file contents to the app-group container. The app consumes the payload when it next becomes active. iOS does not allow a Share Extension to arbitrarily launch its containing app, so Axiom does not claim that selecting the extension always switches apps automatically. Shared files are limited to 1 MiB aggregate before they enter the prompt attachment flow.
