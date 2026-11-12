@@ -27,7 +27,7 @@ function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
     })),
     subscribe: vi.fn(() => () => undefined),
   };
-  const options = {
+  const options: OpenCodeTaskOrchestratorOptions = {
     parentSessionId: "parent-session",
     tasks: [task],
     workspaceRoot: "/workspace/project",
