@@ -259,8 +259,48 @@ describe("Axiom runtime helpers", () => {
     await expect(executeTaskBatches(tasks, async (_task, _completed, signal) => {
       receivedSignal = signal;
       return new Promise<string>(() => {});
-    }, record => outcomes.push(record.status), { timeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
+    }, record => outcomes.push(record.status), { timeoutMs: 5, abortDrainTimeoutMs: 5 })).rejects.toThrow(/timed out after 5ms/);
     expect(receivedSignal?.aborted).toBe(true);
+    expect(outcomes).toContain("timed_out");
+  });
+
+  it("waits for an aborted runner to settle before releasing its worker slot", async () => {
+    const tasks = parseSubTasks([
+      { id: "abort-drain", title: "Abort drain", scope: "cancellation", targetFiles: ["abort-drain.ts"], dependsOn: [], acceptanceCriteria: ["Abort cleanup settles before slot release"] },
+    ]);
+    const controller = new AbortController();
+    let settled = false;
+    const outcomes: string[] = [];
+    const execution = executeTaskBatches(tasks, async (_task, _completed, signal) => new Promise<string>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => {
+        setTimeout(() => {
+          settled = true;
+          reject(new Error("remote abort completed"));
+        }, 15);
+      }, { once: true });
+    }), record => outcomes.push(record.status), { signal: controller.signal, abortDrainTimeoutMs: 100 });
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    await expect(execution).rejects.toThrow(/cancelled/i);
+    expect(settled).toBe(true);
+    expect(outcomes).toContain("cancelled");
+  });
+
+  it("quarantines a runner whose abort does not settle before the cleanup deadline", async () => {
+    const tasks = parseSubTasks([
+      { id: "unconfirmed-abort", title: "Unconfirmed abort", scope: "cancellation", targetFiles: ["unconfirmed.ts"], dependsOn: [], acceptanceCriteria: ["Unconfirmed remote work is quarantined"] },
+    ]);
+    const controller = new AbortController();
+    const outcomes: string[] = [];
+    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), record => outcomes.push(record.status), {
+      signal: controller.signal,
+      abortDrainTimeoutMs: 5,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    await expect(execution).rejects.toThrow(/abort was not confirmed/i);
     expect(outcomes).toContain("timed_out");
   });
 
