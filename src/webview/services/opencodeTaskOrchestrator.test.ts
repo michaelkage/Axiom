@@ -1,0 +1,102 @@
+import { describe, expect, it, vi } from "vitest";
+import type { AxiomSubTask, TaskExecutionRecord } from "../../shared/axiomRuntime";
+import { runOpenCodeSubAgentTasks } from "./opencodeTaskOrchestrator";
+
+const task: AxiomSubTask = {
+  id: "api-tests",
+  title: "Add API tests",
+  scope: "Add focused API client tests.",
+  targetFiles: ["src/api.test.ts"],
+  dependsOn: [],
+  acceptanceCriteria: ["Cover successful and failed requests."],
+};
+
+function setup(overrides: Record<string, unknown> = {}) {
+  const outcomes: TaskExecutionRecord[] = [];
+  const calls = {
+    loadConversation: vi.fn(async () => [{ id: "history-1", content: "Use the shared fetch wrapper.", relevance: 80 }]),
+    loadProjectMemories: vi.fn(() => [{ id: "memory-1", content: "Use Vitest for unit tests.", relevance: 90 }]),
+    loadAvailableAgents: vi.fn(async () => ["implementation", "testing"]),
+    createWorktree: vi.fn(async () => "/tmp/axiom-worker"),
+    createSession: vi.fn(async () => ({ data: { id: "child-session" } })),
+    promptSession: vi.fn(async () => ({})),
+    abortSession: vi.fn(async () => ({})),
+    getMessages: vi.fn(async () => ({
+      data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "Tests implemented." }] }],
+    })),
+    subscribe: vi.fn(() => () => undefined),
+  };
+  const options = {
+    parentSessionId: "parent-session",
+    tasks: [task],
+    workspaceRoot: "/workspace/project",
+    preferredAgent: "implementation",
+    request: "Improve API reliability",
+    planSteps: ["Inspect the current API client."],
+    onOutcome: (record: TaskExecutionRecord) => outcomes.push(record),
+    ...calls,
+    ...overrides,
+  };
+  return { options, calls, outcomes };
+}
+
+describe("runOpenCodeSubAgentTasks", () => {
+  it("rejects a missing workspace before loading context or starting workers", async () => {
+    const { options, calls } = setup({ workspaceRoot: undefined });
+    await expect(runOpenCodeSubAgentTasks(options)).rejects.toThrow(/workspace root/i);
+    expect(calls.loadConversation).not.toHaveBeenCalled();
+    expect(calls.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it("prepares context, selects an advertised specialist, and executes an isolated worker", async () => {
+    const { options, calls, outcomes } = setup();
+    const results = await runOpenCodeSubAgentTasks(options);
+
+    expect(calls.loadConversation).toHaveBeenCalledTimes(1);
+    expect(calls.loadProjectMemories).toHaveBeenCalledWith("Improve API reliability");
+    expect(calls.loadAvailableAgents).toHaveBeenCalledTimes(1);
+    expect(calls.createSession).toHaveBeenCalledWith({
+      directory: "/tmp/axiom-worker",
+      parentID: "parent-session",
+      title: "Axiom: Add API tests",
+    });
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({
+      sessionID: "child-session",
+      agent: "testing",
+    }));
+    const prompt = calls.promptSession.mock.calls[0][0].parts[0].text;
+    expect(prompt).toContain("Use the shared fetch wrapper.");
+    expect(prompt).toContain("Use Vitest for unit tests.");
+    expect(prompt).toContain("Isolated worktree path: /tmp/axiom-worker");
+    expect(results).toHaveLength(1);
+    expect(results[0].result).toMatchObject({
+      sessionId: "child-session",
+      worktreePath: "/tmp/axiom-worker",
+      contextEstimatedTokensBefore: expect.any(Number),
+      contextEstimatedTokensAfter: expect.any(Number),
+    });
+    expect(outcomes.some(record => record.status === "succeeded")).toBe(true);
+  });
+
+  it("continues without optional history, memory, or agent catalogues when providers fail", async () => {
+    const { options, calls } = setup({
+      loadConversation: vi.fn(async () => { throw new Error("history unavailable"); }),
+      loadProjectMemories: vi.fn(() => { throw new Error("memory store unavailable"); }),
+      loadAvailableAgents: vi.fn(async () => { throw new Error("agent catalogue unavailable"); }),
+    });
+    const results = await runOpenCodeSubAgentTasks(options);
+
+    expect(results).toHaveLength(1);
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({ sessionID: "child-session" }));
+    expect(calls.promptSession.mock.calls[0][0].agent).toBeUndefined();
+  });
+
+  it("does not begin context acquisition when already cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { options, calls } = setup({ signal: controller.signal });
+    await expect(runOpenCodeSubAgentTasks(options)).rejects.toThrow(/cancelled/i);
+    expect(calls.loadConversation).not.toHaveBeenCalled();
+    expect(calls.createWorktree).not.toHaveBeenCalled();
+  });
+});
