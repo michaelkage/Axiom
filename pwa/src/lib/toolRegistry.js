@@ -1,3 +1,4 @@
+import { redactSecrets } from './securityRedaction.js';
 /**
  * Axiom's async tool registry. Tool definitions are JSON-Schema-shaped and
  * execution is always explicit; registering a tool never executes it.
@@ -211,7 +212,7 @@ export function toOllamaTools() {
 export function serializeToolResult(result) {
   let serialized;
   try {
-    serialized = JSON.stringify(result);
+    serialized = JSON.stringify(typeof result === 'string' ? redactSecrets(result) : result, (_key, value) => typeof value === 'string' ? redactSecrets(value) : value);
   } catch (error) {
     throw new TypeError('Tool result is not JSON-serializable: ' + error.message);
   }
