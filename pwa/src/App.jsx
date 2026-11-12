@@ -18,6 +18,7 @@ import { consumeSharedPayload, hasNativeIOSShareTarget } from './lib/shareTarget
 import { getPlatformAdapter } from './lib/platformAdapter.js';
 import { redactSecrets, redactValue, redactForExternalContext } from './lib/securityRedaction.js';
 import { parseContextMentions, buildContextMentionPrompt } from './lib/contextMentions.js';
+import { enqueueOfflinePrompt, listOfflinePrompts, removeOfflinePrompt } from './lib/offlinePromptQueue.js';
 import { consumeGatewayPairingIntent, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
@@ -38,6 +39,7 @@ export default function App(){
  const [tab,setTab]=useState(state.activeTab||'chat');
  const [draft,setDraft]=useState('');
  const [draftAttachments,setDraftAttachments]=useState([]);
+ const [offlineQueuedCount,setOfflineQueuedCount]=useState(0);
  const [retryStatus,setRetryStatus]=useState(null);
  const [bootStatus,setBootStatus]=useState('initializing');
  const attachmentInputRef=useRef(null);
@@ -83,6 +85,8 @@ export default function App(){
  const settingsDialogRef=useRef(null);
  const settingsTriggerRef=useRef(null);
  const activeRunRef=useRef(null);
+ const offlineDraftRef=useRef(null);
+ const restoringOfflineDraftRef=useRef(false);
  const streamTimerRef=useRef(null);
  const integrationCleanup=useRef({});
  const mcpCleanup=useRef({});
@@ -124,6 +128,28 @@ export default function App(){
  useEffect(()=>{const timer=setTimeout(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));const chats=(state.chats||[]).slice(0,40).map(chat=>({...chat,messages:(chat.messages||[]).slice(-300)}));const persisted={...state,chats:chats.map(chat=>({...chat,messages:chat.messages.map(({images,...message})=>message)})),logs:(state.logs||[]).slice(0,100),settings,servers,activeTab:tab};try{localStorage.setItem(STORE,JSON.stringify(persisted));}catch(error){setNotice('Local storage is full. Export or remove older conversations to keep saving new messages.');}},650);return()=>clearTimeout(timer);},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:busy?'auto':'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
+ useEffect(()=>{
+  let active=true;
+  const refreshQueue=async()=>{
+   try{
+    const queued=await listOfflinePrompts();
+    if(!active)return;
+    setOfflineQueuedCount(queued.length);
+    if(navigator.onLine&&queued.length&&!draft.trim()&&!draftAttachments.length&&!restoringOfflineDraftRef.current){
+     const next=queued[0];
+     restoringOfflineDraftRef.current=true;
+     offlineDraftRef.current=next.id;
+     setDraft(next.prompt);
+     setDraftAttachments(next.attachments||[]);
+     setNotice('Restored queued offline draft. Review it and press Send when ready.');
+    }
+   }catch(error){if(active)setNotice('Offline queue unavailable: '+error.message);}
+  };
+  refreshQueue();
+  window.addEventListener('online',refreshQueue);
+  return()=>{active=false;window.removeEventListener('online',refreshQueue);};
+ },[]);
+
  const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title:redactSecrets(String(title)),detail:typeof detail==='string'?redactSecrets(detail):JSON.stringify(redactValue(detail)),time:stamp()},...s.logs].slice(0,100)}));
 
  async function refreshNativeModels(){
@@ -496,6 +522,18 @@ export default function App(){
  }
  async function sendMessage(){
   const prompt=(draft.trim()+buildAttachmentPrompt(draftAttachments)).trim(); if((!draft.trim()&&!draftAttachments.length)||busy)return;
+  if(!navigator.onLine&&!nativeLoadedModel&&state.settings?.ollamaConnectionMode!=='direct'){
+   try{
+    const queued=await enqueueOfflinePrompt({prompt:draft,attachments:draftAttachments});
+    const items=await listOfflinePrompts();
+    setOfflineQueuedCount(items.length);
+    setDraft('');
+    setDraftAttachments([]);
+    restoringOfflineDraftRef.current=false;
+    setNotice('Prompt saved to the offline queue. It will be restored when connectivity returns; review and send it then.');
+   }catch(error){setNotice('Could not queue offline prompt: '+error.message);}
+   return;
+  }
   if(!nativeLoadedModel&&!selectedOllamaModel){setNotice(models.length?'Select an installed model before starting chat.':connection==='online'?'No models installed. Open Models to connect a server, import a GGUF file, or install a model before chatting.':'Connect to a model runtime before starting chat.');return;}
   if(nativeValidating){setNotice('Wait for the on-device validation run to finish before starting chat.');return;}
   const controller=new AbortController();
@@ -560,6 +598,12 @@ export default function App(){
     }
    });
    answer=runResult.answer;
+   if(offlineDraftRef.current){
+    await removeOfflinePrompt(offlineDraftRef.current);
+    offlineDraftRef.current=null;
+    restoringOfflineDraftRef.current=false;
+    setOfflineQueuedCount((await listOfflinePrompts()).length);
+   }
    if(streamTimerRef.current!==null){clearTimeout(streamTimerRef.current);streamTimerRef.current=null;}
    patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer,metrics:runResult.metrics||null}:m),chatId);
    log('success','Generation complete',(nativeLoadedModel?'Native · ':'Ollama · ')+(nativeLoadedModel||selectedOllamaModel));
