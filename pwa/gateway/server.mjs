@@ -394,8 +394,8 @@ export function createAxiomGateway({
       const validTreePath = requestedPath.toLowerCase().startsWith((repoRoot + '/git/trees/').toLowerCase()) && /^\/git\/trees\/[A-Za-z0-9._-]+$/.test(treeSuffix);
       const validRepoRoute = allowedReadPaths.has(requestedPath.toLowerCase()) || validTreePath;
       const searchQuery = String(url.searchParams.get('q') || '');
-      const repoQualifiers = [...searchQuery.matchAll(/(?:^|\\s)(-?repo):([^\\s]+)/gi)];
-      const validSearch = requestedPath === '/search/code' && req.method === 'GET' && repoQualifiers.length === 1 && repoQualifiers[0][1].toLowerCase() === 'repo' && repoQualifiers[0][2].toLowerCase() === configuredRepo.toLowerCase() && !/\\b(?:OR|NOT)\\b/i.test(searchQuery);
+      const repoQualifiers = [...searchQuery.matchAll(/(?:^|\s)(-?repo):([^\s]+)/gi)];
+      const validSearch = requestedPath === '/search/code' && req.method === 'GET' && repoQualifiers.length === 1 && repoQualifiers[0][1].toLowerCase() === 'repo' && repoQualifiers[0][2].toLowerCase() === configuredRepo.toLowerCase() && !/\b(?:OR|NOT)\b/i.test(searchQuery);
       if (!validContentPath && !validRepoRoute && !validSearch) return sendJson(res, 403, { error: 'GitHub access is restricted to the configured repository and supported read endpoints.' });
       if (validContentPath ? !['GET', 'PUT'].includes(req.method) : req.method !== 'GET') return sendJson(res, 405, { error: 'GitHub method not allowed for this endpoint.' });
       const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
