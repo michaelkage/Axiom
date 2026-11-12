@@ -125,6 +125,8 @@ export interface TaskBatchExecutionOptions {
   signal?: AbortSignal;
   /** Per-task wall-clock limit. Timed-out runners may continue if they ignore the signal. */
   timeoutMs?: number;
+  /** Maximum time to wait for an aborted runner to settle before quarantining it. Defaults to 10 seconds. */
+  abortDrainTimeoutMs?: number;
   /** Maximum number of independent workers allowed to run at the same time. Defaults to 3. */
   maxConcurrency?: number;
   /** Retry only failures classified as safe for automatic retry. Defaults to zero. */
@@ -287,6 +289,24 @@ export async function executeTaskBatches<T>(
             result = await Promise.race([runnerPromise, timeoutPromise, cancellation]);
             break;
           } catch (error) {
+            if (controller.signal.aborted) {
+              const drainTimeoutMs = Number.isFinite(options.abortDrainTimeoutMs) && (options.abortDrainTimeoutMs ?? 0) >= 0
+                ? options.abortDrainTimeoutMs!
+                : 10_000;
+              let drainTimer: ReturnType<typeof setTimeout> | undefined;
+              let runnerSettled = false;
+              await Promise.race([
+                runnerPromise.then(() => { runnerSettled = true; }, () => { runnerSettled = true; }),
+                new Promise<void>(resolve => { drainTimer = setTimeout(resolve, drainTimeoutMs); }),
+              ]);
+              if (drainTimer) clearTimeout(drainTimer);
+              if (!runnerSettled) {
+                throw Object.assign(
+                  new Error("Worker abort was not confirmed before the cleanup deadline; the worker remains quarantined."),
+                  { workerAbortUnconfirmed: true, cause: error },
+                );
+              }
+            }
             const advice = classifyRecovery(error);
             if (attempt > maxRetries || !advice.safeToRetryAutomatically || options.signal?.aborted || controller.signal.aborted) throw error;
             emit({ taskId: task.id, title: task.title, status: "running", attempt, startedAt, error: "Safe automatic retry: " + (error instanceof Error ? error.message : String(error)) });
