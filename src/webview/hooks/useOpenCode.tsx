@@ -14,7 +14,7 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
-import { loadRelevantWorkerProjectMemories, runSubAgentTasks } from "../services/workerTaskOrchestrator";
+import { loadRelevantWorkerProjectMemories, runSubAgentTasks as orchestrateSubAgentTasks } from "../services/workerTaskOrchestrator";
 import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
 import { createOpenCodeWorkerExecutionProvider } from "../services/opencodeWorkerExecutionProvider";
 import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
@@ -159,7 +159,7 @@ function createOpenCode() {
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
 
-    return runOpenCodeSubAgentTasks({
+    return orchestrateSubAgentTasks({
       parentSessionId,
       tasks,
       workspaceRoot: directory,
