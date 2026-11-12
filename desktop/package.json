@@ -13,7 +13,7 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --dir --win --x64",
-    "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs runtime-environment.test.cjs remote-workspace.test.cjs remote-workspace-runner.test.cjs"
+    "test": "node --test filesystem.test.cjs project-store.test.cjs terminal.test.cjs omniroute.test.cjs workspace-drift.test.cjs worker-state.test.cjs mcp-catalog.test.cjs mcp-manager.test.cjs mcp-runtime.test.cjs runtime-environment.test.cjs remote-workspace.test.cjs remote-workspace-runner.test.cjs secure-storage.test.cjs"
   },
   "dependencies": {
     "opencode-ai": "1.19.0"
@@ -30,7 +30,11 @@
       "node_modules/.bin/opencode*",
       "node_modules/opencode-ai/**",
       "node_modules/opencode-windows-x64/**",
-      "node_modules/opencode-windows-x64-baseline/**"
+      "node_modules/opencode-windows-x64-baseline/**",
+      "node_modules/opencode-darwin-arm64/**",
+      "node_modules/opencode-darwin-x64/**",
+      "node_modules/opencode-linux-x64/**",
+      "node_modules/opencode-linux-arm64/**"
     ],
     "files": [
       "main.cjs",
@@ -85,6 +89,30 @@
     "linux": {
       "maintainer": "michaelkage9@gmail.com",
       "category": "Development"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "artifactName": "Axiom-${version}-${arch}.${ext}"
     }
   }
 }
