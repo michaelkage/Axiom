@@ -45,7 +45,7 @@ jobs:
         run: node scripts/site/generate-releases.mjs
 
       - name: Validate site and release catalog
-        run: node --test scripts/site/*.test.mjs
+        run: node --test scripts/site/*.node.mjs
 
       - name: Upload product site
         uses: actions/upload-pages-artifact@v3
