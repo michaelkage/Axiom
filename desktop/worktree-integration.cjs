@@ -40,6 +40,13 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
   return current;
 }
 
+function resolveWorkerQualityStatus(checks, ranProjectCheck) {
+  if (!ranProjectCheck || !Array.isArray(checks) || checks.length === 0) return "Needs fixes";
+  return checks.every(check => check.state === "passed" && check.exitCode === 0)
+    ? "Ready to review"
+    : "Needs fixes";
+}
+
 function parseGitStatusPorcelainZ(output) {
   if (typeof output !== "string") throw new TypeError("Git status output must be text.");
   const records = output.split("\0");
@@ -162,4 +169,4 @@ async function withWorkspaceIntegrationLock(root, operation) {
   }
 }
 
-module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
+module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
