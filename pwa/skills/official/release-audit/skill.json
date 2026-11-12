@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "release-audit",
+  "name": "Release Audit",
+  "version": "1.0.0",
+  "description": "Check release readiness, CI evidence, versioning, artifacts, and deployment risks.",
+  "requiredTools": [],
+  "modelHints": ["reasoning", "release-engineering"],
+  "permissions": ["read-context", "network-access"],
+  "instructionsUrl": "./SKILL.md"
+}
