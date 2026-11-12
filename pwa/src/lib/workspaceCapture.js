@@ -98,9 +98,9 @@ export function buildOutcomeSummary(messages = [], logs = []) {
   const assistant = relevant.filter(message => message.role === 'assistant').map(message => String(message.content || '')).filter(Boolean);
   const lastAssistant = assistant.at(-1) || '';
   const paths = uniquePaths(relevant);
-  const combined = text.join('\n').toLowerCase();
-  const failed = /\b(failed|failure|error|not pass|did not pass|blocked)\b/.test(combined) || logs.some(item => item.kind === 'error');
-  const passed = /\b(passed|success|verified|all tests pass|build succeeded|build passed)\b/.test(combined) || logs.some(item => item.kind === 'success');
+  const evidenceText = relevant.filter(message => message.role === 'assistant' || message.role === 'tool').map(message => String(message.content || '')).join('\n').toLowerCase();
+  const failed = /\b(failed|failure|error|not pass|did not pass|blocked)\b/.test(evidenceText) || logs.some(item => item.kind === 'error');
+  const passed = /\b(passed|success|verified|all tests pass|build succeeded|build passed)\b/.test(evidenceText) || logs.some(item => item.kind === 'success');
   const remaining = text.flatMap(value => value.split('\n')).filter(line => /\b(todo|next step|remaining|still need|not yet|pending|blocked)\b/i.test(line)).map(line => line.trim()).filter(Boolean).slice(-5);
   const changed = lastAssistant.split('\n').map(line => line.trim()).filter(line => /\b(added|updated|changed|fixed|implemented|removed|created|refactored|committed)\b/i.test(line)).slice(0, 5);
   return [
