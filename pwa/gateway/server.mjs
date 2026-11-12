@@ -9,6 +9,8 @@ import { createCompanionCoordinator } from './companion.js';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
 const MCP_HEADERS = ['content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
+const MAX_REGISTERED_SESSIONS = 2048;
+const MAX_PAIRING_RATE_LIMIT_KEYS = 1000;
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a));
@@ -86,6 +88,12 @@ export function createAxiomGateway({
   const companion = createCompanionCoordinator({ now });
   const pairingAttempts = new Map();
 
+  function pruneSessionTokens(timestamp = now()) {
+    for (const [sessionToken, expiresAt] of sessionTokens) {
+      if (expiresAt <= timestamp) sessionTokens.delete(sessionToken);
+    }
+  }
+
   const server = http.createServer(async (req, res) => {
     if (!applyCors(req, res, origins)) return sendJson(res, 403, { error: 'Origin not allowed.' });
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
@@ -99,10 +107,18 @@ export function createAxiomGateway({
     if (url.pathname === '/companion/pairing/claim' && req.method === 'POST') {
       const address = req.socket.remoteAddress || 'unknown';
       const timestamp = now();
-      if (pairingAttempts.size > 1000) {
-        for (const [key, values] of pairingAttempts) if (!values.some(value => timestamp - value < 60_000)) pairingAttempts.delete(key);
+      // Prune on every claim so abandoned source addresses cannot accumulate
+      // indefinitely. Refuse new keys at capacity rather than evicting an
+      // active address and accidentally resetting its rate limit.
+      for (const [key, values] of pairingAttempts) {
+        const recent = values.filter(value => timestamp - value < 60_000);
+        if (recent.length) pairingAttempts.set(key, recent);
+        else pairingAttempts.delete(key);
       }
-      const attempts = (pairingAttempts.get(address) || []).filter(value => timestamp - value < 60_000);
+      if (!pairingAttempts.has(address) && pairingAttempts.size >= MAX_PAIRING_RATE_LIMIT_KEYS) {
+        return sendJson(res, 429, { error: 'Pairing service is temporarily at capacity. Try again shortly.' });
+      }
+      const attempts = pairingAttempts.get(address) || [];
       if (attempts.length >= 10) return sendJson(res, 429, { error: 'Too many pairing attempts. Wait one minute and try again.' });
       attempts.push(timestamp);
       pairingAttempts.set(address, attempts);
@@ -111,6 +127,10 @@ export function createAxiomGateway({
       let input;
       try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
       try {
+        pruneSessionTokens();
+        if (sessionTokens.size >= MAX_REGISTERED_SESSIONS) {
+          return sendJson(res, 429, { error: 'Too many active gateway sessions. Reconnect after an existing session expires.' });
+        }
         const paired = companion.claimInvite(input);
         sessionTokens.set(paired.token, now() + paired.expiresIn * 1000);
         return sendJson(res, 201, { ok: true, token: paired.token, pairId: paired.pairId, deviceName: paired.deviceName, expiresIn: paired.expiresIn });
@@ -126,6 +146,8 @@ export function createAxiomGateway({
       const sessionToken = typeof input.token === 'string' ? input.token : '';
       const ttlSeconds = Number(input.ttlSeconds || 43200);
       if (sessionToken.length < 32 || sessionToken.length > 256 || !Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 43200) return sendJson(res, 400, { error: 'Session token or lifetime is invalid.' });
+      pruneSessionTokens();
+      if (!sessionTokens.has(sessionToken) && sessionTokens.size >= MAX_REGISTERED_SESSIONS) return sendJson(res, 429, { error: 'Too many active gateway sessions. Reconnect after an existing session expires.' });
       sessionTokens.set(sessionToken, now() + ttlSeconds * 1000);
       return sendJson(res, 201, { ok: true, expiresIn: ttlSeconds });
     }
