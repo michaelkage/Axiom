@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AxiomSubTask, TaskExecutionRecord } from "../../shared/axiomRuntime";
 import type { OpenCodeTaskOrchestratorOptions } from "./opencodeTaskOrchestrator";
 import { runOpenCodeSubAgentTasks } from "./opencodeTaskOrchestrator";
+import { createOpenCodeWorkerExecutionProvider } from "./opencodeWorkerExecutionProvider";
 
 const task: AxiomSubTask = {
   id: "api-tests",
@@ -35,7 +36,15 @@ function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
     request: "Improve API reliability",
     planSteps: ["Inspect the current API client."],
     onOutcome: (record: TaskExecutionRecord) => outcomes.push(record),
-    ...calls,
+    workerProvider: createOpenCodeWorkerExecutionProvider({
+      createWorktree: calls.createWorktree,
+      createSession: calls.createSession,
+      promptSession: calls.promptSession,
+      abortSession: calls.abortSession,
+      getMessages: calls.getMessages,
+      subscribe: calls.subscribe,
+    }),
+    onLog: overrides.onLog,
     ...overrides,
   };
   return { options, calls, outcomes };
