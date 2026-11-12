@@ -14,7 +14,7 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
-import { loadRelevantWorkerProjectMemories, runSubAgentTasks } from "../services/opencodeTaskOrchestrator";
+import { loadRelevantWorkerProjectMemories, runSubAgentTasks } from "../services/workerTaskOrchestrator";
 import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
 import { createOpenCodeWorkerExecutionProvider } from "../services/opencodeWorkerExecutionProvider";
 import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
