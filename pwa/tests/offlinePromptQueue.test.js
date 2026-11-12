@@ -15,5 +15,5 @@ test("rejects invalid prompts and unsupported attachment types", () => {
 
 test("enforces the bounded offline item size", () => {
   assert.equal(MAX_BYTES_PER_ITEM, 2 * 1024 * 1024);
-  assert.throws(() => validateOfflinePrompt({ prompt: "x".repeat(MAX_BYTES_PER_ITEM + 1) }), /2 MiB/);
+  assert.throws(() => validateOfflinePrompt({ prompt: "x", attachments: [{ kind: "image", name: "large.jpg", base64: "x".repeat(MAX_BYTES_PER_ITEM) }] }), /2 MiB/);
 });
