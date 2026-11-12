@@ -331,11 +331,11 @@ export async function executeTaskBatches<T>(
         return { task, result };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const timedOut = /timed out after \d+ms/i.test(errorMessage);
+        const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
+        const timedOut = detail.workerAbortUnconfirmed === true || /timed out after \d+ms/i.test(errorMessage);
         const cancelled = !timedOut && (options.signal?.aborted || /cancelled/i.test(errorMessage));
         const status: TaskExecutionStatus = timedOut ? "timed_out" : cancelled ? "cancelled" : "failed";
         outcomeById.set(task.id, status);
-        const detail = error && typeof error === "object" ? error as Record<string, unknown> : {};
         emit({
           taskId: task.id, title: task.title, status, attempt: typeof attempt === "number" ? attempt : undefined, startedAt, finishedAt: Date.now(),
           error: errorMessage,
