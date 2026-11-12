@@ -496,7 +496,7 @@ async function inspectWorktree(event, message) {
     for (const file of files.filter(item => item.status === "??")) {
       try {
         const full = await resolveSafeWorkspaceFile(message.worktreePath, file.path);
-        const inspected = await readRegularFileNoFollow(full);
+        const inspected = await readRegularFileNoFollow(full, 1024 * 1024);
         patch += "\n\n--- NEW FILE: " + file.path + " ---\n";
         patch += inspected.size > 1024 * 1024
           ? "[Preview omitted: untracked file exceeds the 1 MiB review-preview limit.]"
@@ -694,7 +694,7 @@ async function applyWorktreeChanges(event, message) {
           const sourceStat = await fs.promises.lstat(source);
           if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) throw new Error("Integration blocked for " + relative + ": only regular, non-symlink files can be integrated.");
           if (sourceStat.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file exceeds the 25 MiB per-file integration limit.");
-          const sourceFile = await readRegularFileNoFollow(source);
+          const sourceFile = await readRegularFileNoFollow(source, maxFileBytes);
           if (sourceFile.dev !== sourceStat.dev || sourceFile.ino !== sourceStat.ino) throw new Error("Integration blocked for " + relative + ": worker source changed during preflight.");
           if (sourceFile.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file grew beyond the per-file integration limit during preflight.");
           content = sourceFile.content;
@@ -752,7 +752,7 @@ async function applyWorktreeChanges(event, message) {
               if (error.code !== "ENOENT") throw error;
             }
           } else {
-            const currentSource = await readRegularFileNoFollow(item.source);
+            const currentSource = await readRegularFileNoFollow(item.source, maxFileBytes);
             if (!currentSource.content.equals(item.content) || currentSource.mode !== item.sourceMode) {
               throw new Error("Integration blocked for " + item.relative + ": worker source changed after preflight.");
             }
