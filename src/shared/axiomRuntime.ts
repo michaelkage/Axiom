@@ -435,9 +435,6 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
       || !Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn)) {
       throw new Error(`Task ${index + 1} is missing required fields.`);
     }
-    if (![...task.targetFiles, ...task.dependsOn].every(entry => typeof entry === "string")) {
-      throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
-    }
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.id)) {
       throw new Error(`Task ${index + 1} has an invalid or overlong ID.`);
     }
@@ -452,6 +449,11 @@ export function parseSubTasks(value: unknown): AxiomSubTask[] {
     }
     if (task.dependsOn.length > PLANNER_LIMITS.dependenciesPerTask) {
       throw new Error(`Task ${task.id} declares too many dependencies.`);
+    }
+    // Check array bounds before traversing or copying untrusted planner arrays.
+    if (!task.targetFiles.every(entry => typeof entry === "string")
+      || !task.dependsOn.every(entry => typeof entry === "string")) {
+      throw new Error(`Task ${task.id} contains invalid file or dependency references.`);
     }
     totalTargetFiles += task.targetFiles.length;
     if (totalTargetFiles > PLANNER_LIMITS.targetFilesTotal) {
