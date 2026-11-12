@@ -1,5 +1,5 @@
-const CACHE = 'axiom-shell-v3';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/axiom.svg'];
+const CACHE = 'axiom-shell-v4';
+const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/axiom.svg', '/skills/registry.json'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
@@ -55,6 +55,7 @@ self.addEventListener('fetch', event => {
   const isStaticAsset = url.pathname === '/index.html' ||
     url.pathname === '/manifest.webmanifest' ||
     url.pathname === '/axiom.svg' ||
+    url.pathname === '/skills/registry.json' ||
     url.pathname.startsWith('/assets/');
 
   // Leave API and other dynamic GET requests to the network; caching them can
