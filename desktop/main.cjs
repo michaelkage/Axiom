@@ -712,7 +712,8 @@ async function applyWorktreeChanges(event, message) {
         }
         if (stagedBytes > maxTransactionBytes) throw new Error("Integration blocked: selected files exceed the 100 MiB transaction staging limit.");
         staged.push({
-          relative, destination, content, sourceMode,
+          relative, source, destination, content, sourceMode,
+          workspaceHeadBlob,
           existed: !!destinationStat,
           backup,
           backupMode: destinationBackup?.mode ?? null,
@@ -727,10 +728,40 @@ async function applyWorktreeChanges(event, message) {
         const checkedDestination = await resolveSafeWorkspaceFile(root, item.relative);
         if (checkedDestination !== item.destination) throw new Error("Destination path changed during integration preflight: " + item.relative);
       }
+      let remoteRevalidated = false;
       const committedPaths = await applyStagedWorkspaceFiles(staged, {
         beforeApply: async item => {
           const checkedDestination = await resolveSafeWorkspaceFile(root, item.relative);
           if (checkedDestination !== item.destination) throw new Error("Destination path changed during integration: " + item.relative);
+          const dirtyNow = await run("git", ["status", "--porcelain", "--", ":(literal)" + item.relative], root);
+          if (dirtyNow.exitCode !== 0 || dirtyNow.output.trim()) {
+            throw new Error("Integration blocked for " + item.relative + ": destination changed after preflight.");
+          }
+          if (await headBlobSha(root, item.relative) !== item.workspaceHeadBlob) {
+            throw new Error("Integration blocked for " + item.relative + ": workspace HEAD changed after preflight.");
+          }
+          if (item.content === null) {
+            try {
+              await fs.promises.lstat(item.source);
+              throw new Error("Integration blocked for " + item.relative + ": deleted worker file reappeared after preflight.");
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+            }
+          } else {
+            const currentSource = await readRegularFileNoFollow(item.source);
+            if (!currentSource.content.equals(item.content) || currentSource.mode !== item.sourceMode) {
+              throw new Error("Integration blocked for " + item.relative + ": worker source changed after preflight.");
+            }
+          }
+          if (!remoteRevalidated) {
+            remoteRevalidated = true;
+            if (upstream) {
+              const latestUpstream = await upstreamRevision(root);
+              if (!latestUpstream || latestUpstream.ref !== upstream.ref || latestUpstream.sha !== upstream.sha) {
+                throw new Error("Integration blocked: remote branch advanced during integration preflight. Refresh and review the worker diff again.");
+              }
+            }
+          }
         }
       });
       appliedPaths.push(...committedPaths);
