@@ -30,5 +30,10 @@ export interface WorkerExecutionResult {
  */
 export interface WorkerExecutionProvider {
   readonly id: string;
+  readonly capabilities: {
+    isolatedWorkspaces: boolean;
+    cancellation: "cooperative" | "confirmed";
+    streamingLogs: boolean;
+  };
   execute(request: WorkerExecutionRequest): Promise<WorkerExecutionResult>;
 }
