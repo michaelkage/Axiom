@@ -18,6 +18,24 @@ describe("Turbo supervisor policy", () => {
       task("active", { status: "running", attempts: 1 }),
     ], policy)).toMatchObject({ action: "wait" });
   });
+
+  it("quarantines timed-out workers instead of retrying an unconfirmed remote session", () => {
+    const result = decideTurboNext([
+      task("timed-out", { status: "timed_out", attempts: 1 }),
+    ], policy);
+    expect(result).toMatchObject({
+      action: "blocked",
+      taskIds: ["timed-out"],
+    });
+    expect(result.reason).toMatch(/cannot confirm its remote session has stopped/i);
+  });
+
+  it("drains active siblings before surfacing a timed-out worker for intervention", () => {
+    expect(decideTurboNext([
+      task("timed-out", { status: "timed_out", attempts: 1 }),
+      task("active", { status: "running", attempts: 1 }),
+    ], policy)).toMatchObject({ action: "wait" });
+  });
   it("does not replan exhausted work while all worker slots are occupied", () => {
     expect(decideTurboNext([
       task("exhausted", { status: "failed", attempts: 2 }),
