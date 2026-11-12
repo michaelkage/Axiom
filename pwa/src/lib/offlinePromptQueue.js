@@ -1,3 +1,4 @@
+import { redactSecrets } from "./securityRedaction.js";
 const DB_NAME = "axiom-offline-queue";
 const STORE = "pending";
 const MAX_ITEMS = 50;
@@ -27,17 +28,17 @@ async function transaction(mode, operation) {
   });
 }
 
-function cleanPayload(payload) {
+export function validateOfflinePrompt(payload) {
   if (!payload || typeof payload !== "object" || typeof payload.prompt !== "string" || !payload.prompt.trim()) {
     throw new TypeError("An offline queue item requires a non-empty prompt.");
   }
   const safe = {
-    prompt: payload.prompt.slice(0, 100000),
+    prompt: redactSecrets(payload.prompt).slice(0, 100000),
     attachments: Array.isArray(payload.attachments) ? payload.attachments.slice(0, 8).map(item => {
       if (!item || !["image", "text"].includes(item.kind) || typeof item.name !== "string") throw new TypeError("Invalid offline attachment.");
       return item.kind === "image"
         ? { kind: "image", name: item.name.slice(0, 180), type: String(item.type || "image/jpeg"), size: Number(item.size) || 0, base64: String(item.base64 || "") }
-        : { kind: "text", name: item.name.slice(0, 180), type: String(item.type || "text/plain"), size: Number(item.size) || 0, text: String(item.text || "") };
+        : { kind: "text", name: item.name.slice(0, 180), type: String(item.type || "text/plain"), size: Number(item.size) || 0, text: redactSecrets(String(item.text || "")) };
     }) : [],
     createdAt: Number.isFinite(payload.createdAt) ? payload.createdAt : Date.now()
   };
@@ -47,7 +48,7 @@ function cleanPayload(payload) {
 }
 
 export async function enqueueOfflinePrompt(payload) {
-  const safe = cleanPayload(payload);
+  const safe = validateOfflinePrompt(payload);
   const existing = await transaction("readonly", store => store.getAll());
   if (existing.length >= MAX_ITEMS) throw new Error("Offline queue is full. Send or remove queued tasks before adding another.");
   const item = { id: globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2), ...safe, status: "queued" };
