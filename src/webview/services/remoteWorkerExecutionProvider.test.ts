@@ -30,7 +30,7 @@ describe("remote worker execution provider", () => {
   it("submits a prompt template and maps a completed remote job", async () => {
     const host = transport();
     const provider = createRemoteWorkerExecutionProvider({ transport: host, repositoryUrl: "https://github.com/acme/repo.git", branch: "main", pollIntervalMs: 100 });
-    const result = await provider.execute(request());
+    const executionRequest = request();\n    const result = await provider.execute(executionRequest);
     expect(host.submit).toHaveBeenCalledWith(expect.objectContaining({
       taskId: "task-1", branch: "main",
       prompt: "Implement endpoint in __AXIOM_WORKSPACE_ROOT__",
@@ -39,7 +39,7 @@ describe("remote worker execution provider", () => {
       sessionId: "remote:remote-job-1", worktreePath: "/srv/axiom/workspaces/job-1",
       summary: "Implemented remotely.", taskId: "task-1",
     });
-    expect(request().onLog).not.toHaveBeenCalled();
+    expect(executionRequest.onLog).toHaveBeenCalledWith("task-1", "worker started");
   });
   it("streams each log entry once across status polls", async () => {
     const onLog = vi.fn();
@@ -67,3 +67,17 @@ describe("remote worker execution provider", () => {
       .rejects.toMatchObject({ name: "RemoteWorkerInterruptedError" });
   });
 });
+
+  it("does not release a remote worker when cancellation acknowledgement is unavailable", async () => {
+    const controller = new AbortController();
+    let polls = 0;
+    const host = transport({
+      submit: vi.fn(async () => job({ status: "running", logs: [] })),
+      cancel: vi.fn(async () => { throw new Error("host temporarily unavailable"); }),
+      get: vi.fn(async () => ++polls > 2 ? job({ status: "cancelled" }) : job({ status: "running", logs: [] })),
+    });
+    const pending = createRemoteWorkerExecutionProvider({ transport: host, repositoryUrl: "https://github.com/acme/repo.git", branch: "main", pollIntervalMs: 100 }).execute(request(controller.signal));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(host.get).toHaveBeenCalled();
+  });
