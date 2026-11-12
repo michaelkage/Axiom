@@ -51,9 +51,9 @@ export async function runOpenCodeSubAgentTasks(
   if (options.signal?.aborted) throw new Error("Parallel task cancelled before worker preparation.");
 
   const [conversation, projectMemories, availableAgentNames] = await Promise.all([
-    options.loadConversation().catch(() => []),
+    Promise.resolve().then(() => options.loadConversation()).catch(() => []),
     Promise.resolve().then(() => options.loadProjectMemories(options.request)).catch(() => []),
-    options.loadAvailableAgents().catch(() => []),
+    Promise.resolve().then(() => options.loadAvailableAgents()).catch(() => []),
   ]);
 
   if (options.signal?.aborted) throw new Error("Parallel task cancelled before worker execution.");
