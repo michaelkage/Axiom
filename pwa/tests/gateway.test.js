@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAxiomGateway, ensureGatewayToken, loadProviderCredentials } from '../gateway/server.mjs';
+import { createCompanionCoordinator } from '../gateway/companion.js';
 import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -405,4 +406,19 @@ test('companion pairing issues a restricted credential and supports explicit app
     const afterRevoke = await fetch(base + '/companion/approvals/' + approval.id, { headers: { authorization: 'Bearer ' + paired.token } });
     assert.equal(afterRevoke.status, 401);
   });
+});
+
+
+test('companion coordinator bounds paired sessions and reclaims expired slots', () => {
+  let timestamp = 1_000;
+  const companion = createCompanionCoordinator({ now: () => timestamp });
+  const claim = index => {
+    const invite = companion.createInvite('desktop-gateway-token-that-is-at-least-32-characters');
+    return companion.claimInvite({ code: invite.code, deviceName: 'Device ' + index });
+  };
+  for (let index = 0; index < 100; index += 1) claim(index);
+  assert.throws(() => claim(100), error => error.status === 429 && /Too many paired devices/.test(error.message));
+  timestamp += 12 * 60 * 60 * 1000;
+  assert.equal(companion.isCompanionSession('not-a-session'), false);
+  assert.doesNotThrow(() => claim(101));
 });
