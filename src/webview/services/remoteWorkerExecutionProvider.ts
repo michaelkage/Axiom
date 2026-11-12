@@ -90,10 +90,10 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
         }
         if (request.signal?.aborted && !cancelRequested) {
           cancelRequested = true;
-          await options.transport.cancel(job.id);
+          try { await options.transport.cancel(job.id); } catch { /* Keep polling; an unconfirmed cancellation must remain quarantined. */ }
         }
         await delay(pollIntervalMs);
-        current = await options.transport.get(job.id);
+        try { current = await options.transport.get(job.id); } catch (error) {\n          if (!request.signal?.aborted) throw error;\n          continue;\n        }
       }
       for (const entry of current.logs || []) {
         if (typeof entry.id !== "string" || seenLogs.has(entry.id)) continue;
