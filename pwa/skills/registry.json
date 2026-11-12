@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/michaelkage/Axiom/tree/main/pwa/skills",
+  "skills": [
+    {
+      "id": "code-review",
+      "name": "Code Review",
+      "description": "Review changes for correctness, security, maintainability, and missing tests.",
+      "manifestUrl": "/skills/official/code-review/skill.json",
+      "source": "Axiom Official"
+    },
+    {
+      "id": "debugging",
+      "name": "Root-Cause Debugging",
+      "description": "Trace failures to their source and propose the smallest safe fix with regression coverage.",
+      "manifestUrl": "/skills/official/debugging/skill.json",
+      "source": "Axiom Official"
+    },
+    {
+      "id": "release-audit",
+      "name": "Release Audit",
+      "description": "Check release readiness, CI evidence, versioning, artifacts, and deployment risks.",
+      "manifestUrl": "/skills/official/release-audit/skill.json",
+      "source": "Axiom Official"
+    }
+  ]
+}
