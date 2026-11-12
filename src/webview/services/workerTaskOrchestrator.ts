@@ -36,7 +36,7 @@ export interface TaskOrchestratorOptions {
  * Provider-specific runtime details remain behind the worker provider contract.
  */
 export async function runSubAgentTasks(
-  options: OpenCodeTaskOrchestratorOptions,
+  options: TaskOrchestratorOptions,
 ) {
   const directory = options.workspaceRoot;
   if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
