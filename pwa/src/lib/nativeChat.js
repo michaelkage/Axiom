@@ -38,6 +38,27 @@ export async function runNativeToolChat({
   if (!Number.isInteger(maxTurns) || maxTurns < 1) throw new TypeError('maxTurns must be a positive integer');
 
   const conversation = messages.map(message => ({ role: message.role, content: message.content || '' }));
+  const githubRequest = messages.slice().reverse().find(message => message.role === 'user')?.content || '';
+  const asksForGitHub = /\\b(github|repository|repo)\\b/i.test(githubRequest) &&
+    /\\b(access|see|view|browse|inspect|explore|list|show|read|search|find|check|review|connect|look)\\b/i.test(githubRequest);
+  if (asksForGitHub) {
+    const available = new Set(tools.map(tool => tool.function?.name || tool.name));
+    const required = ['github_get_repository', 'github_list_directory'];
+    const missing = required.filter(name => !available.has(name));
+    if (missing.length) {
+      throw new Error('GitHub was requested, but its tools are not active. Pair the gateway, save and verify the GitHub PAT plus owner/repo in Settings, then enable GitHub under Tools. Missing: ' + missing.join(', ') + '.');
+    }
+    abortError(signal);
+    onEvent({ type: 'tool.request', name: 'github_get_repository', args: {} });
+    const repositoryInfo = await executeTool('github_get_repository', {}, { signal });
+    conversation.push({ role: 'tool', content: 'Verified GitHub repository metadata: ' + serializeToolResult(repositoryInfo) });
+    onEvent({ type: 'tool.completed', name: 'github_get_repository', result: serializeToolResult(repositoryInfo) });
+    onEvent({ type: 'tool.request', name: 'github_list_directory', args: { path: '' } });
+    const rootEntries = await executeTool('github_list_directory', { path: '' }, { signal });
+    conversation.push({ role: 'tool', content: 'Verified GitHub repository root entries: ' + serializeToolResult(rootEntries) });
+    onEvent({ type: 'tool.completed', name: 'github_list_directory', result: serializeToolResult(rootEntries) });
+  }
+
   const startedAt = Date.now();
   let firstTokenMs = null;
   let generatedTokens = 0;
@@ -52,7 +73,7 @@ export async function runNativeToolChat({
         ? '\n\nAxiom tools are available. If a tool is needed, output ONLY one JSON object with this exact shape: {"tool_calls":[{"name":"tool_name","arguments":{}}]}. Do not wrap it in Markdown. Do not invent tool names. If no tool is needed, answer normally. Available tools and schemas:\n' + JSON.stringify(tools)
         : '';
       const promptMessages = [
-        { role: 'system', content: 'You are Axiom, a helpful local assistant. Follow the conversation and answer clearly.' + toolPrompt },
+        { role: 'system', content: 'You are Axiom, a helpful local assistant. Use tool results as evidence. Never claim you cannot access an integration when tool results are present. If a requested action requires a tool, call it using the exact JSON tool_calls format. Do not invent results, repository names, paths, or tool outcomes. If a tool returns an error, explain that exact error and the next corrective action. Answer clearly.' + toolPrompt },
         ...conversation
       ];
       let turnText = '';
