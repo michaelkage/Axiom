@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "code-review",
+  "name": "Code Review",
+  "version": "1.0.0",
+  "description": "Review changes for correctness, security, maintainability, and missing tests.",
+  "requiredTools": [],
+  "modelHints": ["reasoning", "code"],
+  "permissions": ["read-context"],
+  "instructionsUrl": "./SKILL.md"
+}
