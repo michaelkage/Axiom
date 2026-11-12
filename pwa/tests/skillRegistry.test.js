@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { validateSkillManifest, buildSkillSystemPrompt } from '../src/lib/skillRegistry.js';
 
 const validSkill = {
@@ -40,4 +41,15 @@ test('skill prompt treats instructions as untrusted guidance and never grants ca
 test('skill prompt reports missing required tools instead of pretending they exist', () => {
   const prompt = buildSkillSystemPrompt([{ ...validSkill, requiredTools: ['github_write'], instructions: 'Do the task.' }], []);
   assert.match(prompt, /Unavailable required tools: test-skill: github_write/);
+});
+
+test('official skill sources are bundled into the offline public registry at build time', async () => {
+  const script = await readFile(new URL('../scripts/sync-skills.mjs', import.meta.url), 'utf8');
+  const source = JSON.parse(await readFile(new URL('../skills/registry.json', import.meta.url), 'utf8'));
+  const bundled = JSON.parse(await readFile(new URL('../public/skills/registry.json', import.meta.url), 'utf8'));
+  assert.match(script, /validateSkillManifest/);
+  assert.match(script, /20000/);
+  assert.equal(bundled.schemaVersion, 1);
+  assert.deepEqual(bundled.skills.map(skill => skill.id), source.skills.map(skill => skill.id));
+  assert.ok(bundled.skills.every(skill => skill.instructions && skill.manifest.instructionsUrl));
 });
