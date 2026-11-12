@@ -386,6 +386,50 @@ describe("Axiom runtime helpers", () => {
     expect(compressionPercent(1000, 250)).toBe(75);
     expect(compressionPercent(0, 0)).toBeNull();
   });
+  it("preserves isolated worktree diagnostics when child-session startup fails", async () => {
+    const tasks = parseSubTasks([
+      { id: "startup-failure", title: "Start child session", scope: "create a child session", targetFiles: ["startup.ts"], dependsOn: [], acceptanceCriteria: ["Retain the isolated worktree path"] },
+    ]);
+    const outcomes: Array<Record<string, unknown>> = [];
+    const failure = Object.assign(new Error("Could not create child session: runtime unavailable"), {
+      worktreePath: "/tmp/axiom-startup-failure",
+      logs: ["isolated worktree created"],
+    });
+    await expect(executeTaskBatches(tasks, async () => { throw failure; }, record => {
+      outcomes.push(record as unknown as Record<string, unknown>);
+    })).rejects.toThrow(/runtime unavailable/);
+    expect(outcomes.find(record => record.status === "failed")).toMatchObject({
+      taskId: "startup-failure",
+      status: "failed",
+      worktreePath: "/tmp/axiom-startup-failure",
+      logs: ["isolated worktree created"],
+    });
+  });
+
+  it("preserves session and worktree diagnostics when a worker prompt fails", async () => {
+    const tasks = parseSubTasks([
+      { id: "prompt-failure", title: "Execute worker prompt", scope: "run the task prompt", targetFiles: ["prompt.ts"], dependsOn: [], acceptanceCriteria: ["Retain session diagnostics"] },
+    ]);
+    const outcomes: Array<Record<string, unknown>> = [];
+    const failure = Object.assign(new Error("Provider rejected the prompt"), {
+      sessionId: "child-session-42",
+      worktreePath: "/tmp/axiom-prompt-failure",
+      agent: "builder",
+      logs: ["session created", "prompt submitted"],
+    });
+    await expect(executeTaskBatches(tasks, async () => { throw failure; }, record => {
+      outcomes.push(record as unknown as Record<string, unknown>);
+    })).rejects.toThrow(/Provider rejected/);
+    expect(outcomes.find(record => record.status === "failed")).toMatchObject({
+      taskId: "prompt-failure",
+      status: "failed",
+      sessionId: "child-session-42",
+      worktreePath: "/tmp/axiom-prompt-failure",
+      agent: "builder",
+      logs: ["session created", "prompt submitted"],
+    });
+  });
+
   it("forwards worker session metadata and transcript into the terminal outcome", async () => {
     const tasks = parseSubTasks([
       { id: "worker", title: "Worker session", scope: "execute in isolated session", targetFiles: ["worker.ts"], dependsOn: [], acceptanceCriteria: ["Session metadata is surfaced"] },
