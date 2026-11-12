@@ -691,6 +691,7 @@ async function applyWorktreeChanges(event, message) {
           if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) throw new Error("Integration blocked for " + relative + ": only regular, non-symlink files can be integrated.");
           if (sourceStat.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file exceeds the 25 MiB per-file integration limit.");
           const sourceFile = await readRegularFileNoFollow(source);
+          if (sourceFile.dev !== sourceStat.dev || sourceFile.ino !== sourceStat.ino) throw new Error("Integration blocked for " + relative + ": worker source changed during preflight.");
           if (sourceFile.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file grew beyond the per-file integration limit during preflight.");
           content = sourceFile.content;
           stagedBytes += content.length;
@@ -701,6 +702,9 @@ async function applyWorktreeChanges(event, message) {
         }
         if (destinationStat?.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the 25 MiB rollback limit.");
         const destinationBackup = destinationStat ? await readRegularFileNoFollow(destination) : null;
+        if (destinationBackup && (destinationBackup.dev !== destinationStat.dev || destinationBackup.ino !== destinationStat.ino)) {
+          throw new Error("Integration blocked for " + relative + ": destination changed during preflight.");
+        }
         const backup = destinationBackup?.content ?? null;
         if (backup) {
           stagedBytes += backup.length;
