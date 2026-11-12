@@ -73,4 +73,11 @@ describe("untrusted planner output validation", () => {
     expect(() => validateTaskPlan([{ ...baseTask, targetFiles: null as unknown as string[] }])).toThrow(/invalid task-plan shape/);
     expect(() => validateTaskPlan([{ ...baseTask, acceptanceCriteria: [{ id: "same", description: "One" }, { id: "same", description: "Two" }] }])).toThrow(/duplicate acceptance-criterion ids/);
   });
+  it("rejects ambiguous and oversized task-plan paths before execution", () => {
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: ["src//feature.ts"] }])).toThrow(/Unsafe target path/);
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: ["src/./feature.ts"] }])).toThrow(/Unsafe target path/);
+    expect(() => validateTaskPlan([{ ...baseTask, targetFiles: [" src/feature.ts"] }])).toThrow(/Unsafe target path/);
+    expect(() => validateTaskPlan([{ ...baseTask, title: "x".repeat(241) }])).toThrow(/valid, bounded title and scope/);
+    expect(() => validateTaskPlan(Array.from({ length: 51 }, (_, index) => ({ ...baseTask, id: "task-" + index })))).toThrow(/cannot exceed 50 tasks/);
+  });
 });
