@@ -151,6 +151,7 @@ async function runtimeExecutable() {
         path.join(base, ".bin", "opencode.cmd"),
       ]
     : [
+        path.join(base, "opencode-" + process.platform + "-" + process.arch, "bin", "opencode"),
         path.join(base, ".bin", "opencode"),
         path.join(base, "opencode-ai", "bin", "opencode"),
       ];
