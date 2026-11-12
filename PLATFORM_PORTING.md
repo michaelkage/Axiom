@@ -28,7 +28,9 @@ The app uses Electron safeStorage for Keychain-backed credential encryption and 
 
 ## iOS Capacitor shell
 
-The iOS project is generated from the shared React PWA:
+The iOS project is generated from the shared React PWA. This first iOS target is a remote-runtime mobile shell; the Android llama.cpp/NDK local GGUF engine is not yet ported to Apple Metal. iOS can connect to a reachable Axiom gateway or compatible remote model endpoint, but this blueprint does not claim on-device GGUF inference on iPhone.
+
+
 
 ```sh
 cd pwa
