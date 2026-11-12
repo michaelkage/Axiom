@@ -50,6 +50,7 @@
       "terminal.cjs",
       "omniroute.cjs",
       "workspace-drift.cjs",
+      "worktree-integration.cjs",
       "worker-state.cjs",
       "remote-workspace.cjs",
       "remote-workspace-runner.cjs",
