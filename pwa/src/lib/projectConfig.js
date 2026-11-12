@@ -1,5 +1,5 @@
 const MAX_CONFIG_BYTES = 32 * 1024;
-const SAFE_COMMAND = /^[a-zA-Z0-9_./:@=+,-]+(?:\\s+[a-zA-Z0-9_./:@=+,-]+)*$/;
+const SAFE_COMMAND = /^[a-zA-Z0-9_./:@=+,-]+(?:\s+[a-zA-Z0-9_./:@=+,-]+)*$/;
 
 export function validateProjectConfig(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError(".axiom/project.json must be a JSON object.");
