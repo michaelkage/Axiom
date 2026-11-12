@@ -41,6 +41,7 @@ export async function requestWithRetry(fetchImpl, input, init = {}, {
     abortError(signal);
     try {
       const response = await fetchImpl(input, { ...init, signal });
+      if (!response || !Number.isInteger(response.status)) throw new Error('fetchImpl did not return a valid HTTP response.');
       if (!RETRYABLE_STATUS.has(response.status) || attempt >= retryCount) return response;
       const delayMs = retryDelay(response, attempt + 1, baseDelayMs, maxDelayMs);
       try { await response.body?.cancel?.(); } catch { /* Response may not expose a cancellable body. */ }
