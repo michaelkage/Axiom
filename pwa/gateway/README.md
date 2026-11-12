@@ -22,7 +22,7 @@ If the token is lost or compromised, stop the gateway, replace `~/.config/axiom/
 4. Set an expiry, generate the token, and copy it immediately.
 5. Open Axiom Settings → Provider credentials, paste the PAT into the GitHub field, enter the exact `owner/repo`, and save. Do not paste it into chat or commit it.
 
-Axiom stores the token and repository in `~/.config/axiom/provider-credentials.json` with owner-only permissions. The gateway restricts GitHub content operations to this repository. Environment variables remain supported for headless deployments and override the saved file.
+Axiom stores the token and repository in `~/.config/axiom/provider-credentials.json` with owner-only permissions. The gateway restricts GitHub reads and content writes to this repository. Axiom can browse directories and files, inspect repository metadata, list branches and commits, review issues and pull requests, and search code within that repository. File writes require explicit approval. Environment variables remain supported for headless deployments and override the saved file.
 
 ## 3. Get the Supabase URL and publishable key
 
@@ -68,7 +68,7 @@ By default the gateway binds to `127.0.0.1:8787`. Keep that default for a same-d
 - Browser origins are checked against an exact allowlist. No wildcard origin or credentialed cookie support.
 - Ollama is a fixed upstream; only known API endpoints and GET/POST methods are allowed.
 - MCP servers are selected by ID from `MCP_SERVERS_JSON`; browser input cannot supply arbitrary upstream URLs. Upstream bearer tokens remain in the gateway process.
-- GitHub access is restricted to GET/PUT content operations in the single configured `GITHUB_REPOSITORY`; the PAT stays in the gateway process.
+- GitHub access is restricted to the single configured `GITHUB_REPOSITORY`: read-only repository metadata, directory/file reads, branches, commits, issues, pull requests, and code search; content writes are limited to PUT. Code search must include the configured repository qualifier. The PAT stays in the gateway process.
 - Supabase REST requests use the gateway-held publishable key. Secret and service-role keys are rejected; database grants and RLS remain the authorization boundary.
 
 ## Environment
