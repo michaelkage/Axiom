@@ -37,7 +37,7 @@ test("runtime resolver checks architecture-specific native binaries before gener
 });
 
 test("every statically required desktop runtime module is included in the packaged app", () => {
-  const requiredModules = [...runtime.matchAll(/require\\(["']\\.\\/([^"']+)["']\\)/g)]
+  const requiredModules = [...runtime.matchAll(/require\(["']\.\/([^"']+)["']\)/g)]
     .map(match => match[1]);
   const packagedFiles = new Set(desktop.build.files);
   for (const modulePath of requiredModules) {
