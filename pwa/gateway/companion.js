@@ -128,17 +128,17 @@ export function createCompanionCoordinator({ now = Date.now } = {}) {
   }
 
   function revokePair(ownerToken, pairId) {
-    let removed = false;
+    const removedTokens = [];
     for (const [token, session] of sessions) {
       if (session.ownerToken === ownerToken && session.pairId === pairId) {
         sessions.delete(token);
-        removed = true;
+        removedTokens.push(token);
       }
     }
     for (const [id, approval] of approvals) {
       if (approval.ownerToken === ownerToken && approval.pairId === pairId) approvals.delete(id);
     }
-    return removed;
+    return removedTokens;
   }
 
   return Object.freeze({ createInvite, claimInvite, createApproval, listApprovals, decideApproval, getApproval, revokePair });
