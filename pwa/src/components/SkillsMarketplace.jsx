@@ -26,8 +26,8 @@ export default function SkillsMarketplace({ installedSkills = [], activeSkillIds
     setNotice('');
     setPreview(null);
     try {
-      const skill = await loadSkillFromManifest(source.manifestUrl || source);
-      setSelected({ ...source, manifestUrl: skill.sourceUrl });
+      const skill = source.bundled ? source : await loadSkillFromManifest(source.manifestUrl || source);
+      setSelected({ ...source, manifestUrl: skill.sourceUrl || source.manifestUrl || '' });
       setPreview(skill);
     } catch (reason) {
       setSelected(null);
