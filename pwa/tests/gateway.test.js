@@ -441,3 +441,39 @@ test('companion pairing claim enforces the per-source rolling rate limit', async
     assert.match((await limited.json()).error, /Too many pairing attempts/);
   });
 });
+
+
+test('GitHub proxy permits only scoped repository reads and content writes', async () => {
+  const seen = [];
+  await withServer({
+    env: { GITHUB_TOKEN: 'github-server-secret', GITHUB_REPOSITORY: 'michaelkage/Axiom' },
+    fetchImpl: async (url, options) => {
+      seen.push({ url: String(url), method: options.method, authorization: options.headers.authorization });
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  }, async base => {
+    const headers = { authorization: 'Bearer ' + TOKEN };
+    const root = await fetch(base + '/api/github/repos/michaelkage/Axiom/contents/', { headers });
+    assert.equal(root.status, 200);
+    const metadata = await fetch(base + '/api/github/repos/michaelkage/Axiom', { headers });
+    assert.equal(metadata.status, 200);
+    const branches = await fetch(base + '/api/github/repos/michaelkage/Axiom/branches?per_page=10', { headers });
+    assert.equal(branches.status, 200);
+    const issues = await fetch(base + '/api/github/repos/michaelkage/Axiom/issues?state=open', { headers });
+    assert.equal(issues.status, 200);
+    const search = await fetch(base + '/api/github/search/code?q=runtime+repo%3Amichaelkage%2FAxiom', { headers });
+    assert.equal(search.status, 200);
+    const unscopedSearch = await fetch(base + '/api/github/search/code?q=runtime', { headers });
+    assert.equal(unscopedSearch.status, 403);
+    const otherRepo = await fetch(base + '/api/github/repos/other/repo/branches', { headers });
+    assert.equal(otherRepo.status, 403);
+    const writeToMetadata = await fetch(base + '/api/github/repos/michaelkage/Axiom', { method: 'PUT', headers });
+    assert.equal(writeToMetadata.status, 405);
+    const traversal = await fetch(base + '/api/github/repos/michaelkage/Axiom/contents/%2e%2e/secret', { headers });
+    assert.equal(traversal.status, 400);
+    assert.equal(seen.length, 5);
+    assert.ok(seen.every(item => item.authorization === 'Bearer github-server-secret'));
+    assert.ok(seen.some(item => item.url === 'https://api.github.com/repos/michaelkage/Axiom/contents/'));
+    assert.ok(seen.some(item => item.url.includes('/search/code?q=runtime+repo%3Amichaelkage%2FAxiom')));
+  });
+});
