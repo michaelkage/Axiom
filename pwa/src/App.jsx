@@ -15,7 +15,8 @@ import SkillsMarketplace from './components/SkillsMarketplace.jsx';
 import { buildSkillSystemPrompt } from './lib/skillRegistry.js';
 import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary, MAX_TOTAL_ATTACHMENT_BYTES } from './lib/workspaceCapture.js';
 import { consumeSharedPayload, hasNativeIOSShareTarget } from './lib/shareTarget.js';
-import { consumeGatewayPairingIntent, isNativeAndroid, registerGatewaySession } from './lib/axiomRuntime.js';
+import { getPlatformAdapter } from './lib/platformAdapter.js';
+import { consumeGatewayPairingIntent, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
 import { registerSupabaseTools } from './lib/supabaseTools.js';
@@ -29,6 +30,8 @@ function loadState(){ try { const saved=JSON.parse(localStorage.getItem(STORE)||
 function Icon({name,...props}) { const map={github:Github,database:Database}; const C=map[name]||Wrench; return <C {...props}/>; }
 
 export default function App(){
+ const platformAdapter=useMemo(()=>getPlatformAdapter(),[]);
+ const isNativeAndroidPlatform=platformAdapter.platform==='android';
  const [state,setState]=useState(loadState);
  const [tab,setTab]=useState(state.activeTab||'chat');
  const [draft,setDraft]=useState('');
@@ -90,7 +93,7 @@ export default function App(){
  const activeModel=nativeLoadedModel||selectedOllamaModel;
  const update=(patch)=>setState(s=>({...s,...patch}));
  useEffect(()=>{
-  if(!isNativeAndroid()||!state.settings?.gatewayUrl)return;
+  if(!isNativeAndroidPlatform||!state.settings?.gatewayUrl)return;
   let active=true;
   const consumePairing=async()=>{
    if(!active||pairingIntentBusy.current||document.visibilityState!=='visible')return;
