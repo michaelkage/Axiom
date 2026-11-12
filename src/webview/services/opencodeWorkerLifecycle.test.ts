@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { runOpenCodeWorkerLifecycle } from "./opencodeWorkerLifecycle";
+import { runOpenCodeWorkerLifecycle, type OpenCodeWorkerLifecycleOptions } from "./opencodeWorkerLifecycle";
 
-function baseOptions(overrides: Record<string, unknown> = {}) {
+function baseOptions(overrides: Partial<OpenCodeWorkerLifecycleOptions> = {}) {
   const calls = {
     createWorktree: vi.fn(async () => "/tmp/axiom-worker-1"),
     createSession: vi.fn(async () => ({ data: { id: "child-session-1" } })),
@@ -13,11 +13,11 @@ function baseOptions(overrides: Record<string, unknown> = {}) {
     subscribe: vi.fn(() => () => undefined),
     onLog: vi.fn(),
   };
-  const options = {
+  const options: OpenCodeWorkerLifecycleOptions = {
     task: { id: "worker-1", title: "Implement worker feature" },
     parentSessionId: "parent-session",
     workspaceRoot: "/workspace/project",
-    buildPrompt: (worktreePath: string) => "Work in " + worktreePath,
+    buildPrompt: worktreePath => "Work in " + worktreePath,
     createWorktree: calls.createWorktree,
     createSession: calls.createSession,
     promptSession: calls.promptSession,
@@ -95,7 +95,7 @@ describe("runOpenCodeWorkerLifecycle", () => {
   it("bounds retained logs and continues when transcript retrieval fails", async () => {
     const { options, calls } = baseOptions({
       getMessages: vi.fn(async () => { throw new Error("transcript unavailable"); }),
-      subscribe: (onEvent: (event: unknown) => void) => {
+      subscribe: (onEvent, _directory) => {
         for (let index = 0; index < 205; index += 1) {
           onEvent({ type: "tool.updated", sessionID: "child-session-1", index });
         }
@@ -116,5 +116,18 @@ describe("runOpenCodeWorkerLifecycle", () => {
 
     await expect(runOpenCodeWorkerLifecycle(options)).rejects.toThrow(/cancelled/i);
     expect(calls.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it("retains context metrics on worker failures", async () => {
+    const { options } = baseOptions({
+      diagnostics: { contextEstimatedTokensBefore: 900, contextEstimatedTokensAfter: 300, contextSavingsPercent: 66.7 },
+      promptSession: vi.fn(async () => { throw new Error("prompt transport failed"); }),
+    });
+    await expect(runOpenCodeWorkerLifecycle(options)).rejects.toMatchObject({
+      sessionId: "child-session-1",
+      contextEstimatedTokensBefore: 900,
+      contextEstimatedTokensAfter: 300,
+      contextSavingsPercent: 66.7,
+    });
   });
 });
