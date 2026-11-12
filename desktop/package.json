@@ -55,7 +55,8 @@
       "remote-workspace.cjs",
       "remote-workspace-runner.cjs",
       "secure-storage.cjs",
-      "security-redaction.cjs"
+      "security-redaction.cjs",
+      "worker-worktree.cjs"
     ],
     "extraResources": [
       {
