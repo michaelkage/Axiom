@@ -8,5 +8,18 @@
   "orientation": "portrait-primary",
   "background_color": "#090b10",
   "theme_color": "#090b10",
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        { "name": "files", "accept": ["image/*", ".txt", ".md", ".json", ".log", ".csv", ".js", ".ts", ".tsx", ".jsx", ".css", ".html", ".sql"] }
+      ]
+    }
+  },
   "icons": [{ "src": "/axiom.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
