@@ -8,7 +8,7 @@ test('chat selects native or Ollama conversation runtime without losing message 
   assert.match(app, /const chatRunner=nativeLoadedModel\?runNativeToolChat:runOllamaToolChat/);
   assert.match(app, /runOllamaToolChat/);
   assert.match(app, /runNativeToolChat/);
-  assert.match(app, /messages:\[\.\.\.priorMessages,userMsg\]/);
+  assert.match(app, /const promptMessages=\[\.\.\.\(skillPrompt\?\[\{role:'system',content:skillPrompt\}\]:\[\]\),\.\.\.priorMessages,userMsg\]/);
   assert.match(app, /tools:availableTools/);
   assert.doesNotMatch(app, /\/api\/generate/);
 });
