@@ -562,15 +562,25 @@ export default function App(){
   if(shareParams.has('shareError')){setNotice('The operating system could not hand shared content to Axiom. Try sharing text or a smaller file.');window.history.replaceState({},'',window.location.pathname+window.location.hash);return;}
   if(!shareParams.has('shared')&&!hasNativeIOSShareTarget())return;
   let active=true;
-  consumeSharedPayload().then(async payload=>{
-   if(!active||!payload)return;
-   const sharedText=[payload.title,payload.text,payload.url].filter(Boolean).join('\\n');
-   if(sharedText)setDraft(current=>current?current+'\\n'+sharedText:sharedText);
-   if(payload.files?.length)await addPromptAttachments(payload.files);
-   setTab('chat');setNotice('Shared content loaded into a new Axiom prompt. Review it before sending.');
-  }).catch(error=>{if(active)setNotice('Could not load shared content: '+error.message);});
+  let consuming=false;
+  const consume=()=>{
+   if(consuming||(!shareParams.has('shared')&&!hasNativeIOSShareTarget()))return;
+   consuming=true;
+   consumeSharedPayload().then(async payload=>{
+    if(!active||!payload)return;
+    const sharedText=[payload.title,payload.text,payload.url].filter(Boolean).join('\\n');
+    if(sharedText)setDraft(current=>current?current+'\\n'+sharedText:sharedText);
+    if(payload.files?.length)await addPromptAttachments(payload.files);
+    setTab('chat');setNotice('Shared content loaded into a new Axiom prompt. Review it before sending.');
+   }).catch(error=>{if(active)setNotice('Could not load shared content: '+error.message);})
+    .finally(()=>{consuming=false;});
+  };
+  consume();
+  const onVisible=()=>{if(document.visibilityState==='visible')consume();};
+  window.addEventListener('focus',consume);
+  document.addEventListener('visibilitychange',onVisible);
   window.history.replaceState({},'',window.location.pathname+window.location.hash);
-  return()=>{active=false;};
+  return()=>{active=false;window.removeEventListener('focus',consume);document.removeEventListener('visibilitychange',onVisible);};
  },[]);
  function installSkill(skill){
   if(!skill||!skill.id)return;
