@@ -36,15 +36,35 @@ test("runtime resolver checks architecture-specific native binaries before gener
   assert.match(runtime, /app\.isPackaged/);
 });
 
-test("every statically required desktop runtime module is included in the packaged app", () => {
-  const requiredModules = [...runtime.matchAll(/require\(["']\.\/([^"']+)["']\)/g)]
-    .map(match => match[1]);
+test("all transitive local runtime dependencies are included in the packaged app", () => {
   const packagedFiles = new Set(desktop.build.files);
-  for (const modulePath of requiredModules) {
-    assert.ok(
-      packagedFiles.has(modulePath),
-      `Electron package must include runtime dependency: ${modulePath}`
-    );
+  const visited = new Set();
+
+  const inspectModule = (modulePath) => {
+    assert.ok(packagedFiles.has(modulePath), `Electron package must include runtime dependency: ${modulePath}`);
+    if (visited.has(modulePath)) return;
+    visited.add(modulePath);
+
+    const absolutePath = path.resolve(__dirname, modulePath);
+    const relativePath = path.relative(__dirname, absolutePath);
+    assert.ok(relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath), `Runtime dependency escapes desktop package: ${modulePath}`);
+    assert.ok(fs.existsSync(absolutePath), `Packaged runtime dependency does not exist: ${modulePath}`);
+
+    const source = fs.readFileSync(absolutePath, "utf8");
+    for (const match of source.matchAll(/require\(["'](\.\/[^"']+)["']\)/g)) {
+      const request = match[1];
+      const base = path.posix.normalize(path.posix.join(path.posix.dirname(modulePath), request));
+      const candidates = path.posix.extname(base)
+        ? [base]
+        : [base + ".cjs", base + ".js", base + ".json", path.posix.join(base, "index.cjs"), path.posix.join(base, "index.js")];
+      const dependency = candidates.find(candidate => packagedFiles.has(candidate) && fs.existsSync(path.resolve(__dirname, candidate)));
+      assert.ok(dependency, `Unpackaged local dependency ${request} imported by ${modulePath}`);
+      inspectModule(dependency);
+    }
+  };
+
+  for (const modulePath of desktop.build.files.filter(file => file.endsWith(".cjs"))) {
+    inspectModule(modulePath);
   }
 });
 
