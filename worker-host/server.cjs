@@ -1,0 +1,4 @@
+"use strict";
+const {createWorkerHost}=require("./host.cjs");
+async function main(){const host=createWorkerHost();const address=await host.start({host:process.env.AXIOM_WORKER_HOST_BIND||"127.0.0.1",port:Number(process.env.AXIOM_WORKER_HOST_PORT||20129)});process.stdout.write("Axiom Worker Host listening on "+address.address+":"+address.port+"\n");let stopping=false;const stop=async()=>{if(stopping)return;stopping=true;await host.stop();};process.once("SIGINT",stop);process.once("SIGTERM",stop);}
+main().catch(e=>{process.stderr.write("Axiom Worker Host failed: "+String(e.message||e)+"\n");process.exitCode=1;});
