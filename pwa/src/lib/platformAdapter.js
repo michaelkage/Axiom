@@ -71,7 +71,15 @@ function createWebSecureStorage() {
       const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(value));
       await transact('readwrite', store => store.put({ iv, data }, id(namespace, name)));
     },
-    async remove(namespace, name) { return transact('readwrite', store => store.delete(id(namespace, name))); }
+    async remove(namespace, name) {
+      const key = id(namespace, name);
+      const existing = await transact('readonly', store => {
+        const request = store.getKey(key);
+        return new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result !== undefined); request.onerror = () => reject(request.error); });
+      });
+      if (existing) await transact('readwrite', store => store.delete(key));
+      return existing;
+    }
   };
 }
 
@@ -103,6 +111,8 @@ export function createPlatformAdapter() {
     if (!desktop) throw new Error('Native Git worktree creation is not available on this platform.');
     if (typeof taskId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(taskId)) throw new Error('Invalid worktree task ID.');
     const id = requestId();
+    const project = await desktop.project.bootstrap();
+    if (typeof project.workspaceRoot !== 'string' || !project.workspaceRoot) throw new Error('Open a project before creating a Git worktree.');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { cleanup(); reject(new Error('Git worktree creation timed out.')); }, 65000);
       const listener = event => {
@@ -114,7 +124,7 @@ export function createPlatformAdapter() {
       };
       const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', listener); };
       window.addEventListener('message', listener);
-      desktop.postMessage({ type: 'create-agent-worktree', requestId: id, taskId });
+      desktop.postMessage({ type: 'create-agent-worktree', requestId: id, taskId, workspaceRoot: project.workspaceRoot });
     });
   }
 
