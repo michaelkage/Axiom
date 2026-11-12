@@ -385,7 +385,7 @@ export function createAxiomGateway({
           contentPath = decoded;
         }
       } catch { return sendJson(res, 400, { error: 'Invalid GitHub content path encoding.' }); }
-      if (validContentRepo && (contentPath.split('/').some(segment => segment === '.' || segment === '..') || contentPath.includes('\\\\'))) {
+      if (validContentRepo && (contentPath.split('/').some(segment => segment === '.' || segment === '..') || contentPath.includes('\\'))) {
         return sendJson(res, 400, { error: 'Invalid GitHub content path.' });
       }
       const validContentPath = Boolean(validContentRepo);
