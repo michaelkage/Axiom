@@ -4,7 +4,7 @@ A separately deployed Node.js 20+ service that runs OpenCode on the machine owni
 
 ## Requirements and startup
 
-Install Git and the OpenCode CLI on the host. Configure repository access using host-side Git credentials or an SSH agent. Set AXIOM_WORKER_HOST_TOKEN to a random secret of at least 32 characters. Optional settings: AXIOM_WORKER_DATA, AXIOM_WORKER_HOST_BIND, AXIOM_WORKER_HOST_PORT, AXIOM_OPENCODE_BIN.
+Install Git and the OpenCode CLI on the host. Configure repository access using host-side Git credentials or an SSH agent. Set AXIOM_WORKER_HOST_TOKEN to a random secret of at least 32 characters. Optional settings: AXIOM_WORKER_DATA, AXIOM_WORKER_HOST_BIND, AXIOM_WORKER_HOST_PORT, AXIOM_OPENCODE_BIN, and AXIOM_WORKER_ENV_ALLOWLIST (comma-separated environment variable names explicitly passed to OpenCode). The default environment allowlist excludes provider API keys and other arbitrary host secrets.
 
 Run npm start from this directory. The default bind address is 127.0.0.1. For remote clients, bind only to a private interface behind TLS termination and a firewall. The service does not provide TLS itself.
 
@@ -20,4 +20,4 @@ All endpoints require Authorization: Bearer TOKEN. Job metadata and bounded logs
 
 ## Security
 
-Use a dedicated service account and private network. Never expose this service directly to the public internet. The bearer token is a shared secret, not a substitute for TLS. Repository credentials remain on the host and are never accepted in task requests. Requests and retained logs are bounded; token comparison is constant-time.
+This service executes model-generated shell/tool actions with the host service account. Treat its bearer token as arbitrary-code-execution authority. Run it inside a disposable VM or hardened container with no privileged host mounts, no access to personal home directories, and only narrowly scoped repository credentials. Use a dedicated service account and private network. Never expose this service directly to the public internet. The bearer token is a shared secret, not a substitute for TLS. Repository credentials remain on the host and are never accepted in task requests. Requests and retained logs are bounded; token comparison is constant-time.
