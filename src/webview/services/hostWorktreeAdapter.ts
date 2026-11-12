@@ -48,8 +48,18 @@ export function createHostWorktreeRequester(
       let settled = false;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
-        transport.removeMessageListener(onMessage);
-        if (timeout !== undefined) transport.clearTimeout(timeout);
+        try {
+          transport.removeMessageListener(onMessage);
+        } catch {
+          // Host teardown must not prevent the request promise from settling.
+        }
+        if (timeout !== undefined) {
+          try {
+            transport.clearTimeout(timeout);
+          } catch {
+            // Timer teardown is best-effort after the request has settled.
+          }
+        }
       };
       const finish = (error?: Error, path?: string) => {
         if (settled) return;
@@ -64,9 +74,9 @@ export function createHostWorktreeRequester(
         if (data.ok && typeof data.path === "string" && data.path.length > 0) finish(undefined, data.path);
         else finish(new Error(data.error || "The host could not create an isolated worktree."));
       };
-      transport.addMessageListener(onMessage);
-      timeout = transport.setTimeout(() => finish(new Error("Timed out while creating the isolated agent worktree.")), timeoutMs);
       try {
+        transport.addMessageListener(onMessage);
+        timeout = transport.setTimeout(() => finish(new Error("Timed out while creating the isolated agent worktree.")), timeoutMs);
         transport.postMessage({ type: "create-agent-worktree", requestId, taskId, workspaceRoot });
       } catch (cause) {
         finish(cause instanceof Error ? cause : new Error(String(cause)));
