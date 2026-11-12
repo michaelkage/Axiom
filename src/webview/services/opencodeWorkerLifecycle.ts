@@ -17,8 +17,9 @@ export interface OpenCodeWorkerLifecycleOptions {
   task: OpenCodeWorkerLifecycleTask;
   parentSessionId: string;
   workspaceRoot: string;
-  prompt: string;
+  buildPrompt: (worktreePath: string) => string;
   agent?: string;
+  diagnostics?: Record<string, number>;
   signal?: AbortSignal;
   createWorktree: (taskId: string, workspaceRoot: string) => Promise<string>;
   createSession: (input: { directory: string; parentID: string; title: string }) => Promise<{
@@ -86,6 +87,7 @@ export async function runOpenCodeWorkerLifecycle(
     sessionId,
     worktreePath,
     ...(options.agent ? { agent: options.agent } : {}),
+    ...(options.diagnostics ?? {}),
     logs: logs.slice(),
   });
 
@@ -127,7 +129,7 @@ export async function runOpenCodeWorkerLifecycle(
   try {
     promptResult = await options.promptSession({
       sessionID: sessionId,
-      parts: [{ type: "text", text: options.prompt }],
+      parts: [{ type: "text", text: options.buildPrompt(worktreePath) }],
       ...(options.agent ? { agent: options.agent } : {}),
     });
   } catch (error) {
