@@ -60,6 +60,7 @@ share_target.source_build_phase.add_file_reference(share_ref) unless share_targe
     settings = config.build_settings
     settings["SWIFT_VERSION"] = "5.0"
     settings["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
+    settings["CODE_SIGN_STYLE"] = "Automatic"
     settings["CODE_SIGN_ENTITLEMENTS"] = target == app_target ? "App/App.entitlements" : "AxiomShare/AxiomShare.entitlements"
   end
 end
@@ -68,6 +69,8 @@ share_target.build_configurations.each do |config|
   settings = config.build_settings
   settings["PRODUCT_BUNDLE_IDENTIFIER"] = "com.axiom.mobile.share"
   settings["INFOPLIST_FILE"] = "AxiomShare/Info.plist"
+  settings["GENERATE_INFOPLIST_FILE"] = "NO"
+  settings["CODE_SIGN_STYLE"] = "Automatic"
   settings["APPLICATION_EXTENSION_API_ONLY"] = "YES"
   settings["SKIP_INSTALL"] = "YES"
   settings["TARGETED_DEVICE_FAMILY"] = "1,2"
