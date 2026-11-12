@@ -154,7 +154,28 @@ public class AxiomIOSPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
         }
         do {
             let data = try Data(contentsOf: payloadURL)
-            let object = try JSONSerialization.jsonObject(with: data)
+            guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw NSError(domain: "AxiomShare", code: 2, userInfo: [NSLocalizedDescriptionKey: "Shared payload is invalid."])
+            }
+            let paths = object["files"] as? [String] ?? []
+            var files: [[String: Any]] = []
+            var totalBytes = 0
+            for path in paths {
+                let fileURL = URL(fileURLWithPath: path).standardizedFileURL
+                guard fileURL.path.hasPrefix(container.appendingPathComponent("SharedFiles").standardizedFileURL.path + "/") else {
+                    throw NSError(domain: "AxiomShare", code: 3, userInfo: [NSLocalizedDescriptionKey: "A shared file escaped the app-group directory."])
+                }
+                let fileData = try Data(contentsOf: fileURL)
+                totalBytes += fileData.count
+                guard totalBytes <= 1_048_576 else {
+                    throw NSError(domain: "AxiomShare", code: 4, userInfo: [NSLocalizedDescriptionKey: "Shared files exceed Axiom's 1 MiB attachment limit."])
+                }
+                let name = fileURL.lastPathComponent
+                let mime = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                files.append(["name": name, "type": mime, "size": fileData.count, "dataBase64": fileData.base64EncodedString()])
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+            object["files"] = files
             try FileManager.default.removeItem(at: payloadURL)
             call.resolve(["payload": object])
         } catch {
