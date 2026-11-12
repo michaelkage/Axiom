@@ -86,6 +86,10 @@ export default function App(){
  const settingsTriggerRef=useRef(null);
  const activeRunRef=useRef(null);
  const offlineDraftRef=useRef(null);
+ const draftValueRef=useRef(draft);
+ const draftAttachmentsValueRef=useRef(draftAttachments);
+ draftValueRef.current=draft;
+ draftAttachmentsValueRef.current=draftAttachments;
  const restoringOfflineDraftRef=useRef(false);
  const streamTimerRef=useRef(null);
  const integrationCleanup=useRef({});
@@ -135,7 +139,7 @@ export default function App(){
     const queued=await listOfflinePrompts();
     if(!active)return;
     setOfflineQueuedCount(queued.length);
-    if(navigator.onLine&&queued.length&&!draft.trim()&&!draftAttachments.length&&!restoringOfflineDraftRef.current){
+    if(navigator.onLine&&queued.length&&!draftValueRef.current.trim()&&!draftAttachmentsValueRef.current.length&&!restoringOfflineDraftRef.current){
      const next=queued[0];
      restoringOfflineDraftRef.current=true;
      offlineDraftRef.current=next.id;
