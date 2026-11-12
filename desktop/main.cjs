@@ -561,7 +561,8 @@ async function runQualityGate(event, message) {
     const packageFile = path.join(message.worktreePath, "package.json");
     let manifest = null;
     try { manifest = JSON.parse(await fs.promises.readFile(packageFile, "utf8")); } catch {}
-    const testPaths = paths.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file));
+    const testPaths = paths.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file)
+      && fs.existsSync(path.resolve(message.worktreePath, file)));
     const lockName = fs.existsSync(path.join(message.worktreePath, "pnpm-lock.yaml")) ? "pnpm" :
       fs.existsSync(path.join(message.worktreePath, "yarn.lock")) ? "yarn" : "npm";
     if (testPaths.length && manifest) {
