@@ -8,6 +8,10 @@ export default function VoiceCapture({ onTranscript, disabled = false, onError }
   const [interim, setInterim] = useState('');
   const recognitionRef = useRef(null);
 
+  useEffect(() => {
+    if (disabled && recognitionRef.current) recognitionRef.current.stop();
+  }, [disabled]);
+
   useEffect(() => () => {
     recognitionRef.current?.stop?.();
     recognitionRef.current = null;
