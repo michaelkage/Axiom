@@ -14,13 +14,10 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
-import { runOpenCodeWorkerLifecycle } from "../services/opencodeWorkerLifecycle";
+import { loadRelevantWorkerProjectMemories, runOpenCodeSubAgentTasks } from "../services/opencodeTaskOrchestrator";
 
 import { runtimeEventSource } from "../utils/runtimeEventSource";
-import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
-import { prepareWorkerTask, resolveWorkerAgent } from "../services/workerPreparation";
-import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
-import { isProjectMemoryStale, loadProjectMemories } from "../utils/projectMemory";
+import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -193,96 +190,51 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
-    const historyItems: Array<{ id: string; content: string; relevance: number; updatedAt: number }> = [];
-    try {
-      const historyResponse = await c.session.messages({ sessionID: parentSessionId });
-      const history = (historyResponse.data ?? []) as unknown as Array<{
-        info?: { id?: string; role?: string; time?: { created?: number } };
-        parts?: Array<{ type?: string; text?: string }>;
-      }>;
-      for (const message of history.slice(-30)) {
-        const text = (message.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n");
-        if (!text.trim()) continue;
-        const role = message.info?.role ?? "unknown";
-        historyItems.push({
-          id: message.info?.id ?? "history-" + historyItems.length,
-          content: role + ": " + text.slice(0, 6000),
-          relevance: role === "user" ? 75 : 45,
-          updatedAt: message.info?.time?.created ?? historyItems.length,
-        });
-      }
-    } catch {
-      // Context packing still works from the original request and plan if history is unavailable.
-    }
-    // Retrieve relevant, recently reviewed project memories; the preparation service secret-screens them before packing.
-    const projectMemories = (() => {
-      try {
-        const relevant = retrieveProjectMemories(loadProjectMemories(directory), orchestration?.request ?? "", 8)
-          .filter(memory => !isProjectMemoryStale(memory))
-          .map(memory => ({
-            id: memory.id,
-            content: "[" + memory.category + (memory.tags.length ? "; " + memory.tags.join(", ") : "") + "] " + memory.content,
-            kind: "decision" as const,
-            relevance: 85,
-            updatedAt: Date.parse(memory.updatedAt),
-          }));
-        return relevant;
-      } catch {
-        return [];
-      }
-    })();
 
-    let availableAgentNames = new Set<string>();
-    try {
-      const agentResponse = await c.app.agents();
-      availableAgentNames = new Set((agentResponse.data ?? []).map(agent => agent.name));
-    } catch {
-      // A missing agent catalogue should fall back to the OpenCode default agent.
-    }
-    return executeTaskBatches(tasks, async (task, completed, signal) => {
-      if (signal?.aborted) throw new Error("Parallel task cancelled before worker startup.");
-      if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
-
-      const prepared = prepareWorkerTask({
-        task,
-        request: orchestration?.request ?? task.scope,
-        planSteps: orchestration?.planSteps,
-        conversation: historyItems,
-        projectMemories,
-        completedTasks: completed.map(entry => ({
-          title: entry.task.title,
-          summary: typeof entry.result === "object" && entry.result !== null && "summary" in entry.result
-            ? String((entry.result as { summary: unknown }).summary)
-            : undefined,
-        })),
-      });
-      const { packed, buildPrompt: buildTaskPrompt } = prepared;
-      const { agent: workerAgent } = resolveWorkerAgent(task, availableAgentNames, preferredAgent);
-      const worker = await runOpenCodeWorkerLifecycle({
-        task,
-        parentSessionId,
-        workspaceRoot: directory,
-        buildPrompt: buildTaskPrompt,
-        agent: workerAgent,
-        diagnostics: { contextEstimatedTokensBefore: packed.inputEstimatedTokens, contextEstimatedTokensAfter: packed.estimatedTokens, contextSavingsPercent: packed.estimatedSavingsPercent },
-        signal,
-        createWorktree: createAgentWorktree,
-        createSession: input => c.session.create(input),
-        promptSession: input => c.session.prompt(input),
-        abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
-        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
-          data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
-        }>,
-        subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
-        onLog: orchestration?.onLog,
-      });
-      return {
-        ...worker,
-        contextEstimatedTokensBefore: packed.inputEstimatedTokens,
-        contextEstimatedTokensAfter: packed.estimatedTokens,
-        contextSavingsPercent: packed.estimatedSavingsPercent,
-      };
-    }, orchestration?.onOutcome, { signal: orchestration?.signal, timeoutMs: 120_000 });
+    return runOpenCodeSubAgentTasks({
+      parentSessionId,
+      tasks,
+      workspaceRoot: directory,
+      preferredAgent,
+      request: orchestration?.request ?? "",
+      planSteps: orchestration?.planSteps,
+      signal: orchestration?.signal,
+      onOutcome: orchestration?.onOutcome,
+      onLog: orchestration?.onLog,
+      loadConversation: async () => {
+        const historyResponse = await c.session.messages({ sessionID: parentSessionId });
+        const history = (historyResponse.data ?? []) as unknown as Array<{
+          info?: { id?: string; role?: string; time?: { created?: number } };
+          parts?: Array<{ type?: string; text?: string }>;
+        }>;
+        const historyItems: Array<{ id: string; content: string; relevance: number; updatedAt: number }> = [];
+        for (const message of history.slice(-30)) {
+          const text = (message.parts ?? []).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\\n");
+          if (!text.trim()) continue;
+          const role = message.info?.role ?? "unknown";
+          historyItems.push({
+            id: message.info?.id ?? "history-" + historyItems.length,
+            content: role + ": " + text.slice(0, 6000),
+            relevance: role === "user" ? 75 : 45,
+            updatedAt: message.info?.time?.created ?? historyItems.length,
+          });
+        }
+        return historyItems;
+      },
+      loadProjectMemories: request => loadRelevantWorkerProjectMemories(directory, request),
+      loadAvailableAgents: async () => {
+        const agentResponse = await c.app.agents();
+        return (agentResponse.data ?? []).map(agent => agent.name);
+      },
+      createWorktree: createAgentWorktree,
+      createSession: input => c.session.create(input),
+      promptSession: input => c.session.prompt(input),
+      abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
+      getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
+        data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
+      }>,
+      subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
+    });
   }
 
   // Subscribe to events for the workspace directly from the standalone renderer
