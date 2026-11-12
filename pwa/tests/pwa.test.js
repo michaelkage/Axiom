@@ -23,6 +23,7 @@ const manifest = JSON.parse(manifestText);
 test('workspace editor provides import, syntax highlighting, find/replace, save and revert', () => {
   assert.match(app, /tab==='workspace'/);
   assert.match(codeEditor, /HighlightedCode/);
+  assert.match(codeEditor, /gutterRef\.current\.scrollTop/);
   assert.match(codeEditor, /Replace next/);
   assert.match(codeEditor, /Replace all/);
   assert.match(codeEditor, /showSaveFilePicker/);
