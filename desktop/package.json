@@ -52,7 +52,8 @@
       "workspace-drift.cjs",
       "worker-state.cjs",
       "remote-workspace.cjs",
-      "remote-workspace-runner.cjs"
+      "remote-workspace-runner.cjs",
+      "secure-storage.cjs"
     ],
     "extraResources": [
       {
