@@ -63,8 +63,17 @@ export async function loadSkillRegistry(url = '/skills/registry.json') {
   try { registry = JSON.parse(text); }
   catch { throw new Error('Skill registry is not valid JSON.'); }
   if (registry.schemaVersion !== 1 || !Array.isArray(registry.skills)) throw new Error('Unsupported skill registry format.');
-  return registry.skills.filter(item => item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.manifestUrl === 'string')
-    .map(item => ({ id: item.id, name: item.name, description: String(item.description || ''), manifestUrl: resolveUrl(item.manifestUrl, source), source: String(item.source || 'Curated') }));
+  return registry.skills.filter(item => item && typeof item.id === 'string' && typeof item.name === 'string')
+    .map(item => {
+      if (item.manifest && typeof item.instructions === 'string') {
+        const manifest = validateSkillManifest(item.manifest);
+        const instructions = item.instructions.trim();
+        if (!instructions || instructions.length > MAX_INSTRUCTIONS_CHARS) throw new Error('Bundled skill instructions are empty or exceed 20,000 characters.');
+        return { ...manifest, instructions, sourceUrl: source, source: String(item.source || 'Curated'), installedAt: null, bundled: true };
+      }
+      if (typeof item.manifestUrl !== 'string') return null;
+      return { id: item.id, name: item.name, description: String(item.description || ''), manifestUrl: resolveUrl(item.manifestUrl, source), source: String(item.source || 'Curated') };
+    }).filter(Boolean);
 }
 
 export function buildSkillSystemPrompt(skills = [], availableTools = []) {
