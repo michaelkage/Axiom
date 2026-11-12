@@ -13,7 +13,9 @@
     "gateway": "node gateway/server.mjs",
     "android:sync": "cap sync android",
     "android:open": "cap open android",
-    "gateway:token": "node gateway/show-token.mjs"
+    "gateway:token": "node gateway/show-token.mjs",
+    "predev": "node scripts/sync-skills.mjs",
+    "prebuild": "node scripts/sync-skills.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
