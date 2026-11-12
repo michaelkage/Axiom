@@ -367,7 +367,24 @@ export function createAxiomGateway({
     }
 
 
-    const githubMatch = url.pathname.match(/^\/api\/github\/repos\/([^/]+)\/([^/]+)\/contents\/(.+)$/);
+    const configuredRepo = String(env.GITHUB_REPOSITORY || '');
+    const repoMatch = configuredRepo.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+    const githubPrefix = '/api/github';
+    if (url.pathname.startsWith(githubPrefix + '/')) {
+      if (!env.GITHUB_TOKEN || !repoMatch) return sendJson(res, 503, { error: 'GitHub PAT and a valid owner/repo must be configured on the gateway.' });
+      const [, owner, repo] = repoMatch;
+      const repoRoot = '/repos/' + owner + '/' + repo;
+      const requestedPath = url.pathname.slice(githubPrefix.length);
+      const contentMatch = requestedPath.match(/^\/repos\/([^/]+)\/([^/]+)\/contents(?:\/(.*))?$/);
+      const repoScopedPath = requestedPath.toLowerCase();
+      const allowedReadPaths = new Set([
+        repoRoot.toLowerCase(),
+        (repoRoot + '/branches').toLowerCase(),
+        (repoRoot + '/commits').toLowerCase(),
+        (repoRoot + '/issues').toLowerCase(),
+        (repoRoot + '/pulls').toLowerCase()
+      ]);
+      const treeMatch = requestedPath.match(new RegExp('^' + repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\    const githubMatch = url.pathname.match(/^\/api\/github\/repos\/([^/]+)\/([^/]+)\/contents\/(.+)$/);
     if (githubMatch) {
       const configuredRepo = env.GITHUB_REPOSITORY || '';
       const requestedRepo = githubMatch[1] + '/' + githubMatch[2];
@@ -398,6 +415,188 @@ export function createAxiomGateway({
       } catch (error) {
         logger.error?.('[axiom-gateway] GitHub upstream failed:', error.message);
         return sendJson(res, 502, { error: 'GitHub upstream unavailable.' });
+      }
+    }
+
+') + '/git/trees/[A-Za-z0-9._-]+    const supabasePrefix = '/api/supabase/rest/v1/';
+    if (url.pathname.startsWith(supabasePrefix)) {
+      const key = env.SUPABASE_PUBLISHABLE_KEY || '';
+      if (!env.SUPABASE_URL || !key) return sendJson(res, 503, { error: 'Supabase publishable-key upstream is not configured.' });
+      if (key.startsWith('sb_secret_')) return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY must not be a secret key.' });
+      if (key.startsWith('eyJ')) {
+        try {
+          const claims = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString('utf8'));
+          if (claims.role !== 'anon') return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY must be an anon-role JWT, never service_role.' });
+        } catch {
+          return sendJson(res, 500, { error: 'SUPABASE_PUBLISHABLE_KEY is not a valid publishable key.' });
+        }
+      }
+      if (!['GET', 'POST', 'PATCH', 'DELETE', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'Supabase method not allowed.' });
+      const supabaseBase = new URL(env.SUPABASE_URL);
+      if (!['http:', 'https:'].includes(supabaseBase.protocol) || supabaseBase.username || supabaseBase.password) {
+        return sendJson(res, 500, { error: 'Invalid SUPABASE_URL gateway configuration.' });
+      }
+      const body = ['GET', 'HEAD', 'DELETE'].includes(req.method) ? undefined : await readBody(req).catch(error => {
+        sendJson(res, error.status || 400, { error: error.message }); return null;
+      });
+      if (body === null) return;
+      const suffix = url.pathname.slice('/api/supabase'.length);
+      const target = new URL(suffix + url.search, supabaseBase);
+      const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
+      try {
+        const upstream = await fetchImpl(target, { method: req.method, headers, body, signal: upstreamSignal(60000) });
+        const responseHeaders = { 'cache-control': 'no-store' };
+        for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
+          const value = upstream.headers.get(name);
+          if (value) responseHeaders[name] = value;
+        }
+        res.writeHead(upstream.status, responseHeaders);
+        if (!upstream.body) return res.end();
+        for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
+        return res.end();
+      } catch (error) {
+        logger.error?.('[axiom-gateway] Supabase upstream failed:', error.message);
+        return sendJson(res, 502, { error: 'Supabase upstream unavailable.' });
+      }
+    }
+
+    const mcpMatch = url.pathname.match(/^\/api\/mcp\/([a-zA-Z0-9_-]{1,64})$/);
+    if (mcpMatch) {
+      if (!['GET', 'POST', 'DELETE'].includes(req.method)) return sendJson(res, 405, { error: 'Method not allowed.' });
+      const config = mcpServers[mcpMatch[1]];
+      if (!config) return sendJson(res, 404, { error: 'MCP server is not configured in the gateway.' });
+      const body = ['GET', 'DELETE'].includes(req.method) ? undefined : await readBody(req).catch(error => {
+        sendJson(res, error.status || 400, { error: error.message }); return null;
+      });
+      if (body === null) return;
+      const headers = upstreamHeaders(req, config.token ? { authorization: 'Bearer ' + config.token } : {});
+      try {
+        const upstream = await fetchImpl(config.url, { method: req.method, headers, body, signal: AbortSignal.timeout(120000) });
+        const responseHeaders = {
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff'
+        };
+        for (const name of ['content-type', 'mcp-session-id', 'mcp-protocol-version']) {
+          const value = upstream.headers.get(name);
+          if (value) responseHeaders[name] = value;
+        }
+        res.writeHead(upstream.status, responseHeaders);
+        if (!upstream.body) return res.end();
+        for await (const chunk of upstream.body) {
+          if (res.destroyed) break;
+          res.write(chunk);
+        }
+        return res.end();
+      } catch (error) {
+        logger.error?.('[axiom-gateway] MCP upstream failed:', error.message);
+        return sendJson(res, 502, { error: 'MCP upstream unavailable.' });
+      }
+    }
+
+    return sendJson(res, 404, { error: 'Route not found.' });
+  });
+
+  return server;
+}
+
+export async function loadProviderCredentials(env = process.env, directory = join(homedir(), '.config', 'axiom')) {
+  const path = join(directory, 'provider-credentials.json');
+  try {
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    if (!env.GITHUB_TOKEN && typeof saved.githubToken === 'string') env.GITHUB_TOKEN = saved.githubToken;
+    if (!env.GITHUB_REPOSITORY && typeof saved.githubRepository === 'string') env.GITHUB_REPOSITORY = saved.githubRepository;
+    if (!env.SUPABASE_URL && typeof saved.supabaseUrl === 'string') env.SUPABASE_URL = saved.supabaseUrl;
+    if (!env.SUPABASE_PUBLISHABLE_KEY && typeof saved.supabaseKey === 'string') env.SUPABASE_PUBLISHABLE_KEY = saved.supabaseKey;
+    await chmod(path, 0o600);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('Could not load saved provider credentials: ' + error.message);
+  }
+  return { github: Boolean(env.GITHUB_TOKEN), supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY) };
+}
+
+export async function ensureGatewayToken(env = process.env, logger = console, directory = join(homedir(), '.config', 'axiom')) {
+  if (env.AXIOM_GATEWAY_TOKEN && env.AXIOM_GATEWAY_TOKEN.length >= 32) return env.AXIOM_GATEWAY_TOKEN;
+  const tokenFile = join(directory, 'gateway-token');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  try {
+    const existing = (await readFile(tokenFile, 'utf8')).trim();
+    await chmod(tokenFile, 0o600);
+    if (existing.length >= 64) {
+      env.AXIOM_GATEWAY_TOKEN = existing;
+      return existing;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const generated = randomBytes(32).toString('hex');
+  try {
+    await writeFile(tokenFile, generated + String.fromCharCode(10), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    env.AXIOM_GATEWAY_TOKEN = generated;
+    if (env.AXIOM_GATEWAY_SILENT_TOKEN !== '1') {
+      logger.warn?.('[axiom-gateway] FIRST RUN: copy this pairing token now. It will not be displayed again:');
+      logger.warn?.(generated);
+      logger.warn?.('[axiom-gateway] Token saved with owner-only permissions at ' + tokenFile);
+    } else {
+      logger.info?.('[axiom-gateway] Pairing credential generated and stored with owner-only permissions.');
+    }
+    return generated;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const existing = (await readFile(tokenFile, 'utf8')).trim();
+    if (existing.length < 64) throw new Error('Stored gateway token is invalid.');
+    env.AXIOM_GATEWAY_TOKEN = existing;
+    return existing;
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await ensureGatewayToken();
+  await loadProviderCredentials();
+  const server = createAxiomGateway();
+  const host = process.env.AXIOM_GATEWAY_HOST || '127.0.0.1';
+  const port = Number(process.env.AXIOM_GATEWAY_PORT || 8787);
+  server.listen(port, host, () => console.log('[axiom-gateway] listening on http://' + host + ':' + port));
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => server.close(() => process.exit(0)));
+  }
+}
+));
+      const searchCode = requestedPath === '/search/code';
+      const validContentRepo = contentMatch && (contentMatch[1] + '/' + contentMatch[2]).toLowerCase() === configuredRepo.toLowerCase();
+      const validRepoRoute = allowedReadPaths.has(repoScopedPath) || Boolean(treeMatch);
+      const validSearch = searchCode && req.method === 'GET' &&
+        String(url.searchParams.get('q') || '').split(/\s+/).some(part => part.toLowerCase() === ('repo:' + configuredRepo).toLowerCase());
+      const validContentPath = validContentRepo && (contentMatch[3] || '').split('/').every(segment => segment !== '.' && segment !== '..') && !(contentMatch[3] || '').includes('\\\\');
+      if (!validContentPath && !validRepoRoute && !validSearch) {
+        return sendJson(res, 403, { error: 'GitHub access is restricted to the configured repository and supported read endpoints.' });
+      }
+      const isContentWrite = Boolean(validContentPath && req.method === 'PUT');
+      if (isContentWrite && isCompanionSession) return sendJson(res, 403, { error: 'Companion sessions cannot modify GitHub content.' });
+      if (validContentPath ? !['GET', 'PUT'].includes(req.method) : req.method !== 'GET') {
+        return sendJson(res, 405, { error: 'GitHub method not allowed for this endpoint.' });
+      }
+      if (!validContentPath && !validRepoRoute && !validSearch) return sendJson(res, 403, { error: 'GitHub endpoint is not allowed.' });
+      const body = req.method === 'GET' ? undefined : await readBody(req).catch(error => {
+        sendJson(res, error.status || 400, { error: error.message }); return null;
+      });
+      if (body === null) return;
+      const upstreamPath = validSearch ? '/search/code' : requestedPath;
+      const target = new URL(upstreamPath + url.search, 'https://api.github.com');
+      try {
+        const upstream = await fetchImpl(target, {
+          method: req.method,
+          headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+          body,
+          signal: upstreamSignal(60000)
+        });
+        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
+        if (!upstream.body) return res.end();
+        for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
+        return res.end();
+      } catch (error) {
+        logger.error?.('[axiom-gateway] GitHub upstream failed:', error.message);
+        return sendJson(res, 502, { error: 'GitHub upstream unavailable. Check gateway connectivity to api.github.com.' });
       }
     }
 
