@@ -12,7 +12,7 @@ const { listDirectory, readProjectFile, writeProjectFile } = require("./filesyst
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -690,16 +690,18 @@ async function applyWorktreeChanges(event, message) {
           const sourceStat = await fs.promises.lstat(source);
           if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) throw new Error("Integration blocked for " + relative + ": only regular, non-symlink files can be integrated.");
           if (sourceStat.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file exceeds the 25 MiB per-file integration limit.");
-          content = await fs.promises.readFile(source);
-          if (content.length > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file grew beyond the per-file integration limit during preflight.");
+          const sourceFile = await readRegularFileNoFollow(source);
+          if (sourceFile.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file grew beyond the per-file integration limit during preflight.");
+          content = sourceFile.content;
           stagedBytes += content.length;
-          sourceMode = sourceStat.mode & 0o777;
+          sourceMode = sourceFile.mode;
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
           if (taskBaseBlob == null) throw new Error("Integration blocked for " + relative + ": worker source is missing and this is not a tracked deletion.");
         }
         if (destinationStat?.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the 25 MiB rollback limit.");
-        const backup = destinationStat ? await fs.promises.readFile(destination) : null;
+        const destinationBackup = destinationStat ? await readRegularFileNoFollow(destination) : null;
+        const backup = destinationBackup?.content ?? null;
         if (backup) {
           stagedBytes += backup.length;
           if (backup.length > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the rollback limit.");
@@ -709,7 +711,7 @@ async function applyWorktreeChanges(event, message) {
           relative, destination, content, sourceMode,
           existed: !!destinationStat,
           backup,
-          backupMode: destinationStat ? destinationStat.mode & 0o777 : null,
+          backupMode: destinationBackup?.mode ?? null,
           temporary: null
         });
       }
