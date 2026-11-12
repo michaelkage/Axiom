@@ -24,7 +24,7 @@ test('iOS Share Extension uses the shared app group and supports text, URLs and 
 });
 
 test('iOS workflow generates the Capacitor project and configures native targets before compiling', async () => {
-  const workflow = await readFile(new URL('../../.github/workflows/ios-testflight.yml', root), 'utf8');
+  const workflow = await readFile(new URL('../.github/workflows/ios-testflight.yml', root), 'utf8');
   assert.match(workflow, /npx cap add ios/);
   assert.match(workflow, /npm run ios:configure/);
   assert.match(workflow, /generic\/platform=iOS Simulator/);
