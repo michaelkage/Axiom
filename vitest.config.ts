@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    exclude: ['**/node_modules/**', '**/tmp/**', '**/dist/**', '**/out/**', '**/e2e/**', '**/desktop/**/*.test.cjs', '**/pwa/**']
+    exclude: ['**/node_modules/**', '**/tmp/**', '**/dist/**', '**/out/**', '**/e2e/**', '**/desktop/**/*.test.cjs', '**/worker-host/**/*.test.cjs', '**/pwa/**']
   }
 });
