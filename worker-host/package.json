@@ -1,0 +1,1 @@
+{"name":"axiom-worker-host","version":"0.1.0","private":true,"description":"Authenticated remote execution host for Axiom workers","main":"host.cjs","scripts":{"start":"node server.cjs","test":"node --test host.test.cjs"},"engines":{"node":">=20"}}
