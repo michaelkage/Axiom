@@ -37,7 +37,13 @@ export interface OpenCodeWorkerLifecycleOptions {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
 }
 
 export async function runOpenCodeWorkerLifecycle(
@@ -67,7 +73,7 @@ export async function runOpenCodeWorkerLifecycle(
   if (created.error || !created.data?.id) {
     throw Object.assign(
       new Error('Could not create child session for "' + task.title + '": ' +
-        (created.error ? JSON.stringify(created.error).slice(0, 1000) : "missing session ID")),
+        (created.error ? errorMessage(created.error).slice(0, 1000) : "missing session ID")),
       { worktreePath },
     );
   }
@@ -101,7 +107,9 @@ export async function runOpenCodeWorkerLifecycle(
     return abortPromise;
   };
 
-  const stopEvents = options.subscribe(event => {
+  const stopEvents = (() => {
+    try {
+    return options.subscribe(event => {
     let serialized: string;
     try {
       const encoded = JSON.stringify(event);
@@ -115,6 +123,11 @@ export async function runOpenCodeWorkerLifecycle(
     if (!/message\.|session\.(error|status|idle|updated)|tool\./.test(type)) return;
     log("[" + type + "] " + serialized.slice(0, 1400));
   }, worktreePath);
+    } catch (error) {
+      log("Worker event subscription unavailable: " + errorMessage(error));
+      return () => undefined;
+    }
+  })();
 
   const cleanupPrompt = () => {
     signal?.removeEventListener("abort", abortWorker);
@@ -152,7 +165,7 @@ export async function runOpenCodeWorkerLifecycle(
 
   log("Worker prompt completed.");
   if (signal?.aborted) throw taskError("Parallel task was cancelled while the worker was running.");
-  if (promptResult.error) throw taskError('Task "' + task.title + '" failed: ' + JSON.stringify(promptResult.error));
+  if (promptResult.error) throw taskError('Task "' + task.title + '" failed: ' + errorMessage(promptResult.error));
 
   let summary = "Agent prompt was accepted; review workspace changes and verification before merging.";
   if (signal?.aborted) throw taskError("Parallel task was cancelled before collecting the worker transcript.");
