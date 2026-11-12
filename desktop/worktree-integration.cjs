@@ -41,13 +41,17 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
 }
 
 async function readRegularFileNoFollow(filePath) {
+  const before = await fs.lstat(filePath);
+  if (before.isSymbolicLink() || !before.isFile()) throw new Error("Only regular, non-symlink files can be read for worker integration.");
   const flags = fsNative.constants.O_RDONLY | (fsNative.constants.O_NOFOLLOW || 0);
   const handle = await fs.open(filePath, flags);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error("Only regular files can be read for worker integration.");
+    if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino) {
+      throw new Error("Worker file changed during safe-open verification.");
+    }
     const content = await handle.readFile();
-    return { content, mode: stat.mode & 0o777, size: content.length };
+    return { content, mode: stat.mode & 0o777, size: content.length, dev: stat.dev, ino: stat.ino };
   } finally {
     await handle.close();
   }
