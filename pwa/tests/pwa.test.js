@@ -23,6 +23,28 @@ test('PWA manifest declares a standalone, portrait-first mobile app', () => {
   assert.ok(manifest.icons.some(icon => icon.src === '/axiom.svg' && icon.purpose.includes('maskable')));
 });
 
+test('manifest registers a multipart Web Share Target for text, URLs and project files', () => {
+  assert.equal(manifest.share_target.action, '/share');
+  assert.equal(manifest.share_target.method, 'POST');
+  assert.equal(manifest.share_target.enctype, 'multipart/form-data');
+  assert.equal(manifest.share_target.params.text, 'text');
+  assert.ok(manifest.share_target.params.files.some(file => file.name === 'files' && file.accept.includes('image/*')));
+  assert.match(worker, /request\.formData\(\)/);
+  assert.match(worker, /axiom-share-target/);
+  assert.match(worker, /Response\.redirect\(new URL\('\/?\?shared=1'/);
+});
+
+test('mobile workspace exposes voice, attachments, theme controls, retries and summaries', () => {
+  assert.match(app, /VoiceCapture/);
+  assert.match(app, /prepareAttachments/);
+  assert.match(app, /MAX_ATTACHMENT_BYTES/);
+  assert.match(app, /axiom-theme/);
+  assert.match(app, /axiom-accent/);
+  assert.match(app, /axiom-retries/);
+  assert.match(app, /buildOutcomeSummary/);
+  assert.match(app, /bootStatus/);
+});
+
 test('document exposes install metadata and a viewport that supports display cutouts', () => {
   assert.match(html, /name="viewport"[^>]*viewport-fit=cover/);
   assert.match(html, /name="theme-color"/);
