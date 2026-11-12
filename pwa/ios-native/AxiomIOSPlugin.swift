@@ -197,8 +197,8 @@ public class AxiomIOSPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
 
     private func beginSpeech(_ call: CAPPluginCall) {
         guard audioEngine == nil else { call.reject("Speech recognition is already running."); return }
-        guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else {
-            call.reject("On-device speech recognition is currently unavailable.")
+        guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
+            call.reject("On-device speech recognition is not available for the current language or device.")
             return
         }
         do {
@@ -208,7 +208,7 @@ public class AxiomIOSPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
             let engine = AVAudioEngine()
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
-            if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+            request.requiresOnDeviceRecognition = true
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
