@@ -326,7 +326,8 @@ describe("Axiom runtime helpers", () => {
     await expect(execution).rejects.toThrow(/abort was not confirmed/i);
     expect(outcomes.find(record => record.status === "timed_out")).toMatchObject({ taskId: "late-diagnostics" });
     await new Promise(resolve => setTimeout(resolve, 35));
-    const late = outcomes.filter(record => record.status === "timed_out").at(-1);
+    const lateRecords = outcomes.filter(record => record.status === "timed_out");
+    const late = lateRecords[lateRecords.length - 1];
     expect(late).toMatchObject({
       taskId: "late-diagnostics",
       sessionId: "late-child-session",
