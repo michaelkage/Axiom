@@ -13,8 +13,8 @@ export interface WorktreeHostResult {
 }
 export interface WorktreeHostTransport {
   postMessage(message: WorktreeHostMessage): void;
-  addMessageListener(listener: (data: WorktreeHostResult) => void): void;
-  removeMessageListener(listener: (data: WorktreeHostResult) => void): void;
+  addMessageListener(listener: (event: { data: WorktreeHostResult }) => void): void;
+  removeMessageListener(listener: (event: { data: WorktreeHostResult }) => void): void;
   createRequestId(): string;
   setTimeout(callback: () => void, milliseconds: number): ReturnType<typeof setTimeout>;
   clearTimeout(timeout: ReturnType<typeof setTimeout>): void;
@@ -25,7 +25,7 @@ const browserTransport: WorktreeHostTransport = {
     if (typeof bridge?.postMessage !== "function") throw new Error("Desktop host bridge is unavailable.");
     bridge.postMessage(message);
   },
-  addMessageListener: listener => window.addEventListener("message", event => listener(event.data as WorktreeHostResult)),
+  addMessageListener: listener => window.addEventListener("message", listener as EventListener),
   removeMessageListener: listener => window.removeEventListener("message", listener as EventListener),
   createRequestId: () => "axiom-worktree-" + crypto.randomUUID(),
   setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
@@ -58,7 +58,8 @@ export function createHostWorktreeRequester(
         if (error) reject(error);
         else resolve(path as string);
       };
-      const onMessage = (data: WorktreeHostResult) => {
+      const onMessage = (event: { data: WorktreeHostResult }) => {
+        const data = event.data;
         if (data?.type !== "agent-worktree-result" || data.requestId !== requestId) return;
         if (data.ok && typeof data.path === "string" && data.path.length > 0) finish(undefined, data.path);
         else finish(new Error(data.error || "The host could not create an isolated worktree."));
