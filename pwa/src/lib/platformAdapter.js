@@ -149,7 +149,7 @@ export function createPlatformAdapter() {
     secureStorage,
     files,
     documents: Object.freeze({
-      pick: options => nativeIOS ? NativeSecureStorage.pickDocuments(options || { multiple: true }) : Promise.reject(new Error('The native document picker is available in the iOS app.'))
+      pick: async options => { if (!nativeIOS) throw new Error('The native document picker is available in the iOS app.'); const result = await NativeSecureStorage.pickDocuments(options || { multiple: true }); return { files: (result.files || []).map(file => ({ ...file, webPath: Capacitor.convertFileSrc(file.path) })) }; }
     }),
     git: Object.freeze({
       listWorkspaces: async () => desktop ? desktop.remoteWorkspace.list() : [],
