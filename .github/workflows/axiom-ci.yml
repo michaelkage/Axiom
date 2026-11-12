@@ -55,6 +55,9 @@ jobs:
       - name: Run unit tests
         run: pnpm exec vitest run
 
+      - name: Validate product site and release catalog
+        run: pnpm run test:site
+
       - name: Run desktop host tests
         run: pnpm run test:desktop
 
