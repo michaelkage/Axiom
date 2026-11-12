@@ -14,7 +14,6 @@ export interface WorkerContextRecord {
 }
 
 export interface WorkerContextInput {
-  request: string;
   planSteps?: string[];
   conversation: WorkerContextRecord[];
   projectMemories: WorkerContextRecord[];
