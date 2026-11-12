@@ -106,3 +106,16 @@ The response reports configuration, reachability, authentication acceptance, HTT
 The Models tab lists installed models and streams downloads through Ollama's `POST /api/pull` endpoint. Hugging Face search filters for GGUF repositories and installs compatible repositories through Ollama's `hf.co/<owner>/<repo>:<quantization>` model reference. Downloads occur on the machine running Ollama, not in the PWA browser. Verify each model card, license, quantization, and memory requirements before installing.
 
 Axiom's Android APK also includes a separate native llama.cpp inference engine for on-device GGUF models. That engine does not require this gateway, Termux, or Ollama. The Termux bridge remains an optional compatibility path for Ollama-hosted models and gateway-managed integrations.
+
+## Desktop and mobile companion approvals
+
+The gateway exposes a deliberately narrow companion protocol for pairing a second Axiom client and requesting human approval. It reuses the gateway's authenticated transport; it does not create a second listener or expose an arbitrary desktop control socket.
+
+- `POST /companion/pairing` requires an authenticated desktop-side gateway session and returns an eight-digit, single-use code valid for 90 seconds.
+- `POST /companion/pairing/claim` exchanges that code for a random 256-bit companion credential. Claims are rate-limited to 10 attempts per source IP per minute.
+- Companion credentials expire after 12 hours and are restricted to the companion approval endpoints. They cannot proxy Ollama, GitHub, Supabase, MCP, provider configuration, or create further pairing codes.
+- `POST /companion/approvals` accepts a bounded approval request from a paired device. Capabilities are allowlisted (`shell.execute`, `workspace.write`, `git.integrate`, `tool.execute`); summaries, commands and resources have strict length limits.
+- `GET /companion/approvals` lists requests belonging to the authenticated desktop session. `POST /companion/approvals/{id}/decision` records an explicit `approved` or `denied` decision. Requests expire after 10 minutes.
+- `GET /companion/approvals/{id}` lets only the requesting paired device read its decision. `DELETE /companion/pairs/{pairId}` revokes the paired credential and removes its outstanding requests.
+
+Pairing and approval state is held in gateway memory and is intentionally cleared on gateway restart. An approval decision is a state record only: it does not execute a shell command, write a file, integrate a worktree, or grant a capability by itself. A client must still enforce the decision at the point where the protected action is performed. Use HTTPS for remote gateways; pairing codes are short-lived, not a substitute for transport encryption.
