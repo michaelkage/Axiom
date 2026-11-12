@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/michaelkage/Axiom/blob/main/pwa/skills/skill.schema.json",
+  "title": "Axiom Skill Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "description", "requiredTools", "modelHints", "permissions", "instructionsUrl"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "description": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "requiredTools": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$" } },
+    "modelHints": { "type": "array", "uniqueItems": true, "items": { "type": "string", "maxLength": 100 } },
+    "permissions": { "type": "array", "uniqueItems": true, "items": { "enum": ["read-context", "network-access", "filesystem-read", "filesystem-write", "shell-execution", "external-services"] } },
+    "instructionsUrl": { "type": "string", "format": "uri-reference" },
+    "sourceUrl": { "type": "string", "format": "uri" }
+  }
+}
