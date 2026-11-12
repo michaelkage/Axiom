@@ -10,16 +10,31 @@ npm run dev -- --host 0.0.0.0
 Open the Vite network URL from Android. Ollama must be reachable from the browser at the configured base URL (default `http://localhost:11434`) and allow the PWA origin through CORS.
 
 ## Implemented
-- Responsive bottom navigation: Chat, Terminal, Tools, MCP, Logs
-- Ollama model discovery and streamed `/api/generate` responses
-- Ollama `/api/chat` tool-calling loop when integrations are registered
-- LocalStorage persistence for chats, preferences, endpoints, and settings
+- Responsive bottom navigation: Chat, Models, Files, Skills, Terminal, Tools, MCP, and Logs
+- Fast startup status overlay with a bounded runtime handshake, retry, and offline continuation
+- Persistent Dark, Light, and High-Contrast themes with a user-selected accent color
+- Browser speech dictation in the composer with interim transcript feedback and editable text
+- Image and project/text attachments, client-side image compression, and a strict 1 MiB per-file cap (up to eight files per prompt)
+- Android Web Share Target for shared text, URLs, logs, and supported files, handed off through IndexedDB by the service worker
+- Ollama model discovery and streamed /api/chat responses with bounded transient-error retries, Retry-After support, and cancellation
+- Mobile source editor with syntax highlighting, line numbers, find/replace, revert, and safe save/export
+- Structured conversation outcome summaries covering changes, file paths, verification evidence, and next steps
+- Curated skills registry with manifest validation, full instruction inspection, custom HTTPS manifest installs, updates, and per-task activation
+- LocalStorage persistence for chats, preferences, endpoints, skills, and settings
 - Async JSON-schema tool registry with execution events
 - GitHub tools: read files, create files, update files/commits
 - Supabase tools: list/describe tables, select rows, and optional project-defined SQL RPC
 - MCP Streamable HTTP and legacy SSE; discovered tools are schema-injected and registered for model use
-- Collapsible execution traces and installable PWA shell
+- Collapsible execution traces and installable offline PWA shell
 - Android native PTY shell, app-private project workspaces, foreground runtime service, and Android Keystore-backed gateway pairing (APK only)
+
+### Mobile workspace boundaries
+- Voice dictation uses the browser Web Speech API. Browser support and speech-service availability vary; unsupported browsers keep normal text input available.
+- Image attachments are sent as Ollama images payloads. The current native llama.cpp chat path is text-only and clearly notes when image pixels cannot be processed.
+- Attachment content is held in memory for the active session. Image bytes are excluded from LocalStorage persistence to avoid bloating or exhausting browser storage.
+- The Files editor opens user-selected files into an isolated in-memory buffer. Where the File System Access API is unavailable, Save exports an edited copy instead of overwriting the source. It is not a browser bridge into Axiom's app-private Android project workspace.
+- Outcome summaries are evidence-based extraction from conversation text and execution logs. They do not run tests or independently verify claims.
+- Skills are prompt-level guidance, not executable plugins. Declared permissions do not grant capabilities; existing tool registration and approval controls remain authoritative. Project-level activation will follow a project/workspace model; current activation is per conversation/task.
 
 ## Security and transport notes
 - Browser storage is not encrypted. Conversations and non-secret preferences are stored locally; browser-mode GitHub, Supabase, MCP, and gateway credentials are memory-only. The Android APK stores only the gateway pairing credential encrypted with Android Keystore; its short-lived session token stays in memory.
