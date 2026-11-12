@@ -400,9 +400,18 @@ export default function App(){
    if(!response.ok)throw new Error(result.error||'Gateway returned HTTP '+response.status+'.');
    setGithubTokenInput('');setSupabaseKeyInput('');setSupabaseUrlInput('');
    await refreshProviderConfig({silent:false});
-   await checkGatewayDiagnostics({silent:true});
-   setNotice(provider==='github'?'GitHub credential saved securely on the gateway.':'Supabase credentials saved securely on the gateway.');
-   log('success',provider+' credentials saved','Provider secrets are stored in the gateway private configuration file and are not returned to the app.');
+   const verification=await checkGatewayDiagnostics({silent:true});
+   const providerStatus=verification?.services?.[provider];
+   if(providerStatus?.status==='connected'){
+    setNotice(provider==='github'
+     ?'GitHub PAT verified successfully. Enable GitHub in Tools to make repository capabilities available to the local model.'
+     :'Supabase credentials verified successfully. Enable Supabase in Tools to make database capabilities available to the local model.');
+    log('success',provider+' credentials verified',providerStatus.message);
+   }else{
+    const detail=providerStatus?.message||'The gateway did not return a verification result. Check the gateway connection and retry.';
+    setNotice(provider+' credentials were saved, but verification failed: '+detail);
+    log('error',provider+' credential verification failed',detail);
+   }
   } catch(error) {setNotice('Could not save '+provider+' credentials: '+error.message);}
  }
 
@@ -419,7 +428,7 @@ export default function App(){
  }
 
   async function checkGatewayDiagnostics({silent=false}={}){
-   if(!gatewayToken||!gatewayBase()){if(!silent)setNotice('Pair the authenticated gateway before testing provider integrations.');return;}
+   if(!gatewayToken||!gatewayBase()){if(!silent)setNotice('Pair the authenticated gateway before testing provider integrations.');return null;}
    setDiagnosticsBusy(true);
    try{
     const response=await gatewayFetch(gatewayBase()+'/diagnostics',{headers:{accept:'application/json'},cache:'no-store'});
@@ -428,7 +437,8 @@ export default function App(){
     setDiagnostics(payload);
     const failed=['github','supabase'].filter(id=>payload.services?.[id]?.status!=='connected');
     if(!silent)setNotice(failed.length?'Diagnostics finished. Review the provider status details below.':'Gateway, GitHub and Supabase checks passed.');
-   }catch(error){setDiagnostics(null);if(!silent)setNotice('Integration diagnostics failed: '+error.message);}
+    return payload;
+   }catch(error){setDiagnostics(null);if(!silent)setNotice('Integration diagnostics failed: '+error.message);return null;}
    finally{setDiagnosticsBusy(false);}
   }
   useEffect(()=>{if(gatewayToken){checkGatewayDiagnostics({silent:true});refreshProviderConfig();}else{setDiagnostics(null);setProviderConfig(null);}},[gatewayToken,state.settings?.gatewayUrl]);
