@@ -4,6 +4,7 @@ const INVITE_TTL_MS = 90_000;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
 const MAX_APPROVALS = 500;
+const MAX_COMPANION_SESSIONS = 100;
 const CAPABILITIES = new Set(['shell.execute', 'workspace.write', 'git.integrate', 'tool.execute']);
 
 function fail(message, status = 400) {
@@ -51,6 +52,7 @@ export function createCompanionCoordinator({ now = Date.now } = {}) {
     if (!/^\d{8}$/.test(code)) fail('Pairing code is invalid.', 401);
     const invite = invites.get(code);
     if (!invite) fail('Pairing code is invalid, expired, or already used.', 401);
+    if (sessions.size >= MAX_COMPANION_SESSIONS) fail('Too many paired devices. Revoke an unused device before pairing another.', 429);
     invites.delete(code);
     const deviceName = boundedString(input.deviceName ?? 'Axiom mobile', 64, 'Device name');
     const token = randomBytes(32).toString('hex');
