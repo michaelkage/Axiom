@@ -36,6 +36,22 @@ describe("Axiom runtime helpers", () => {
     ])).toThrow(/explicit, non-empty acceptance criteria/);
   });
 
+  it("bounds planner output before it can expand worker fan-out or prompt size", () => {
+    const base = { id: "bounded", title: "Task", scope: "Implement safely", targetFiles: ["src/task.ts"], dependsOn: [], acceptanceCriteria: ["Tests pass"] };
+    expect(() => parseSubTasks(Array.from({ length: 51 }, (_, index) => ({ ...base, id: "task-" + index })))).toThrow(/more than 50 tasks/);
+    expect(() => parseSubTasks([{ ...base, targetFiles: Array.from({ length: 101 }, (_, index) => "src/" + index + ".ts") }])).toThrow(/too many target files/);
+    expect(() => parseSubTasks([{ ...base, acceptanceCriteria: Array.from({ length: 21 }, () => "criterion") }])).toThrow(/concise, non-empty acceptance criteria/);
+    expect(() => parseSubTasks([{ ...base, title: "x".repeat(241) }])).toThrow(/overlong title/);
+  });
+
+  it("rejects ambiguous normalized paths and malformed task identifiers", () => {
+    const base = { id: "safe-task", title: "Task", scope: "Implement safely", targetFiles: ["src/task.ts"], dependsOn: [], acceptanceCriteria: ["Tests pass"] };
+    expect(() => parseSubTasks([{ ...base, targetFiles: ["src/task.ts", "src\\\\task.ts"] }])).toThrow(/duplicate target paths/);
+    expect(() => parseSubTasks([{ ...base, targetFiles: ["src//task.ts"] }])).toThrow(/unsafe workspace-relative target path/);
+    expect(() => parseSubTasks([{ ...base, id: "../escape" }])).toThrow(/invalid or overlong ID/);
+    expect(() => parseSubTasks([{ ...base, dependsOn: ["safe-task", "safe-task"] }])).toThrow(/duplicate dependency/);
+  });
+
   it("serializes parent-directory and child-file write scopes", () => {
     const tasks = parseSubTasks([
       { id: "parent", title: "Parent", scope: "Own the source tree", targetFiles: ["src"], dependsOn: [], acceptanceCriteria: ["Behavior is verified"] },
