@@ -97,7 +97,8 @@ export function buildOutcomeSummary(messages = [], logs = []) {
   const text = relevant.map(message => String(message.content || '')).filter(Boolean);
   const assistant = relevant.filter(message => message.role === 'assistant').map(message => String(message.content || '')).filter(Boolean);
   const lastAssistant = assistant.at(-1) || '';
-  const paths = uniquePaths(relevant);
+  const changeEvidence = relevant.filter(message => message.role === 'assistant' || message.role === 'tool').filter(message => /\\b(updated|changed|created|modified|removed|deleted|wrote|saved|committed)\\b/i.test(String(message.content || '')));
+  const paths = uniquePaths(changeEvidence);
   const evidenceText = relevant.filter(message => message.role === 'assistant' || message.role === 'tool').map(message => String(message.content || '')).join('\n').toLowerCase();
   const failed = /\b(failed|failure|error|not pass|did not pass|blocked)\b/.test(evidenceText) || logs.some(item => item.kind === 'error');
   const passed = /\b(passed|success|verified|all tests pass|build succeeded|build passed)\b/.test(evidenceText) || logs.some(item => item.kind === 'success');
