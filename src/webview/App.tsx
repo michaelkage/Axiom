@@ -56,7 +56,7 @@ interface SelectionAttachment {
   startLine?: number;
   endLine?: number;
 }
-import { hostBridge } from "./utils/hostBridge";
+import { hostBridge, platformAdapter } from "./utils/hostBridge";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
 import { applyThemePreferences, loadThemePreferences, saveThemePreferences, type AxiomTheme } from "./utils/theme";
@@ -985,13 +985,12 @@ function App() {
   });
 
   const loadProjectDirectory = async (relativePath = projectFileDirectory()) => {
-    const project = desktopApi()?.project;
-    if (!project) return;
+    if (!platformAdapter.capabilities.projectFiles) return;
     setProjectFileBusy(true);
     setProjectFileNotice("");
     try {
-      const entries = await project.listFiles(relativePath);
-      setProjectFiles(entries);
+      const entries = await platformAdapter.files.list(relativePath);
+      setProjectFiles(entries.map(entry => ({ name: entry.name, path: entry.path, kind: entry.type })));
       setProjectFileDirectory(relativePath);
     } catch (error) {
       setProjectFileNotice("Could not list project files: " + getSdkErrorMessage(error));
@@ -1001,12 +1000,11 @@ function App() {
   };
 
   const openProjectFile = async (relativePath: string) => {
-    const project = desktopApi()?.project;
-    if (!project) return;
+    if (!platformAdapter.capabilities.projectFiles) return;
     setProjectFileBusy(true);
     setProjectFileNotice("");
     try {
-      const file = await project.readFile(relativePath);
+      const file = await platformAdapter.files.read(relativePath);
       setSelectedProjectFile(file.path);
       setProjectFileContent(file.content);
       setProjectFileNotice("Loaded " + file.path + " (" + file.size.toLocaleString() + " bytes).");
@@ -1018,12 +1016,11 @@ function App() {
   };
 
   const saveProjectFile = async () => {
-    const project = desktopApi()?.project;
-    if (!project || !selectedProjectFile()) return;
+    if (!platformAdapter.capabilities.projectFiles || !selectedProjectFile()) return;
     setProjectFileBusy(true);
     setProjectFileNotice("");
     try {
-      const result = await project.writeFile(selectedProjectFile(), projectFileContent());
+      const result = await platformAdapter.files.write(selectedProjectFile(), projectFileContent());
       setProjectFileNotice("Saved " + result.path + " (" + result.size.toLocaleString() + " bytes).");
       await loadProjectDirectory();
     } catch (error) {
