@@ -1,3 +1,30 @@
+# Axiom Android 1.2.0
+
+## Mobile workspace expansion
+
+- Added startup progress feedback with an eight-second runtime handshake fallback, offline continuation, and retry action.
+- Added persistent Dark, Light, and High-Contrast themes, plus a custom accent color. Saved appearance is applied before React paints to reduce theme flash.
+- Added Web Speech API dictation to the composer with interim transcript feedback, a live waveform, and editable transcription before sending.
+- Added image and project/text file attachments with client-side image compression, an enforced 1 MiB per-file limit, and a maximum of eight attachments per prompt.
+- Added Android Web Share Target registration for shared text, URLs, logs, and supported files. The service worker stores a one-time IndexedDB handoff and opens a prefilled Axiom prompt.
+- Added bounded exponential retries for transient Ollama network, rate-limit, and server errors. Retry-After is respected, retry attempts are configurable, and Stop cancels active requests and pending backoff.
+- Added a mobile source editor with syntax highlighting, line numbers, find/replace, revert, and safe save/export behavior.
+- Added one-tap structured conversation summaries covering What Changed, Files Touched, Verification Status, and Remaining Next Steps. Summaries do not rerun verification.
+- Added a versioned skills architecture and curated marketplace with three official starter skills, manifest/schema validation, full instruction inspection, custom HTTPS manifest installation, updates, and per-conversation activation.
+- Skill instructions are treated as untrusted guidance. Declared permissions do not grant capabilities or bypass existing tool approvals.
+- Added regression coverage for retries, cancellation, attachment limits, summary evidence, skill validation, editor behavior, and Web Share Target registration.
+
+## Platform boundaries
+
+- Voice dictation depends on browser Web Speech API support and speech-service availability.
+- Image payloads are sent to Ollama vision-capable models. The current native llama.cpp chat path remains text-only.
+- Image bytes are kept in memory for the active session and excluded from LocalStorage persistence.
+- The Files editor works on a user-selected in-memory copy. Browsers without File System Access API support export a new edited copy; the editor does not directly access Axiom's private Android runtime workspace.
+- Skills currently activate per conversation/task. Project-level activation requires the future project/workspace model.
+- Android APK remains ARM64 and debug-signed for sideload/testing. Physical-device voice, share-sheet, file-save, GPU, thermal, and memory-pressure validation must be completed separately.
+
+---
+
 # Axiom Android 1.1.5
 
 - Added a native Android document picker to import local GGUF model files directly into Axiom private storage. Imports are streamed, checked against available storage, SHA-256 hashed, and atomically installed.
