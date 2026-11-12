@@ -9,7 +9,7 @@ function setup() {
     addMessageListener: listener => { listeners.add(listener); },
     removeMessageListener: listener => { listeners.delete(listener); },
     createRequestId: () => "request-1",
-    setTimeout: vi.fn((callback, _milliseconds) => setTimeout(callback, 60_000)),
+    setTimeout: vi.fn((callback: () => void, _milliseconds: number): ReturnType<typeof setTimeout> => setTimeout(callback, 60_000)),
     clearTimeout: vi.fn(timeout => clearTimeout(timeout)),
   };
   return { transport, listeners, sent };
@@ -48,9 +48,9 @@ describe("createHostWorktreeRequester", () => {
   it("times out and releases the pending listener", async () => {
     const { transport, listeners } = setup();
     let expire: (() => void) | undefined;
-    transport.setTimeout = vi.fn(callback => {
+    transport.setTimeout = vi.fn((callback: () => void, milliseconds: number): ReturnType<typeof setTimeout> => {
       expire = callback;
-      return 7;
+      return setTimeout(callback, milliseconds);
     });
     const pending = createHostWorktreeRequester(transport, 10)("task-1", "/workspace");
     expect(listeners.size).toBe(1);
