@@ -43,3 +43,11 @@ test('user claims alone do not count as verification evidence', () => {
   ], []);
   assert.match(summary, /No explicit verification result was found/);
 });
+
+test('user-requested paths are not reported as touched without implementation evidence', () => {
+  const summary = buildOutcomeSummary([
+    { role: 'user', content: 'Please update src/only-requested.js.' },
+    { role: 'assistant', content: 'I reviewed the request but made no changes.' }
+  ], []);
+  assert.match(summary, /No file paths were identified/);
+});
