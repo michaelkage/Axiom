@@ -29,6 +29,7 @@ function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
     subscribe: vi.fn(() => () => undefined),
   };
   const options: TaskOrchestratorOptions = {
+    ...overrides,
     parentSessionId: "parent-session",
     tasks: [task],
     workspaceRoot: "/workspace/project",
@@ -45,7 +46,6 @@ function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
       subscribe: calls.subscribe,
     }),
     onLog: overrides.onLog,
-    ...overrides,
   };
   return { options, calls, outcomes };
 }
