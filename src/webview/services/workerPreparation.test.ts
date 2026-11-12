@@ -14,7 +14,6 @@ const task: AxiomSubTask = {
 describe("worker preparation", () => {
   it("filters secrets from conversation and project memory before packing", () => {
     const result = prepareWorkerContext({
-      request: "Add API tests",
       conversation: [
         { id: "safe-message", content: "Use the existing request helper.", relevance: 80 },
         { id: "credential-message", content: "api_key=super-secret-value", relevance: 99 },
