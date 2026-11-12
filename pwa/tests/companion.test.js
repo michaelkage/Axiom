@@ -8,7 +8,7 @@ test('pairing codes are short-lived, single-use and issue isolated session crede
   let time = 1000;
   const companion = createCompanionCoordinator({ now: () => time });
   const invite = companion.createInvite(token);
-  assert.match(invite.code, /^\\d{8}$/);
+  assert.match(invite.code, /^\d{8}$/);
   const claimed = companion.claimInvite({ code: invite.code, deviceName: 'Android phone' });
   assert.equal(claimed.deviceName, 'Android phone');
   assert.equal(claimed.expiresIn, 43200);
