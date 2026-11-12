@@ -13,7 +13,7 @@ import VoiceCapture from './components/VoiceCapture.jsx';
 import CodeEditor from './components/CodeEditor.jsx';
 import SkillsMarketplace from './components/SkillsMarketplace.jsx';
 import { buildSkillSystemPrompt } from './lib/skillRegistry.js';
-import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary } from './lib/workspaceCapture.js';
+import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary, MAX_TOTAL_ATTACHMENT_BYTES } from './lib/workspaceCapture.js';
 import { consumeSharedPayload } from './lib/shareTarget.js';
 import { consumeGatewayPairingIntent, isNativeAndroid, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
@@ -546,7 +546,7 @@ export default function App(){
   finally{if(activeRunRef.current===controller)activeRunRef.current=null;setBusy(false);setRetryStatus(null);}
  }
  async function addPromptAttachments(fileList){
-  try{const prepared=await prepareAttachments(fileList);const remaining=Math.max(0,8-draftAttachments.length);setDraftAttachments(current=>[...current,...prepared.slice(0,remaining)]);if(prepared.length)setNotice(prepared.length+' attachment(s) processed; '+Math.min(prepared.length,remaining)+' added. Maximum 8 files, 1 MiB each.');}
+  try{const prepared=await prepareAttachments(fileList);const total=[...draftAttachments,...prepared].reduce((sum,item)=>sum+item.size,0);if(draftAttachments.length+prepared.length>8)throw new Error('A prompt can contain at most 8 attachments.');if(total>MAX_TOTAL_ATTACHMENT_BYTES)throw new Error('Combined attachments must stay within 1 MiB per prompt to fit the secure gateway request limit.');setDraftAttachments(current=>[...current,...prepared]);if(prepared.length)setNotice(prepared.length+' attachment(s) ready. Combined size is within the 1 MiB prompt limit.');}
   catch(error){setNotice(error.message||'Could not attach the selected file.');}
   if(attachmentInputRef.current)attachmentInputRef.current.value='';
  }
