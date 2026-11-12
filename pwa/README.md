@@ -14,7 +14,7 @@ Open the Vite network URL from Android. Ollama must be reachable from the browse
 - Fast startup status overlay with a bounded runtime handshake, retry, and offline continuation
 - Persistent Dark, Light, and High-Contrast themes with a user-selected accent color
 - Browser speech dictation in the composer with interim transcript feedback and editable text
-- Image and project/text attachments, client-side image compression, and a strict 1 MiB per-file cap (up to eight files per prompt)
+- Image and project/text attachments, client-side image compression, and a strict 1 MiB aggregate attachment cap per prompt (up to eight files)
 - Android Web Share Target for shared text, URLs, logs, and supported files, handed off through IndexedDB by the service worker
 - Ollama model discovery and streamed /api/chat responses with bounded transient-error retries, Retry-After support, and cancellation
 - Mobile source editor with syntax highlighting, line numbers, find/replace, revert, and safe save/export
