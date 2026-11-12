@@ -12,7 +12,7 @@ const { listDirectory, readProjectFile, writeProjectFile } = require("./filesyst
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -464,12 +464,14 @@ async function run(command, args, cwd, timeout = 120000) {
 }
 
 async function changedFiles(worktree) {
-  const result = await run("git", ["status", "--short", "--untracked-files=all"], worktree);
-  if (result.exitCode !== 0) throw new Error(result.output || "Git status failed.");
-  return result.output.split(/\r?\n/).filter(Boolean).map(line => ({
-    status: line.slice(0, 2).trim() || "??",
-    path: line.slice(3).trim()
-  }));
+  try {
+    const result = await execFileAsync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+      cwd: worktree, timeout: 30000, windowsHide: true, maxBuffer: 16 * 1024 * 1024, encoding: "utf8"
+    });
+    return parseGitStatusPorcelainZ(result.stdout);
+  } catch (error) {
+    throw new Error("Git status failed: " + String(error.stderr || error.message || error).slice(-4000));
+  }
 }
 
 async function headBlobSha(directory, relativePath) {
