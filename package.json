@@ -22,7 +22,7 @@
     "desktop:dev": "npm run build:webview && npm --prefix desktop start",
     "desktop:dist": "npm run build:webview && npm --prefix desktop run dist",
     "desktop:dist:dir": "npm run build:webview && npm --prefix desktop run dist:dir",
-    "test:site": "node --test scripts/site/*.test.mjs"
+    "test:site": "node --test scripts/site/*.node.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
