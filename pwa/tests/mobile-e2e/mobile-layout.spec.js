@@ -4,6 +4,9 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear();
     localStorage.setItem("axiom.onboarding.v2.dismissed", "1");
+    // The mocked Ollama runtime exposes this model; select it explicitly so
+    // chat tests exercise sending instead of the intentional no-model guard.
+    localStorage.setItem("axiom.mobile.v1", JSON.stringify({ model: "qwen2.5:1.5b" }));
   });
   await page.route("**/api/tags", route => route.fulfill({
     status: 200,
