@@ -14,7 +14,7 @@ import CodeEditor from './components/CodeEditor.jsx';
 import SkillsMarketplace from './components/SkillsMarketplace.jsx';
 import { buildSkillSystemPrompt } from './lib/skillRegistry.js';
 import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary, MAX_TOTAL_ATTACHMENT_BYTES } from './lib/workspaceCapture.js';
-import { consumeSharedPayload } from './lib/shareTarget.js';
+import { consumeSharedPayload, hasNativeIOSShareTarget } from './lib/shareTarget.js';
 import { consumeGatewayPairingIntent, isNativeAndroid, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
@@ -560,7 +560,7 @@ export default function App(){
  useEffect(()=>{
   const shareParams=new URLSearchParams(window.location.search);
   if(shareParams.has('shareError')){setNotice('The operating system could not hand shared content to Axiom. Try sharing text or a smaller file.');window.history.replaceState({},'',window.location.pathname+window.location.hash);return;}
-  if(!shareParams.has('shared'))return;
+  if(!shareParams.has('shared')&&!hasNativeIOSShareTarget())return;
   let active=true;
   consumeSharedPayload().then(async payload=>{
    if(!active||!payload)return;
