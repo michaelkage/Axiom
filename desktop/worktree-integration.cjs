@@ -1,6 +1,7 @@
 "use strict";
 
-const fs = require("node:fs/promises");
+const fsNative = require("node:fs");
+const fs = fsNative.promises;
 const path = require("node:path");
 
 function normalizeWorkspaceRelativePath(value) {
@@ -37,6 +38,19 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
     if (isLeaf && !stat.isFile()) throw new Error("Only regular files can be integrated: " + normalized);
   }
   return current;
+}
+
+async function readRegularFileNoFollow(filePath) {
+  const flags = fsNative.constants.O_RDONLY | (fsNative.constants.O_NOFOLLOW || 0);
+  const handle = await fs.open(filePath, flags);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("Only regular files can be read for worker integration.");
+    const content = await handle.readFile();
+    return { content, mode: stat.mode & 0o777, size: content.length };
+  } finally {
+    await handle.close();
+  }
 }
 
 async function applyStagedWorkspaceFiles(staged, options = {}) {
@@ -119,4 +133,4 @@ async function withWorkspaceIntegrationLock(root, operation) {
   }
 }
 
-module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
+module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
