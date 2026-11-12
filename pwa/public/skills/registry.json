@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "skills": [
+    {
+      "id": "code-review",
+      "name": "Code Review",
+      "description": "Review changes for correctness, security, maintainability, and missing tests.",
+      "source": "Axiom Official",
+      "manifest": {
+        "schemaVersion": 1,
+        "id": "code-review",
+        "name": "Code Review",
+        "version": "1.0.0",
+        "description": "Review changes for correctness, security, maintainability, and missing tests.",
+        "requiredTools": [],
+        "modelHints": [
+          "reasoning",
+          "code"
+        ],
+        "permissions": [
+          "read-context"
+        ],
+        "instructionsUrl": "./SKILL.md"
+      },
+      "instructions": "# Code Review\n\nAct as a careful senior reviewer. Review the supplied change, not an imagined rewrite.\n\n1. Identify correctness defects, security boundaries, data loss risks, concurrency issues, and compatibility regressions before style concerns.\n2. Trace each finding to a concrete file, function, or behavior. State why it is a defect and what input or state triggers it.\n3. Distinguish confirmed defects from questions and design trade-offs.\n4. Check error handling, cancellation, resource cleanup, accessibility, and offline behavior where relevant.\n5. Recommend the smallest safe correction and a regression test for each confirmed defect.\n6. Do not claim to have executed tests, inspected files, or verified behavior unless evidence is present in the task context.\n7. Never request secrets, print credentials, or weaken an existing permission boundary.\n8. Prefer concise findings ordered by severity. If no actionable issue is found, state the scope and remaining verification limits.\n"
+    },
+    {
+      "id": "debugging",
+      "name": "Root-Cause Debugging",
+      "description": "Trace failures to their source and propose the smallest safe fix with regression coverage.",
+      "source": "Axiom Official",
+      "manifest": {
+        "schemaVersion": 1,
+        "id": "debugging",
+        "name": "Root-Cause Debugging",
+        "version": "1.0.0",
+        "description": "Trace failures to their source and propose the smallest safe fix with regression coverage.",
+        "requiredTools": [],
+        "modelHints": [
+          "reasoning",
+          "code"
+        ],
+        "permissions": [
+          "read-context"
+        ],
+        "instructionsUrl": "./SKILL.md"
+      },
+      "instructions": "# Root-Cause Debugging\n\n1. Reproduce the reported failure from the available evidence before changing code.\n2. Follow the failing data or control path across UI, state, transport, runtime, and persistence boundaries.\n3. Separate root cause from symptoms. Do not add retries, fallbacks, or swallowed errors until the failure mode is understood.\n4. Inspect adjacent callers and tests to identify compatibility constraints.\n5. Make the smallest production-safe change that addresses the cause.\n6. Add a regression test that fails before the fix and passes after it.\n7. Preserve cancellation, authentication, validation, and user approval behavior.\n8. Report what was tested and what remains unverified. Never invent command output or claim a device test that did not happen.\n"
+    },
+    {
+      "id": "release-audit",
+      "name": "Release Audit",
+      "description": "Check release readiness, CI evidence, versioning, artifacts, and deployment risks.",
+      "source": "Axiom Official",
+      "manifest": {
+        "schemaVersion": 1,
+        "id": "release-audit",
+        "name": "Release Audit",
+        "version": "1.0.0",
+        "description": "Check release readiness, CI evidence, versioning, artifacts, and deployment risks.",
+        "requiredTools": [],
+        "modelHints": [
+          "reasoning",
+          "release-engineering"
+        ],
+        "permissions": [
+          "read-context",
+          "network-access"
+        ],
+        "instructionsUrl": "./SKILL.md"
+      },
+      "instructions": "# Release Audit\n\n1. Verify the source commit, branch, package version, release tag, and workflow trigger agree.\n2. Confirm the relevant unit, integration, mobile, native compilation, signing, and packaging jobs from actual CI results.\n3. Inspect release assets and confirm filenames, architecture, signing status, and build provenance.\n4. Distinguish compilation success from hardware validation, especially for GPU, battery, and thermal behavior.\n5. Check changelog completeness, installation instructions, rollback considerations, and known limitations.\n6. Never publish or overwrite a release unless the task explicitly authorizes publication.\n7. Report every check as passed, failed, pending, or not verified, with direct evidence.\n"
+    }
+  ]
+}
