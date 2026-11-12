@@ -30,7 +30,8 @@ describe("remote worker execution provider", () => {
   it("submits a prompt template and maps a completed remote job", async () => {
     const host = transport();
     const provider = createRemoteWorkerExecutionProvider({ transport: host, repositoryUrl: "https://github.com/acme/repo.git", branch: "main", pollIntervalMs: 100 });
-    const executionRequest = request();\n    const result = await provider.execute(executionRequest);
+    const executionRequest = request();
+    const result = await provider.execute(executionRequest);
     expect(host.submit).toHaveBeenCalledWith(expect.objectContaining({
       taskId: "task-1", branch: "main",
       prompt: "Implement endpoint in __AXIOM_WORKSPACE_ROOT__",
