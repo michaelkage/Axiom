@@ -1,5 +1,7 @@
 # Axiom
 
+**[Axiom product site and downloads →](https://michaelkage.github.io/Axiom/)** · [Latest releases](https://github.com/michaelkage/Axiom/releases) · [Quick start](./QUICKSTART.md)
+
 **Build software by describing the outcome, not by starting with a pile of files.**
 
 Axiom is a standalone desktop app for AI-first project building. Describe the feature or outcome you want, let Axiom plan the work, then review scoped changes, diffs, acceptance criteria, and actual verification results. The goal is a project workspace, not another IDE plugin that requires an editor to exist first.
