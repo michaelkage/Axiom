@@ -48,15 +48,22 @@ export async function runNativeToolChat({
     if (missing.length) {
       throw new Error('GitHub was requested, but its tools are not active. Pair the gateway, save and verify the GitHub PAT plus owner/repo in Settings, then enable GitHub under Tools. Missing: ' + missing.join(', ') + '.');
     }
-    abortError(signal);
-    onEvent({ type: 'tool.request', name: 'github_get_repository', args: {} });
-    const repositoryInfo = await executeTool('github_get_repository', {}, { signal });
-    conversation.push({ role: 'tool', content: 'Verified GitHub repository metadata: ' + serializeToolResult(repositoryInfo) });
-    onEvent({ type: 'tool.completed', name: 'github_get_repository', result: serializeToolResult(repositoryInfo) });
-    onEvent({ type: 'tool.request', name: 'github_list_directory', args: { path: '' } });
-    const rootEntries = await executeTool('github_list_directory', { path: '' }, { signal });
-    conversation.push({ role: 'tool', content: 'Verified GitHub repository root entries: ' + serializeToolResult(rootEntries) });
-    onEvent({ type: 'tool.completed', name: 'github_list_directory', result: serializeToolResult(rootEntries) });
+    for (const [name, args] of [['github_get_repository', {}], ['github_list_directory', { path: '' }]]) {
+      abortError(signal);
+      onEvent({ type: 'tool.request', name, args });
+      try {
+        const result = await executeTool(name, args, { signal });
+        const serialized = serializeToolResult(result);
+        conversation.push({ role: 'tool', content: 'Verified result from ' + name + ': ' + serialized });
+        onEvent({ type: 'tool.completed', name, result: serialized });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        const message = error?.message || String(error);
+        conversation.push({ role: 'tool', content: 'Error from ' + name + ': ' + message });
+        onEvent({ type: 'tool.failed', name, error: message });
+        break;
+      }
+    }
   }
 
   const startedAt = Date.now();
