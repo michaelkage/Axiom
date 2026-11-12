@@ -1,3 +1,8 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const NativeIOS = registerPlugin('AxiomSecureStorage');
+export const hasNativeIOSShareTarget = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+
 const DB_NAME = 'axiom-share-target';
 const STORE_NAME = 'payloads';
 
@@ -14,6 +19,18 @@ function openDatabase() {
 }
 
 export async function consumeSharedPayload() {
+  if (hasNativeIOSShareTarget()) {
+    const result = await NativeIOS.consumeSharedPayload();
+    const payload = result?.payload;
+    if (!payload) return null;
+    const files = (payload.files || []).map(file => {
+      const binary = atob(file.dataBase64 || '');
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      return new File([bytes], file.name || 'shared-file', { type: file.type || 'application/octet-stream' });
+    });
+    return { ...payload, files, createdAt: Date.now() };
+  }
   const database = await openDatabase();
   try {
     return await new Promise((resolve, reject) => {
