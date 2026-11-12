@@ -109,6 +109,17 @@ describe("runOpenCodeWorkerLifecycle", () => {
     expect(calls.onLog).toHaveBeenCalled();
   });
 
+  it("continues worker execution when diagnostic event subscription is unavailable", async () => {
+    const { options, calls } = baseOptions({
+      subscribe: vi.fn(() => { throw new Error("event stream unavailable"); }),
+    });
+
+    const result = await runOpenCodeWorkerLifecycle(options);
+    expect(calls.promptSession).toHaveBeenCalledTimes(1);
+    expect(result.summary).toBe("Implemented and verified.");
+    expect(result.logs.some(line => line.includes("event subscription unavailable"))).toBe(true);
+  });
+
   it("does not create a worktree when already cancelled", async () => {
     const controller = new AbortController();
     controller.abort();
