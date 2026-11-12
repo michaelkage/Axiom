@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_ATTACHMENT_BYTES, buildAttachmentPrompt, buildOutcomeSummary } from '../src/lib/workspaceCapture.js';
+import { MAX_ATTACHMENT_BYTES, MAX_TOTAL_ATTACHMENT_BYTES, buildAttachmentPrompt, buildOutcomeSummary } from '../src/lib/workspaceCapture.js';
 
 test('attachment cap matches the one MiB workspace limit', () => {
   assert.equal(MAX_ATTACHMENT_BYTES, 1024 * 1024);
+  assert.equal(MAX_TOTAL_ATTACHMENT_BYTES, 1024 * 1024);
 });
 
 test('attachment prompt includes text content and image labels without embedding image data URLs', () => {
