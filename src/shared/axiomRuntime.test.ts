@@ -365,8 +365,8 @@ describe("Axiom runtime helpers", () => {
     const outcomes: string[] = [];
     const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), record => outcomes.push(record.status), { signal: controller.signal, abortDrainTimeoutMs: 5 });
     controller.abort();
-    await expect(execution).rejects.toThrow(/cancelled/i);
-    expect(outcomes).toContain("cancelled");
+    await expect(execution).rejects.toThrow(/abort was not confirmed/i);
+    expect(outcomes).toContain("timed_out");
   });
 
   it("plans tasks through an OpenAI-compatible OmniRoute endpoint", async () => {
