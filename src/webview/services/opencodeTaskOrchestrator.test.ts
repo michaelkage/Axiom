@@ -65,10 +65,15 @@ describe("runOpenCodeSubAgentTasks", () => {
       sessionID: "child-session",
       agent: "testing",
     }));
-    const prompt = calls.promptSession.mock.calls[0][0].parts[0].text;
-    expect(prompt).toContain("Use the shared fetch wrapper.");
-    expect(prompt).toContain("Use Vitest for unit tests.");
-    expect(prompt).toContain("Isolated worktree path: /tmp/axiom-worker");
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({
+      parts: [expect.objectContaining({ text: expect.stringContaining("Use the shared fetch wrapper.") })],
+    }));
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({
+      parts: [expect.objectContaining({ text: expect.stringContaining("Use Vitest for unit tests.") })],
+    }));
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({
+      parts: [expect.objectContaining({ text: expect.stringContaining("Isolated worktree path: /tmp/axiom-worker") })],
+    }));
     expect(results).toHaveLength(1);
     expect(results[0].result).toMatchObject({
       sessionId: "child-session",
@@ -89,7 +94,7 @@ describe("runOpenCodeSubAgentTasks", () => {
 
     expect(results).toHaveLength(1);
     expect(calls.promptSession).toHaveBeenCalledWith(expect.objectContaining({ sessionID: "child-session" }));
-    expect(calls.promptSession.mock.calls[0][0].agent).toBeUndefined();
+    expect(calls.promptSession).toHaveBeenCalledWith(expect.not.objectContaining({ agent: expect.anything() }));
   });
 
   it("does not begin context acquisition when already cancelled", async () => {
