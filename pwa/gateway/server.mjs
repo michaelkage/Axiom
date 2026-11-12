@@ -155,7 +155,7 @@ export function createAxiomGateway({
       if (isCompanionSession) return sendJson(res, 403, { error: 'Companion devices cannot read the desktop approval queue.' });
       return sendJson(res, 200, { approvals: companion.listApprovals(presentedToken) });
     }
-    const approvalDecision = url.pathname.match(/^\/companion\/approvals\\/([a-f0-9-]{36})\/decision$/);
+    const approvalDecision = url.pathname.match(new RegExp('^/companion/approvals/([a-f0-9-]{36})/decision$'));
     if (approvalDecision && req.method === 'POST') {
       if (isCompanionSession) return sendJson(res, 403, { error: 'Only the desktop session can decide approvals.' });
       const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
@@ -165,12 +165,12 @@ export function createAxiomGateway({
       try { return sendJson(res, 200, companion.decideApproval(presentedToken, approvalDecision[1], input.decision)); }
       catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
     }
-    const approvalStatus = url.pathname.match(/^\/companion\/approvals\\/([a-f0-9-]{36})$/);
+    const approvalStatus = url.pathname.match(new RegExp('^/companion/approvals/([a-f0-9-]{36})$'));
     if (approvalStatus && req.method === 'GET') {
       try { return sendJson(res, 200, companion.getApproval(presentedToken, approvalStatus[1])); }
       catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
     }
-    const pairRevocation = url.pathname.match(/^\/companion\/pairs\\/([a-f0-9-]{36})$/);
+    const pairRevocation = url.pathname.match(new RegExp('^/companion/pairs/([a-f0-9-]{36})$'));
     if (pairRevocation && req.method === 'DELETE') {
       if (isCompanionSession) return sendJson(res, 403, { error: 'Only the desktop session can revoke paired devices.' });
       const removed = companion.revokePair(presentedToken, pairRevocation[1]);
