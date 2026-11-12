@@ -49,12 +49,16 @@ test("worker lifecycle persists failure, retry, success, and ignores stale attem
       title: "Build and verify feature",
       status: "failed",
       attempt: 1,
-      error: "Verification command exited with code 1",
+      error: "Could not create child session: runtime unavailable",
+      worktreePath: "/tmp/axiom-attempt-1",
+      logs: ["isolated worktree created", "child session startup failed"],
       finishedAt: 200,
       logs: ["worker started", "verification failed"],
     });
     assert.equal(failed.status, "failed");
-    assert.match(failed.error, /Verification command/);
+    assert.match(failed.error, /child session startup failed|runtime unavailable/);
+    assert.equal(failed.worktreePath, "/tmp/axiom-attempt-1");
+    assert.deepEqual(failed.logs, ["isolated worktree created", "child session startup failed"]);
 
     const retry = await store.record({
       taskId: "integration-task",
@@ -99,6 +103,7 @@ test("worker lifecycle persists failure, retry, success, and ignores stale attem
     assert.equal(persisted.status, "succeeded");
     assert.equal(persisted.attempt, 2);
     assert.equal(persisted.sessionId, "session-attempt-2");
+    assert.equal(persisted.worktreePath, "/tmp/axiom-attempt-2");
     assert.deepEqual(persisted.logs, ["retry started", "build passed", "verification passed"]);
     assert.equal(persisted.result, "Build and verification passed");
 
