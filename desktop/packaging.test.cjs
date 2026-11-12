@@ -21,6 +21,8 @@ test("macOS packaging defines Intel and Apple Silicon DMG and ZIP targets", () =
 
 test("macOS release workflow builds both architectures and accepts signing credentials", () => {
   assert.match(platformWorkflow, /arch: x64[\s\S]*?arch: arm64/);
+  assert.match(platformWorkflow, /runner: macos-15/);
+  assert.doesNotMatch(platformWorkflow, /runner: macos-14/);
   assert.match(platformWorkflow, /APPLE_CERTIFICATE_P12_BASE64/);
   assert.match(platformWorkflow, /APPLE_APP_SPECIFIC_PASSWORD/);
   assert.match(platformWorkflow, /APPLE_TEAM_ID/);
