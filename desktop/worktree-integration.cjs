@@ -40,6 +40,29 @@ async function resolveSafeWorkspaceFile(root, relativePath) {
   return current;
 }
 
+function parseGitStatusPorcelainZ(output) {
+  if (typeof output !== "string") throw new TypeError("Git status output must be text.");
+  const records = output.split("\\0");
+  const changes = [];
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    if (!record) continue;
+    if (record.length < 4 || record[2] !== " ") throw new Error("Git returned malformed porcelain status output.");
+    const code = record.slice(0, 2);
+    const relative = record.slice(3);
+    if (!relative) throw new Error("Git returned a changed file without a path.");
+    if (code.includes("R") || code.includes("C")) {
+      const original = records[++index];
+      if (!original) throw new Error("Git returned an incomplete rename or copy record.");
+      if (code.includes("R")) changes.push({ status: "D", path: original });
+      changes.push({ status: "A", path: relative });
+    } else {
+      changes.push({ status: code.trim() || "??", path: relative });
+    }
+  }
+  return changes;
+}
+
 async function readRegularFileNoFollow(filePath) {
   const before = await fs.lstat(filePath);
   if (before.isSymbolicLink() || !before.isFile()) throw new Error("Only regular, non-symlink files can be read for worker integration.");
@@ -137,4 +160,4 @@ async function withWorkspaceIntegrationLock(root, operation) {
   }
 }
 
-module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
+module.exports = { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock };
