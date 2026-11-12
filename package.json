@@ -7,6 +7,7 @@
     "url": "https://github.com/michaelkage/Axiom.git"
   },
   "scripts": {
+    "test:worker-host": "node --test worker-host/host.test.cjs",
     "build": "npm run build:webview",
     "build:webview": "vite build --config vite.config.ts",
     "watch": "npm run watch:webview",
