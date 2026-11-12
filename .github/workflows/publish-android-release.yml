@@ -5,12 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/publish-android-release.yml"
-      - "pwa/RELEASE_NOTES.md"
-      - "pwa/src/**"
-      - "pwa/gateway/**"
-      - "pwa/scripts/**"
-      - "pwa/android-native/**"
-      - "pwa/tests/**"
+      - "pwa/**"
 
 permissions:
   contents: write
