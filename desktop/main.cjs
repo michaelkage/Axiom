@@ -547,13 +547,19 @@ async function runQualityGate(event, message) {
           untrackedIssues.push(file.path + ": only regular files can be integrated");
           continue;
         }
+        if (stat.size > 5 * 1024 * 1024) {
+          untrackedIssues.push(file.path + ": exceeds the 5 MiB untracked-file quality inspection limit");
+          continue;
+        }
         const text = await fs.promises.readFile(full, "utf8");
         const lines = text.split(/\r?\n/);
         lines.forEach((line, index) => {
           if (/[ \t]+$/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": trailing whitespace");
           if (/^(<<<<<<< |=======|>>>>>>> )/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": possible unresolved conflict marker");
         });
-      } catch {}
+      } catch (error) {
+        untrackedIssues.push(file.path + ": unable to inspect file safely: " + String(error.message || error).slice(0, 300));
+      }
     }
     checks.push({
       name: "Untracked file whitespace and conflict-marker check",
@@ -648,6 +654,9 @@ async function applyWorktreeChanges(event, message) {
       if (new Set(pathKeys).size !== pathKeys.length) throw new Error("The selection contains duplicate paths after normalization.");
       const upstream = await upstreamRevision(root);
       const staged = [];
+      const maxFileBytes = 25 * 1024 * 1024;
+      const maxTransactionBytes = 100 * 1024 * 1024;
+      let stagedBytes = 0;
 
       // Validate every source and destination before writing any project file.
       for (const relative of requested) {
@@ -680,16 +689,26 @@ async function applyWorktreeChanges(event, message) {
         try {
           const sourceStat = await fs.promises.lstat(source);
           if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) throw new Error("Integration blocked for " + relative + ": only regular, non-symlink files can be integrated.");
+          if (sourceStat.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file exceeds the 25 MiB per-file integration limit.");
           content = await fs.promises.readFile(source);
+          if (content.length > maxFileBytes) throw new Error("Integration blocked for " + relative + ": file grew beyond the per-file integration limit during preflight.");
+          stagedBytes += content.length;
           sourceMode = sourceStat.mode & 0o777;
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
           if (taskBaseBlob == null) throw new Error("Integration blocked for " + relative + ": worker source is missing and this is not a tracked deletion.");
         }
+        if (destinationStat?.size > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the 25 MiB rollback limit.");
+        const backup = destinationStat ? await fs.promises.readFile(destination) : null;
+        if (backup) {
+          stagedBytes += backup.length;
+          if (backup.length > maxFileBytes) throw new Error("Integration blocked for " + relative + ": existing destination exceeds the rollback limit.");
+        }
+        if (stagedBytes > maxTransactionBytes) throw new Error("Integration blocked: selected files exceed the 100 MiB transaction staging limit.");
         staged.push({
           relative, destination, content, sourceMode,
           existed: !!destinationStat,
-          backup: destinationStat ? await fs.promises.readFile(destination) : null,
+          backup,
           backupMode: destinationStat ? destinationStat.mode & 0o777 : null,
           temporary: null
         });
