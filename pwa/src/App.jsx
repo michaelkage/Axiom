@@ -553,7 +553,7 @@ export default function App(){
  function removePromptAttachment(id){setDraftAttachments(items=>items.filter(item=>item.id!==id));}
  function summarizeCurrentThread(){
   if(!currentChat||messages.length<2)return;
-  const summary=buildOutcomeSummary(messages,state.logs);
+  const summary=buildOutcomeSummary(messages,[]);
   patchChat(old=>[...old,{id:uid(),role:'assistant',content:summary,time:stamp(),summary:true}],currentChat.id);
   log('info','Conversation summarized','Generated a structured summary from recorded messages and execution logs. No verification was rerun.');
  }
