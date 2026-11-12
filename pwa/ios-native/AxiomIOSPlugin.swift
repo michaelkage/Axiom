@@ -165,7 +165,7 @@ public class AxiomIOSPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
     @objc func startSpeech(_ call: CAPPluginCall) {
         SFSpeechRecognizer.requestAuthorization { status in
             guard status == .authorized else { call.reject("Speech recognition permission was not granted."); return }
-            AVAudioApplication.requestRecordPermission { granted in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 guard granted else { call.reject("Microphone permission was not granted."); return }
                 DispatchQueue.main.async { self.beginSpeech(call) }
             }
