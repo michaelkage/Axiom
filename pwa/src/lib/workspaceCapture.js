@@ -1,4 +1,5 @@
 export const MAX_ATTACHMENT_BYTES = 1024 * 1024;
+export const MAX_TOTAL_ATTACHMENT_BYTES = 1024 * 1024;
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'xml', 'yaml', 'yml', 'toml', 'log', 'csv', 'sql', 'py', 'sh', 'kt', 'java', 'c', 'cpp', 'h', 'hpp', 'rs', 'go']);
 const MIME_BY_EXTENSION = new Map([
   ['md', 'text/markdown'], ['json', 'application/json'], ['js', 'text/javascript'],
