@@ -2514,3 +2514,21 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
   --scrollbar-slider-background: rgba(255,255,255,.65);
   --scrollbar-slider-hover-background: rgba(255,255,255,.85);
 }
+
+.shortcut-button--voice {
+  border: 1px solid var(--panel-border);
+  color: var(--foreground);
+}
+.shortcut-button--voice-active {
+  color: #ffffff;
+  background: #9f2d35;
+  border-color: #d45b63;
+}
+.input-dictation-status {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--description-foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
