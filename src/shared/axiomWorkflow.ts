@@ -128,10 +128,27 @@ export function reviewTaskResults(results: ReviewableTask[]) {
 }
 /** Prepare a selective integration manifest. This deliberately does not execute git or overwrite files. */
 export function selectIntegrationChanges(acceptedTaskIds: string[], results: ReviewableTask[], unrelatedDirtyPaths: string[] = []) {
-  const accepted = new Set(acceptedTaskIds), selected = results.filter(r => accepted.has(r.taskId));
-  const changes = selected.flatMap(r => r.changes), seen = new Set<string>(), conflicts: string[] = [];
-  for (const change of changes) { const path = normalizePath(change.path); if (seen.has(path) && !conflicts.includes(change.path)) conflicts.push(change.path); seen.add(path); }
-  return { changes, conflicts, unrelatedDirtyPaths: [...unrelatedDirtyPaths], safeToApply: conflicts.length === 0 && selected.every(r => r.quality.status === "Ready to review") };
+  const accepted = new Set(acceptedTaskIds);
+  const selected = results.filter(result => accepted.has(result.taskId));
+  const found = new Set(selected.map(result => result.taskId));
+  const missingTaskIds = [...accepted].filter(id => !found.has(id));
+  const changes = selected.flatMap(result => result.changes);
+  const conflicts: string[] = [];
+  const overlaps = (left: string, right: string) => {
+    const a = normalizePath(left), b = normalizePath(right);
+    return a === b || a.startsWith(b.endsWith("/") ? b : b + "/") || b.startsWith(a.endsWith("/") ? a : a + "/");
+  };
+  for (let index = 0; index < changes.length; index++) {
+    for (let previous = 0; previous < index; previous++) {
+      if (overlaps(changes[index].path, changes[previous].path) && !conflicts.includes(changes[index].path)) {
+        conflicts.push(changes[index].path);
+      }
+    }
+  }
+  const dirtyConflicts = unrelatedDirtyPaths.filter(dirtyPath => changes.some(change => overlaps(dirtyPath, change.path)));
+  const safeToApply = conflicts.length === 0 && dirtyConflicts.length === 0 && missingTaskIds.length === 0
+    && selected.every(result => result.quality.status === "Ready to review");
+  return { changes, conflicts, dirtyConflicts, missingTaskIds, unrelatedDirtyPaths: [...unrelatedDirtyPaths], safeToApply };
 }
 
 export interface ProjectMemory {
