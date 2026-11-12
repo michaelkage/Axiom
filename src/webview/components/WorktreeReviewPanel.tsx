@@ -110,9 +110,9 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
         <span>{check.state === "passed" ? "✓" : "✕"} {check.name}</span>
         <Show when={check.output}><details><summary>Output</summary><pre>{check.output}</pre></details></Show>
       </div>}</For>
-      <Show when={result.status === "Needs fixes" && (result.checks ?? []).some(check => check.state !== "passed") && props.onRepair && repairAttempts() < 1}>
+      <Show when={result.status === "Needs fixes" && (result.checks ?? []).some(check => check.state === "failed") && props.onRepair && repairAttempts() < 1}>
         <button class="workflow-plan__secondary" disabled={repairing()} onClick={async () => {
-          const failure = (result.checks ?? []).filter(check => check.state !== "passed").map(check => check.name + " (exit " + check.exitCode + "): " + (check.output || "No output captured.")).join("\n\n");
+          const failure = (result.checks ?? []).filter(check => check.state === "failed").map(check => check.name + " (exit " + check.exitCode + "): " + (check.output || "No output captured.")).join("\n\n");
           setRepairAttempts(count => count + 1);
           setRepairing(true);
           try { await props.onRepair?.(failure); } finally { setRepairing(false); }
