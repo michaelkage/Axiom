@@ -3,6 +3,9 @@ import App from './App';
 import { OpenCodeProvider } from './hooks/useOpenCode';
 import { SyncProvider } from './state/sync';
 import './App.css';
+import { applyThemePreferences, loadThemePreferences } from './utils/theme';
+
+applyThemePreferences(loadThemePreferences());
 
 try {
   render(
