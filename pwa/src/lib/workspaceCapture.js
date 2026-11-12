@@ -46,7 +46,7 @@ export async function prepareAttachment(file) {
   if (!(file instanceof Blob)) throw new TypeError('Choose a valid file.');
   const name = String(file.name || 'attachment').slice(0, 180);
   const extension = extensionOf(name);
-  const isImage = String(file.type || '').startsWith('image/');
+  const isImage = String(file.type || '').startsWith('image/') || /\\.(?:png|jpe?g|webp|gif|avif)$/i.test(name);
   const isText = String(file.type || '').startsWith('text/') || TEXT_EXTENSIONS.has(extension) || MIME_BY_EXTENSION.has(extension);
   if (!isImage && !isText) throw new Error('Unsupported file type. Attach an image or a supported project/text file.');
   const prepared = isImage ? await compressImage(file) : file;
@@ -94,7 +94,7 @@ function uniquePaths(messages) {
 export function buildOutcomeSummary(messages = [], logs = []) {
   const relevant = messages.filter(message => ['user', 'assistant', 'tool'].includes(message.role));
   const text = relevant.map(message => String(message.content || '')).filter(Boolean);
-  const assistant = text.filter((_, index) => relevant[index]?.role === 'assistant');
+  const assistant = relevant.filter(message => message.role === 'assistant').map(message => String(message.content || '')).filter(Boolean);
   const lastAssistant = assistant.at(-1) || '';
   const paths = uniquePaths(relevant);
   const combined = text.join('\n').toLowerCase();
