@@ -44,8 +44,6 @@ function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
       getMessages: calls.getMessages,
       subscribe: calls.subscribe,
     }),
-    loadConversation: overrides.loadConversation ?? calls.loadConversation,
-    loadProjectMemories: overrides.loadProjectMemories ?? calls.loadProjectMemories,
     onLog: overrides.onLog,
     ...overrides,
     loadConversation: overrides.loadConversation ?? calls.loadConversation,
