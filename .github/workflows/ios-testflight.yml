@@ -2,6 +2,8 @@ name: Build Axiom iOS and publish TestFlight
 
 on:
   push:
+    branches:
+      - "main"
     tags:
       - "ios-v*"
   workflow_dispatch:
