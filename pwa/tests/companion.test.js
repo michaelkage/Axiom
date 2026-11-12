@@ -48,7 +48,7 @@ test('pair revocation invalidates its approval access and approval requests are 
   const invite = companion.createInvite(token);
   const device = companion.claimInvite({ code: invite.code });
   const approval = companion.createApproval(device.token, { capability: 'workspace.write', summary: 'Update a file' });
-  assert.equal(companion.revokePair(token, device.pairId), true);
+  assert.deepEqual(companion.revokePair(token, device.pairId), [device.token]);
   assert.throws(() => companion.createApproval(device.token, { capability: 'workspace.write', summary: 'Again' }), /paired companion session/);
   assert.throws(() => companion.getApproval(device.token, approval.id), /not found/);
 });
