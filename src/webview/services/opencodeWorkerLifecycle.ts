@@ -118,7 +118,11 @@ export async function runOpenCodeWorkerLifecycle(
 
   const cleanupPrompt = () => {
     signal?.removeEventListener("abort", abortWorker);
-    stopEvents();
+    try {
+      stopEvents();
+    } catch {
+      // Cleanup failures must not mask the worker outcome.
+    }
   };
 
   if (signal?.aborted) {
