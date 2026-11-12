@@ -150,3 +150,58 @@ test("restart recovery records interrupted execution and preserves diagnostic co
     assert.equal(staleCompletion.result, undefined);
   });
 });
+
+test("late quarantined-worker diagnostics enrich the terminal timeout without reopening it", async () => {
+  await withWorkspace(async ({ workspace, userData }) => {
+    const store = createWorkerStateStore(userData, workspace);
+    await store.record({
+      taskId: "late-worker",
+      title: "Inspect quarantined worker",
+      status: "running",
+      attempt: 1,
+      startedAt: 100,
+      error: "Worker is still starting",
+    });
+    const quarantined = await store.record({
+      taskId: "late-worker",
+      title: "Inspect quarantined worker",
+      status: "timed_out",
+      attempt: 1,
+      finishedAt: 200,
+      error: "Worker abort was not confirmed; task quarantined.",
+    });
+    assert.equal(quarantined.status, "timed_out");
+
+    const enriched = await store.record({
+      taskId: "late-worker",
+      title: "Inspect quarantined worker",
+      status: "timed_out",
+      attempt: 1,
+      sessionId: "late-session",
+      worktreePath: "/tmp/axiom-late-worker",
+      logs: ["late worker startup completed"],
+      finishedAt: 250,
+    });
+    assert.equal(enriched.status, "timed_out");
+    assert.equal(enriched.sessionId, "late-session");
+    assert.equal(enriched.worktreePath, "/tmp/axiom-late-worker");
+    assert.deepEqual(enriched.logs, ["late worker startup completed"]);
+
+    const staleSuccess = await store.record({
+      taskId: "late-worker",
+      title: "Inspect quarantined worker",
+      status: "succeeded",
+      attempt: 1,
+      result: "late success must not release quarantine",
+      finishedAt: 300,
+    });
+    assert.equal(staleSuccess.status, "timed_out");
+    assert.equal(staleSuccess.result, undefined);
+
+    const persisted = (await createWorkerStateStore(userData, workspace).list())
+      .find(task => task.taskId === "late-worker");
+    assert.equal(persisted.status, "timed_out");
+    assert.equal(persisted.sessionId, "late-session");
+    assert.equal(persisted.worktreePath, "/tmp/axiom-late-worker");
+  });
+});
