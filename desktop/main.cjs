@@ -6,6 +6,7 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
+const { createSecureStorage } = require("./secure-storage.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
@@ -22,6 +23,11 @@ let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+let secureCredentialStore;
+function currentSecureCredentialStore() {
+  if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
+  return secureCredentialStore;
+}
 let activeRuntimeUrl = null;
 let mainWindow;
 let isQuitting = false;
@@ -713,6 +719,24 @@ function currentWorkerStateStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
+
+ipcMain.handle("axiom:secure-storage-get", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
+  return currentSecureCredentialStore().get(request.namespace, request.key);
+});
+
+ipcMain.handle("axiom:secure-storage-set", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string" || typeof request.value !== "string") throw new Error("Invalid secure storage request.");
+  return currentSecureCredentialStore().set(request.namespace, request.key, request.value);
+});
+
+ipcMain.handle("axiom:secure-storage-remove", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
+  return currentSecureCredentialStore().remove(request.namespace, request.key);
+});
 
 ipcMain.handle("axiom:mcp-diagnostics", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
