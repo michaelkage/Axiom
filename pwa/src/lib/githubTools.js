@@ -91,7 +91,7 @@ export function registerGitHubTools({ token, repository, baseUrl = 'https://api.
       description: 'Search code in the configured GitHub repository. Query should contain code terms, filenames, or identifiers, not a repository selector.',
       inputSchema: { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 256 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['query'], additionalProperties: false }
     }, async ({ query, limit = 10 }, { signal } = {}) => {
-      if (/\\b(?:repo|org|user):/i.test(query) || /\\b(?:OR|NOT)\\b/i.test(query)) throw new Error('Search query cannot override repository scope or use boolean operators.');
+      if (/\b(?:repo|org|user):/i.test(query) || /\b(?:OR|NOT)\b/i.test(query)) throw new Error('Search query cannot override repository scope or use boolean operators.');
       const { data } = await octokit.search.code({ q: query + ' repo:' + owner + '/' + repo, per_page: limit, request: { signal } });
       return { total_count: data.total_count, items: data.items.map(item => ({ name: item.name, path: item.path, sha: item.sha, html_url: item.html_url, repository: item.repository.full_name })) };
     });
