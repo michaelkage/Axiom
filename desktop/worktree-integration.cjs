@@ -63,7 +63,7 @@ function parseGitStatusPorcelainZ(output) {
   return changes;
 }
 
-async function readRegularFileNoFollow(filePath) {
+async function readRegularFileNoFollow(filePath, maxBytes = Number.POSITIVE_INFINITY) {
   const before = await fs.lstat(filePath);
   if (before.isSymbolicLink() || !before.isFile()) throw new Error("Only regular, non-symlink files can be read for worker integration.");
   const flags = fsNative.constants.O_RDONLY | (fsNative.constants.O_NOFOLLOW || 0);
@@ -73,7 +73,9 @@ async function readRegularFileNoFollow(filePath) {
     if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino) {
       throw new Error("Worker file changed during safe-open verification.");
     }
+    if (stat.size > maxBytes) throw new Error("File exceeds the safe read limit of " + maxBytes + " bytes.");
     const content = await handle.readFile();
+    if (content.length > maxBytes) throw new Error("File grew beyond the safe read limit during inspection.");
     return { content, mode: stat.mode & 0o777, size: content.length, dev: stat.dev, ino: stat.ino };
   } finally {
     await handle.close();
