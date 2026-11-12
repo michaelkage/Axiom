@@ -59,6 +59,7 @@ export function createDesktopPlatformAdapter(): AxiomPlatformAdapter {
       set: async (namespace, key, value) => { if (!bridge) return unavailable(); await bridge.secureStorage.set(namespace, key, value); },
       remove: (namespace, key) => bridge ? bridge.secureStorage.remove(namespace, key) : unavailable()
     },
+    documents: { pick: async () => { throw new Error('Use the desktop project file picker to select workspace files.'); } },
     files: {
       list: (relativePath = "") => bridge ? bridge.project.listFiles(relativePath) as Promise<never[]> : unavailable(),
       read: relativePath => bridge ? bridge.project.readFile(relativePath) : unavailable(),
