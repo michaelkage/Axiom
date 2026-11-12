@@ -17,6 +17,7 @@ import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary, MAX_TOT
 import { consumeSharedPayload, hasNativeIOSShareTarget } from './lib/shareTarget.js';
 import { getPlatformAdapter } from './lib/platformAdapter.js';
 import { redactSecrets, redactValue, redactForExternalContext } from './lib/securityRedaction.js';
+import { parseContextMentions, buildContextMentionPrompt } from './lib/contextMentions.js';
 import { consumeGatewayPairingIntent, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
@@ -518,7 +519,22 @@ export default function App(){
    const availableTools=toOllamaTools();
    const activeSkills=(currentChat?.skillIds||[]).map(id=>(state.skills||[]).find(skill=>skill.id===id)).filter(Boolean);
    const skillPrompt=buildSkillSystemPrompt(activeSkills,listTools());
-   const promptMessages=redactForExternalContext([...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...priorMessages,userMsg]);
+   const mentions=parseContextMentions(draft);
+   const resolvedMentions=await Promise.all(mentions.map(async mention=>{
+    try{
+     if(mention.kind==='file'&&platformAdapter.capabilities.projectFiles){
+      const file=await platformAdapter.files.read(mention.target);
+      return {content:file.content};
+     }
+     if(mention.kind==='folder'&&platformAdapter.capabilities.projectFiles){
+      const entries=await platformAdapter.files.list(mention.target);
+      return {content:entries.slice(0,100).map(entry=>(entry.type==='directory'?'[dir] ':'[file] ')+entry.path).join('\\n')};
+     }
+    }catch(error){return {content:'Unable to resolve: '+redactSecrets(error.message||String(error))};}
+    return null;
+   }));
+   const mentionPrompt=buildContextMentionPrompt(mentions,resolvedMentions);
+   const promptMessages=redactForExternalContext([...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...(mentionPrompt?[{role:'system',content:mentionPrompt}]:[]),...priorMessages,userMsg]);
    const chatRunner=nativeLoadedModel?runNativeToolChat:runOllamaToolChat;
    const runResult=await chatRunner({
     ...(nativeLoadedModel?{}:{baseUrl:base,fetchImpl:gatewayFetch}),
