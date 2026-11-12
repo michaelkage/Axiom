@@ -5,6 +5,14 @@ import { AgentSwitcher } from "./AgentSwitcher";
 import { TiptapEditor, type TiptapEditorMethods } from "./TiptapEditor";
 import { hostBridge } from "../utils/hostBridge";
 
+type SpeechRecognitionLike = {
+  lang: string; continuous: boolean; interimResults: boolean;
+  onstart: (() => void) | null; onresult: ((event: any) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null; onend: (() => void) | null;
+  start(): void; stop(): void;
+};
+type SpeechWindow = Window & { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+
 interface InputBarProps {
   value: string;
   onInput: (value: string) => void;
@@ -33,7 +41,60 @@ interface InputAttachment {
 
 export function InputBar(props: InputBarProps) {
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
+  const [isDictating, setIsDictating] = createSignal(false);
+  const [interimTranscript, setInterimTranscript] = createSignal("");
+  let speechRecognition: SpeechRecognitionLike | null = null;
   let editorMethods: TiptapEditorMethods | null = null;
+
+  const speechConstructor = () => {
+    const speechWindow = window as SpeechWindow;
+    return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+  };
+  const toggleDictation = () => {
+    if (speechRecognition) {
+      speechRecognition.stop();
+      return;
+    }
+    const Constructor = speechConstructor();
+    if (!Constructor) return;
+    const recognition = new Constructor();
+    recognition.lang = navigator.language || "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onstart = () => { setIsDictating(true); setInterimTranscript(""); };
+    recognition.onresult = event => {
+      let finalText = "";
+      let partialText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript ?? "";
+        if (result?.isFinal) finalText += transcript;
+        else partialText += transcript;
+      }
+      if (finalText.trim()) props.onInput([props.value.trim(), finalText.trim()].filter(Boolean).join(" "));
+      setInterimTranscript(partialText);
+    };
+    recognition.onerror = event => {
+      if (event.error !== "no-speech" && event.error !== "aborted") setInterimTranscript("Dictation error: " + (event.error || "unknown"));
+    };
+    recognition.onend = () => {
+      setIsDictating(false);
+      setInterimTranscript("");
+      speechRecognition = null;
+    };
+    speechRecognition = recognition;
+    try { recognition.start(); }
+    catch {
+      speechRecognition = null;
+      setIsDictating(false);
+      setInterimTranscript("");
+    }
+  };
+
+  onCleanup(() => {
+    speechRecognition?.stop();
+    speechRecognition = null;
+  });
 
   const searchFiles = async (query: string): Promise<string[]> => {
     return new Promise((resolve) => {
@@ -177,6 +238,22 @@ export function InputBar(props: InputBarProps) {
               selectedAgent={props.selectedAgent}
               onAgentChange={props.onAgentChange}
             />
+          </Show>
+          <Show when={speechConstructor()}>
+            <button
+              type="button"
+              class={"shortcut-button shortcut-button--voice " + (isDictating() ? "shortcut-button--voice-active" : "")}
+              onClick={toggleDictation}
+              disabled={props.disabled}
+              aria-label={isDictating() ? "Stop voice dictation" : "Dictate prompt"}
+              aria-pressed={isDictating()}
+              title="Dictation is processed by the browser speech provider. Review the transcript before sending."
+            >
+              {isDictating() ? "■" : "🎙"}
+            </button>
+          </Show>
+          <Show when={isDictating() && interimTranscript()}>
+            <span class="input-dictation-status" role="status" aria-live="polite">{interimTranscript()}</span>
           </Show>
           <Show when={showStopButton()}>
             <button
