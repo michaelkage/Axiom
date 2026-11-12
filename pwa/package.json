@@ -15,7 +15,9 @@
     "android:open": "cap open android",
     "gateway:token": "node gateway/show-token.mjs",
     "predev": "node scripts/sync-skills.mjs",
-    "prebuild": "node scripts/sync-skills.mjs"
+    "prebuild": "node scripts/sync-skills.mjs",
+    "ios:add": "cap add ios",
+    "ios:sync": "cap sync ios"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
@@ -24,7 +26,8 @@
     "@octokit/rest": "21.1.1",
     "@supabase/supabase-js": "2.119.0",
     "@capacitor/android": "7.6.10",
-    "@capacitor/core": "7.6.10"
+    "@capacitor/core": "7.6.10",
+    "@capacitor/ios": "7.6.10"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.4",
