@@ -1,11 +1,11 @@
 const SECRET_PATTERNS = [
-  { name: "private-key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\\s\\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g },
-  { name: "authorization", pattern: /\\b(authorization\\s*[:=]\\s*)(?:bearer|basic)\\s+[A-Za-z0-9._~+\\/-]+=*/gi },
-  { name: "github-token", pattern: /\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b/g },
-  { name: "supabase-key", pattern: /\\b(?:sb_secret_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})\\b/g },
-  { name: "aws-access-key", pattern: /\\bAKIA[0-9A-Z]{16}\\b/g },
-  { name: "generic-assignment", pattern: /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|private[_-]?key)\\s*[:=]\\s*)(["']?)[^\\s"'&,;]+\\2/gi },
-  { name: "env-assignment", pattern: /(^|\\n)([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*\\s*=)([^\\r\\n]*)/g }
+  { name: "private-key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g },
+  { name: "authorization", pattern: /\b(authorization\s*[:=]\s*)(?:bearer|basic)\s+[A-Za-z0-9._~+\/-]+=*/gi },
+  { name: "github-token", pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g },
+  { name: "supabase-key", pattern: /\b(?:sb_secret_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g },
+  { name: "aws-access-key", pattern: /\bAKIA[0-9A-Z]{16}\b/g },
+  { name: "generic-assignment", pattern: /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|private[_-]?key)\s*[:=]\s*)(["']?)[^\s"'&,;]+\2/gi },
+  { name: "env-assignment", pattern: /(^|\n)([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*\s*=)([^\r\n]*)/g }
 ];
 
 export function redactSecrets(input, replacement = "[REDACTED]") {
