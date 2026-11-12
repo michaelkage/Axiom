@@ -15,7 +15,7 @@ import {
 } from "./workerPreparation";
 import type { WorkerExecutionProvider } from "../../shared/workerExecution";
 
-export interface OpenCodeTaskOrchestratorOptions {
+export interface TaskOrchestratorOptions {
   parentSessionId: string;
   tasks: AxiomSubTask[];
   workspaceRoot?: string;
@@ -33,9 +33,9 @@ export interface OpenCodeTaskOrchestratorOptions {
 
 /**
  * Coordinates context acquisition, specialist selection and bounded worker execution.
- * Provider-specific SDK calls remain injected at the boundary.
+ * Provider-specific runtime details remain behind the worker provider contract.
  */
-export async function runOpenCodeSubAgentTasks(
+export async function runSubAgentTasks(
   options: OpenCodeTaskOrchestratorOptions,
 ) {
   const directory = options.workspaceRoot;
