@@ -24,7 +24,7 @@ export interface AxiomPlatformAdapter {
   files: {
     list(relativePath?: string): Promise<AxiomFileEntry[]>;
     read(relativePath: string): Promise<{ path: string; content: string; size: number }>;
-    write(relativePath: string, content: string): Promise<unknown>;
+    write(relativePath: string, content: string): Promise<{ path: string; size: number }>;
   };
   documents: {
     pick(options?: { multiple?: boolean }): Promise<{ files: Array<{ name: string; path: string; webPath?: string; size: number }> }>;
