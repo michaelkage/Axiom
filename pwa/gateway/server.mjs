@@ -386,7 +386,10 @@ export function createAxiomGateway({
           contentPath = decoded;
         }
       } catch { return sendJson(res, 400, { error: 'Invalid GitHub content path encoding.' }); }
-      const validContentPath = Boolean(validContentRepo) && contentPath.split('/').every(segment => segment !== '.' && segment !== '..') && !contentPath.includes('\\');
+      if (validContentRepo && (contentPath.split('/').some(segment => segment === '.' || segment === '..') || contentPath.includes('\\'))) {
+        return sendJson(res, 400, { error: 'Invalid GitHub content path.' });
+      }
+      const validContentPath = Boolean(validContentRepo);
       const allowedReadPaths = new Set([repoRoot.toLowerCase(), (repoRoot + '/branches').toLowerCase(), (repoRoot + '/commits').toLowerCase(), (repoRoot + '/issues').toLowerCase(), (repoRoot + '/pulls').toLowerCase()]);
       const treeSuffix = requestedPath.slice(repoRoot.length);
       const validTreePath = requestedPath.toLowerCase().startsWith((repoRoot + '/git/trees/').toLowerCase()) && /^\/git\/trees\/[A-Za-z0-9._-]+$/.test(treeSuffix);
