@@ -469,7 +469,7 @@ test('GitHub proxy permits only scoped repository reads and content writes', asy
     assert.equal(otherRepo.status, 403);
     const writeToMetadata = await fetch(base + '/api/github/repos/michaelkage/Axiom', { method: 'PUT', headers });
     assert.equal(writeToMetadata.status, 405);
-    const traversal = await fetch(base + '/api/github/repos/michaelkage/Axiom/contents/%2e%2e/secret', { headers });
+    const traversal = await fetch(base + '/api/github/repos/michaelkage/Axiom/contents/%252e%252e/secret', { headers });
     assert.equal(traversal.status, 400);
     assert.equal(seen.length, 5);
     assert.ok(seen.every(item => item.authorization === 'Bearer github-server-secret'));
