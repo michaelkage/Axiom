@@ -109,20 +109,20 @@ export async function runOpenCodeWorkerLifecycle(
 
   const stopEvents = (() => {
     try {
-    return options.subscribe(event => {
-    let serialized: string;
-    try {
-      const encoded = JSON.stringify(event);
-      if (typeof encoded !== "string") return;
-      serialized = encoded;
-    } catch {
-      return;
-    }
-    if (!serialized.includes(sessionId)) return;
-    const type = String((event as { type?: unknown } | null)?.type ?? "runtime.event");
-    if (!/message\.|session\.(error|status|idle|updated)|tool\./.test(type)) return;
-    log("[" + type + "] " + serialized.slice(0, 1400));
-  }, worktreePath);
+      return options.subscribe(event => {
+        let serialized: string;
+        try {
+          const encoded = JSON.stringify(event);
+          if (typeof encoded !== "string") return;
+          serialized = encoded;
+        } catch {
+          return;
+        }
+        if (!serialized.includes(sessionId)) return;
+        const type = String((event as { type?: unknown } | null)?.type ?? "runtime.event");
+        if (!/message\\.|session\\.(error|status|idle|updated)|tool\\./.test(type)) return;
+        log("[" + type + "] " + serialized.slice(0, 1400));
+      }, worktreePath);
     } catch (error) {
       log("Worker event subscription unavailable: " + errorMessage(error));
       return () => undefined;
