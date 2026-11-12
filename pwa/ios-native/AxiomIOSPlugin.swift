@@ -165,11 +165,13 @@ public class AxiomIOSPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
                 guard fileURL.path.hasPrefix(container.appendingPathComponent("SharedFiles").standardizedFileURL.path + "/") else {
                     throw NSError(domain: "AxiomShare", code: 3, userInfo: [NSLocalizedDescriptionKey: "A shared file escaped the app-group directory."])
                 }
-                let fileData = try Data(contentsOf: fileURL)
-                totalBytes += fileData.count
-                guard totalBytes <= 1_048_576 else {
+                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+                let fileSize = (attributes[.size] as? NSNumber)?.intValue ?? 0
+                totalBytes += fileSize
+                guard fileSize >= 0, totalBytes <= 1_048_576 else {
                     throw NSError(domain: "AxiomShare", code: 4, userInfo: [NSLocalizedDescriptionKey: "Shared files exceed Axiom's 1 MiB attachment limit."])
                 }
+                let fileData = try Data(contentsOf: fileURL)
                 let name = fileURL.lastPathComponent
                 let mime = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
                 files.append(["name": name, "type": mime, "size": fileData.count, "dataBase64": fileData.base64EncodedString()])
