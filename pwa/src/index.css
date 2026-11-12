@@ -174,3 +174,49 @@ body > #root > div > div.fixed.bottom-0 nav button[class*="text-lime"] {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Persistent Axiom themes. Theme and accent are hydrated from local preferences. */
+.voice-wave-bar { height: 5px; animation: axiom-wave 680ms ease-in-out infinite alternate; }
+@keyframes axiom-wave { from { height: 4px; opacity: .55; } to { height: 21px; opacity: 1; } }
+[data-theme="light"] {
+  color-scheme: light;
+  --ink: #f4f3ed;
+  --ink-soft: #ffffff;
+  --paper: #171812;
+  --muted: #57594f;
+  --line: rgba(23,24,18,.22);
+}
+[data-theme="light"] body,
+body:has([data-theme="light"]) { background: #f4f3ed; color: #171812; }
+[data-theme="light"] .glass,
+[data-theme="light"] header,
+[data-theme="light"] nav,
+[data-theme="light"] [role="dialog"] { background: #f4f3ed !important; color: #171812 !important; }
+[data-theme="light"] main [class*="bg-white/"],
+[data-theme="light"] main [class*="bg-[#11151d]"],
+[data-theme="light"] main [class*="bg-black/"] { background: #e8e7df !important; }
+[data-theme="light"] main [class*="text-slate-100"],
+[data-theme="light"] main [class*="text-slate-200"],
+[data-theme="light"] main [class*="text-slate-300"] { color: #202119 !important; }
+[data-theme="light"] main [class*="text-slate-400"],
+[data-theme="light"] main [class*="text-slate-500"],
+[data-theme="light"] main [class*="text-slate-600"] { color: #62645a !important; }
+[data-theme="light"] main input,
+[data-theme="light"] main textarea,
+[data-theme="light"] main select,
+[data-theme="light"] [role="dialog"] input,
+[data-theme="light"] [role="dialog"] select { background: #fff !important; color: #171812 !important; }
+[data-theme="light"] main pre,
+[data-theme="light"] main code { background-color: #e4e3db; color: #303127; }
+[data-theme="light"] body > #root > div > div.fixed.bottom-0 > div:first-child > div { background: #fff !important; }
+[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --line: rgba(255,255,255,.55);
+}
+[data-theme="high-contrast"] main [class*="text-slate-500"],
+[data-theme="high-contrast"] main [class*="text-slate-600"] { color: #e1e1e1 !important; }
+[data-theme="high-contrast"] main [class*="border-white/"] { border-color: #b8b8b8 !important; }
+[data-theme="high-contrast"] button:focus-visible,
+[data-theme="high-contrast"] input:focus-visible,
+[data-theme="high-contrast"] textarea:focus-visible,
+[data-theme="high-contrast"] select:focus-visible { outline: 3px solid var(--acid) !important; outline-offset: 3px; }
