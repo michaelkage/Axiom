@@ -534,12 +534,13 @@ export default function App(){
     return null;
    }));
    const mentionPrompt=buildContextMentionPrompt(mentions,resolvedMentions);
-   const promptMessages=redactForExternalContext([...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...(mentionPrompt?[{role:'system',content:mentionPrompt}]:[]),...priorMessages,userMsg]);
+   const promptMessages=[...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...priorMessages,userMsg];
+   const externalPromptMessages=redactForExternalContext([...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...(mentionPrompt?[{role:'system',content:mentionPrompt}]:[]),...priorMessages,userMsg]);
    const chatRunner=nativeLoadedModel?runNativeToolChat:runOllamaToolChat;
    const runResult=await chatRunner({
     ...(nativeLoadedModel?{}:{baseUrl:base,fetchImpl:gatewayFetch}),
     model:nativeLoadedModel||selectedOllamaModel,
-    messages:promptMessages,
+    messages:externalPromptMessages,
     tools:availableTools,
     signal,
     executeTool,
