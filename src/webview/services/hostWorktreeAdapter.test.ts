@@ -45,6 +45,21 @@ describe("createHostWorktreeRequester", () => {
     expect(transport.clearTimeout).toHaveBeenCalledTimes(1);
   });
 
+  it("times out and releases the pending listener", async () => {
+    const { transport, listeners } = setup();
+    let expire: (() => void) | undefined;
+    transport.setTimeout = vi.fn(callback => {
+      expire = callback;
+      return 7;
+    });
+    const pending = createHostWorktreeRequester(transport, 10)("task-1", "/workspace");
+    expect(listeners.size).toBe(1);
+    expire?.();
+    await expect(pending).rejects.toThrow(/timed out/i);
+    expect(listeners.size).toBe(0);
+    expect(transport.clearTimeout).toHaveBeenCalledWith(7);
+  });
+
   it("rejects invalid requests without contacting the host", async () => {
     const { transport } = setup();
     await expect(createHostWorktreeRequester(transport)("", "/workspace")).rejects.toThrow(/required/i);
