@@ -215,7 +215,7 @@ function createOpenCode() {
       // Context packing still works from the original request and plan if history is unavailable.
     }
     // Retrieve relevant, recently reviewed project memories; the preparation service secret-screens them before packing.
-    const safeProjectMemories = (() => {
+    const projectMemories = (() => {
       try {
         const relevant = retrieveProjectMemories(loadProjectMemories(directory), orchestration?.request ?? "", 8)
           .filter(memory => !isProjectMemoryStale(memory))
