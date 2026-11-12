@@ -14,6 +14,7 @@ const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
+const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -1199,13 +1200,11 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
   if (message.type === "create-agent-worktree") {
     try {
       validateWorkspace(message.workspaceRoot);
-      const root = await gitRoot(message.workspaceRoot);
-      const safeId = String(message.taskId || "task").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48);
-      const worktreeBase = path.join(app.getPath("userData"), "worktrees", path.basename(root));
-      await fs.promises.mkdir(worktreeBase, { recursive: true });
-      const worktreePath = path.join(worktreeBase, safeId + "-" + Date.now());
-      const result = await run("git", ["-C", root, "worktree", "add", "--detach", worktreePath, "HEAD"], root, 60000);
-      if (result.exitCode !== 0) throw new Error(result.output || "Git could not create a task worktree.");
+      const worktreePath = await createDetachedWorktree({
+        workspaceRoot: message.workspaceRoot,
+        userDataPath: app.getPath("userData"),
+        taskId: message.taskId,
+      });
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: true, path: worktreePath });
     } catch (error) {
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: false, error: error.message });
