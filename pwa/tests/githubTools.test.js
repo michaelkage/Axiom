@@ -19,7 +19,7 @@ test('GitHub integration registers repository-scoped read and approval-gated wri
       if (String(url).endsWith('/repos/acme/project')) {
         return response({ full_name: 'acme/project', default_branch: 'main', private: true, html_url: 'https://github.com/acme/project' });
       }
-      if (String(url).includes('/contents/')) {
+      if (String(url).includes('/contents')) {
         return response([{ name: 'README.md', path: 'README.md', type: 'file', size: 10, sha: 'blob', html_url: 'https://github.com/acme/project/blob/main/README.md' }]);
       }
       if (String(url).includes('/search/code')) {
