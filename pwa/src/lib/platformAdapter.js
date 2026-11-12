@@ -37,17 +37,25 @@ function createWebSecureStorage() {
     });
   };
   const getKey = async () => {
-    let key = await transact('readonly', store => {
+    const readKey = () => transact('readonly', store => {
       const request = store.get('__device_key__');
       return new Promise((resolve, reject) => {
         request.onsuccess = () => resolve(request.result || null);
         request.onerror = () => reject(request.error);
       });
     });
-    if (key) return key;
-    key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-    await transact('readwrite', store => store.put(key, '__device_key__'));
-    return key;
+    const existing = await readKey();
+    if (existing) return existing;
+    const candidate = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    try {
+      await transact('readwrite', store => store.add(candidate, '__device_key__'));
+      return candidate;
+    } catch (error) {
+      if (error?.name !== 'ConstraintError') throw error;
+      const winner = await readKey();
+      if (winner) return winner;
+      throw new Error('Could not initialize the browser credential encryption key.');
+    }
   };
   const id = (namespace, name) => {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(namespace) || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) throw new Error('Invalid credential namespace or key.');
