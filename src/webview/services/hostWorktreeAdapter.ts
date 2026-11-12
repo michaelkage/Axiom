@@ -25,8 +25,8 @@ const browserTransport: WorktreeHostTransport = {
     if (typeof bridge?.postMessage !== "function") throw new Error("Desktop host bridge is unavailable.");
     bridge.postMessage(message);
   },
-  addMessageListener: listener => window.addEventListener("message", listener as EventListener),
-  removeMessageListener: listener => window.removeEventListener("message", listener as EventListener),
+  addMessageListener: listener => window.addEventListener("message", listener as unknown as EventListener),
+  removeMessageListener: listener => window.removeEventListener("message", listener as unknown as EventListener),
   createRequestId: () => "axiom-worktree-" + crypto.randomUUID(),
   setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
   clearTimeout: timeout => clearTimeout(timeout),
