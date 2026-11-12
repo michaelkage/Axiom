@@ -53,7 +53,6 @@ test("worker lifecycle persists failure, retry, success, and ignores stale attem
       worktreePath: "/tmp/axiom-attempt-1",
       logs: ["isolated worktree created", "child session startup failed"],
       finishedAt: 200,
-      logs: ["worker started", "verification failed"],
     });
     assert.equal(failed.status, "failed");
     assert.match(failed.error, /child session startup failed|runtime unavailable/);
