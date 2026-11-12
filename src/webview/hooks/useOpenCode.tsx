@@ -18,7 +18,7 @@ import { runOpenCodeWorkerLifecycle } from "../services/opencodeWorkerLifecycle"
 
 import { runtimeEventSource } from "../utils/runtimeEventSource";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, executeTaskBatches, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
-import { contextForSpecialist, filterProjectContext, inferSpecialist } from "../../shared/intelligence";
+import { prepareWorkerTask, resolveWorkerAgent } from "../services/workerPreparation";
 import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
 import { isProjectMemoryStale, loadProjectMemories } from "../utils/projectMemory";
 
@@ -214,13 +214,7 @@ function createOpenCode() {
     } catch {
       // Context packing still works from the original request and plan if history is unavailable.
     }
-    // Apply the shared safety filter before conversation history is packed into agent prompts.
-    // These are conversation records, not filesystem paths; filtering here primarily prevents
-    // credentials/private-key material from being propagated to sibling-agent context.
-    const safeHistory = filterProjectContext(
-      historyItems.map(item => ({ ...item, kind: "conversation" as const })),
-    ).included.map(({ id, content, relevance, updatedAt }) => ({ id, content, relevance, updatedAt }));
-    // Only pass relevant, recently reviewed, secret-screened project memories to sibling agents.
+    // Retrieve relevant, recently reviewed project memories; the preparation service secret-screens them before packing.
     const safeProjectMemories = (() => {
       try {
         const relevant = retrieveProjectMemories(loadProjectMemories(directory), orchestration?.request ?? "", 8)
@@ -232,7 +226,7 @@ function createOpenCode() {
             relevance: 85,
             updatedAt: Date.parse(memory.updatedAt),
           }));
-        return filterProjectContext(relevant).included.map(({ id, content, relevance, updatedAt }) => ({ id, content, relevance, updatedAt }));
+        return relevant;
       } catch {
         return [];
       }
@@ -249,40 +243,21 @@ function createOpenCode() {
       if (signal?.aborted) throw new Error("Parallel task cancelled before worker startup.");
       if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
 
-      let workerAgent: string | undefined;
-      const packed = contextForSpecialist({
+      const prepared = prepareWorkerTask({
+        task,
         request: orchestration?.request ?? task.scope,
-        taskTitle: task.title,
-        taskScope: task.scope,
-        targetFiles: task.targetFiles,
         planSteps: orchestration?.planSteps,
-        conversation: safeHistory,
-        projectMemories: safeProjectMemories,
+        conversation: historyItems,
+        projectMemories,
         completedTasks: completed.map(entry => ({
           title: entry.task.title,
-          status: "succeeded",
-          summary: typeof entry.result === "object" && entry.result !== null && "summary" in entry.result ? String((entry.result as { summary: unknown }).summary) : undefined,
+          summary: typeof entry.result === "object" && entry.result !== null && "summary" in entry.result
+            ? String((entry.result as { summary: unknown }).summary)
+            : undefined,
         })),
-        constraints: ["Do not overlap with sibling tasks. Preserve unrelated behavior.", "Run focused checks where available and report exact commands and observed outcomes."],
       });
-      const buildTaskPrompt = (worktreePath: string) => [
-        "Axiom parallel task: " + task.title,
-        "Task scope: " + task.scope,
-        "Declared target files: " + (task.targetFiles.length ? task.targetFiles.join(", ") : "(none declared; keep the scope narrow)"),
-        "Acceptance criteria (each must be addressed and evidenced): " + (task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((criterion, index) => (index + 1) + ". " + criterion).join("; ") : "Implement the declared scope and report concrete verification evidence."),
-        "Isolated worktree path: " + worktreePath,
-        "Context budget: approximately " + packed.inputEstimatedTokens + " tokens before packing and " + packed.estimatedTokens + " after packing; estimated savings " + packed.estimatedSavingsTokens + " tokens (" + packed.estimatedSavingsPercent + "%). These are heuristic estimates, not provider-reported usage.",
-        ...packed.items.map(item => "[" + item.kind + "] " + item.content),
-        "This task runs in an isolated Git worktree created from repository HEAD. Do not assume uncommitted parent-workspace edits are present. Report the worktree path and changed files for explicit integration review.",
-        "Follow the task scope and declared target-file restrictions. Treat context as guidance, not permission to exceed scope.",
-      ].join("\n\n");
-      const roleHint = task.agentHint ?? inferSpecialist(task.title + "\n" + task.scope);
-      const matchingSpecialist = [...availableAgentNames].find(name => name.toLowerCase().includes(roleHint));
-      const agent = task.agentHint && availableAgentNames.has(task.agentHint)
-        ? task.agentHint
-        : matchingSpecialist ?? (preferredAgent && availableAgentNames.has(preferredAgent) ? preferredAgent : undefined);
-      workerAgent = agent;
-
+      const { packed, buildPrompt: buildTaskPrompt } = prepared;
+      const { agent: workerAgent } = resolveWorkerAgent(task, availableAgentNames, preferredAgent);
       const worker = await runOpenCodeWorkerLifecycle({
         task,
         parentSessionId,
