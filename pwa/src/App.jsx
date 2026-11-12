@@ -512,11 +512,14 @@ export default function App(){
   let answer='';
   try{
    const availableTools=toOllamaTools();
+   const activeSkills=(currentChat?.skillIds||[]).map(id=>(state.skills||[]).find(skill=>skill.id===id)).filter(Boolean);
+   const skillPrompt=buildSkillSystemPrompt(activeSkills,listTools());
+   const promptMessages=[...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...priorMessages,userMsg];
    const chatRunner=nativeLoadedModel?runNativeToolChat:runOllamaToolChat;
    const runResult=await chatRunner({
     ...(nativeLoadedModel?{}:{baseUrl:base,fetchImpl:gatewayFetch}),
     model:nativeLoadedModel||selectedOllamaModel,
-    messages:[...(buildSkillSystemPrompt((currentChat?.skillIds||[]).map(id=>(state.skills||[]).find(skill=>skill.id===id)).filter(Boolean),listTools())?[{role:'system',content:buildSkillSystemPrompt((currentChat?.skillIds||[]).map(id=>(state.skills||[]).find(skill=>skill.id===id)).filter(Boolean),listTools())}]:[]),...priorMessages,userMsg],
+    messages:promptMessages,
     tools:availableTools,
     signal,
     executeTool,
