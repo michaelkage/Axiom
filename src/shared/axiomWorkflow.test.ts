@@ -40,6 +40,11 @@ describe("Axiom product workflow primitives", () => {
     expect(selectIntegrationChanges(["a"], [result]).safeToApply).toBe(true);
     expect(selectIntegrationChanges(["a"], [{ ...result, quality: { ...ready, status: "Needs fixes" } }]).safeToApply).toBe(false);
     expect(selectIntegrationChanges(["a", "b"], [result, { ...result, taskId: "b" }]).conflicts).toEqual(["src/a.ts"]);
+    const parent = { ...result, changes: [{ path: "src" }] };
+    const child = { ...result, taskId: "child", changes: [{ path: "src/app.ts" }] };
+    expect(selectIntegrationChanges(["a", "child"], [parent, child]).safeToApply).toBe(false);
+    expect(selectIntegrationChanges(["a"], [result], ["src/local-change.ts"])).toMatchObject({ safeToApply: false, dirtyConflicts: ["src/local-change.ts"] });
+    expect(selectIntegrationChanges(["missing"], [result]).missingTaskIds).toEqual(["missing"]);
   });
   it("stores, retrieves and deletes project memory through an explicit adapter", async () => {
     let data: ProjectMemory[] = [];
