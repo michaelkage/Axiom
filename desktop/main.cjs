@@ -12,7 +12,7 @@ const { listDirectory, readProjectFile, writeProjectFile } = require("./filesyst
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -578,10 +578,17 @@ async function runQualityGate(event, message) {
       await addCheck("Project build", command, args, message.worktreePath, 240000);
     }
 
-    const failed = checks.some(check => check.state !== "passed");
     const ranProjectCheck = checks.some(check => check.name === "Targeted unit tests" || check.name === "Project build");
-    const status = failed ? "Needs fixes" : "Ready to review";
-    const historyStatus = failed ? "failed" : ranProjectCheck ? "verified" : "review";
+    if (!ranProjectCheck) {
+      checks.push({
+        name: "Project-level verification evidence",
+        state: "unverified",
+        output: "No targeted test file or project build script was available. Automatic integration is blocked; use explicit force review only after inspecting the actual diff."
+      });
+    }
+    const status = resolveWorkerQualityStatus(checks, ranProjectCheck);
+    const failed = status !== "Ready to review";
+    const historyStatus = failed ? "failed" : "verified";
     await currentProjectStore().addChange({
       title: "Automated verification run",
       summary: checks.length + " checks recorded; " + checks.filter(check => check.state === "passed").length + " passed, " + checks.filter(check => check.state !== "passed").length + " failed. " + (ranProjectCheck ? "A project-level test or build command ran." : "No project-level test or build command was available for this change."),
