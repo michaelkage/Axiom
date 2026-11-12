@@ -13,10 +13,7 @@ import {
   resolveWorkerAgent,
   type WorkerContextRecord,
 } from "./workerPreparation";
-import {
-  runOpenCodeWorkerLifecycle,
-  type OpenCodeWorkerLifecycleOptions,
-} from "./opencodeWorkerLifecycle";
+import type { WorkerExecutionProvider } from "../../shared/workerExecution";
 
 export interface OpenCodeTaskOrchestratorOptions {
   parentSessionId: string;
@@ -31,12 +28,7 @@ export interface OpenCodeTaskOrchestratorOptions {
   loadConversation: () => Promise<WorkerContextRecord[]>;
   loadProjectMemories: (request: string) => WorkerContextRecord[];
   loadAvailableAgents: () => Promise<string[]>;
-  createWorktree: OpenCodeWorkerLifecycleOptions["createWorktree"];
-  createSession: OpenCodeWorkerLifecycleOptions["createSession"];
-  promptSession: OpenCodeWorkerLifecycleOptions["promptSession"];
-  abortSession: OpenCodeWorkerLifecycleOptions["abortSession"];
-  getMessages: OpenCodeWorkerLifecycleOptions["getMessages"];
-  subscribe: OpenCodeWorkerLifecycleOptions["subscribe"];
+  workerProvider: WorkerExecutionProvider;
 }
 
 /**
@@ -77,7 +69,7 @@ export async function runOpenCodeSubAgentTasks(
     const { packed, buildPrompt } = prepared;
     const { agent } = resolveWorkerAgent(task, availableAgentNames, options.preferredAgent);
 
-    const worker = await runOpenCodeWorkerLifecycle({
+    const worker = await options.workerProvider.execute({
       task,
       parentSessionId: options.parentSessionId,
       workspaceRoot: directory,
@@ -89,12 +81,6 @@ export async function runOpenCodeSubAgentTasks(
         contextSavingsPercent: packed.estimatedSavingsPercent,
       },
       signal,
-      createWorktree: options.createWorktree,
-      createSession: options.createSession,
-      promptSession: options.promptSession,
-      abortSession: options.abortSession,
-      getMessages: options.getMessages,
-      subscribe: options.subscribe,
       onLog: options.onLog,
     });
 
