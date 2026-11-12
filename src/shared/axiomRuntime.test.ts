@@ -331,7 +331,7 @@ describe("Axiom runtime helpers", () => {
     ]);
     const controller = new AbortController();
     const outcomes: string[] = [];
-    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), record => outcomes.push(record.status), { signal: controller.signal });
+    const execution = executeTaskBatches(tasks, async () => new Promise<string>(() => {}), record => outcomes.push(record.status), { signal: controller.signal, abortDrainTimeoutMs: 5 });
     controller.abort();
     await expect(execution).rejects.toThrow(/cancelled/i);
     expect(outcomes).toContain("cancelled");
