@@ -1,4 +1,18 @@
 import { classifyRecovery } from "./recovery";
+
+const PLANNER_LIMITS = Object.freeze({
+  tasks: 50,
+  taskId: 128,
+  title: 240,
+  scope: 4_000,
+  targetFilesPerTask: 100,
+  targetFilesTotal: 500,
+  targetPath: 512,
+  dependenciesPerTask: 50,
+  criteriaPerTask: 20,
+  criterion: 500,
+  agentHint: 80,
+});
 export interface AxiomRuntimeConfig {
   gatewayUrl: string;
   nativeOmniRoute: boolean;
@@ -410,36 +424,94 @@ export async function planSubTasksWithOmniRoute(
 }
 export function parseSubTasks(value: unknown): AxiomSubTask[] {
   if (!Array.isArray(value)) throw new Error("Planner response must be an array of tasks.");
+  if (value.length === 0) throw new Error("Planner returned an empty task list.");
+  if (value.length > PLANNER_LIMITS.tasks) throw new Error(`Planner returned more than ${PLANNER_LIMITS.tasks} tasks.`);
+
+  let totalTargetFiles = 0;
   const tasks = value.map((item, index) => {
-    if (!item || typeof item !== "object") throw new Error(`Task ${index + 1} must be an object.`);
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`Task ${index + 1} must be an object.`);
     const task = item as Record<string, unknown>;
-    if (typeof task.id !== "string" || typeof task.title !== "string" || typeof task.scope !== "string" || !Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn))
+    if (typeof task.id !== "string" || typeof task.title !== "string" || typeof task.scope !== "string"
+      || !Array.isArray(task.targetFiles) || !Array.isArray(task.dependsOn)) {
       throw new Error(`Task ${index + 1} is missing required fields.`);
-    if (![...task.targetFiles, ...task.dependsOn].every(value => typeof value === "string")) throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
-    if (!task.id.trim() || !task.title.trim() || !task.scope.trim()) throw new Error(`Task ${index + 1} needs non-empty id, title, and scope.`);
-    if (!Array.isArray(task.acceptanceCriteria) || task.acceptanceCriteria.length === 0 || !task.acceptanceCriteria.every(value => typeof value === "string" && value.trim())) {
-      throw new Error(`Task ${task.id} must include explicit, non-empty acceptance criteria.`);
     }
-    return { id: task.id, title: task.title, scope: task.scope, targetFiles: task.targetFiles as string[], dependsOn: task.dependsOn as string[], acceptanceCriteria: task.acceptanceCriteria as string[], agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined };
-  });
-  if (tasks.length === 0) throw new Error("Planner returned an empty task list.");
-  for (const task of tasks) {
-    for (const target of task.targetFiles) {
+    if (![...task.targetFiles, ...task.dependsOn].every(entry => typeof entry === "string")) {
+      throw new Error(`Task ${index + 1} contains invalid file or dependency references.`);
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.id)) {
+      throw new Error(`Task ${index + 1} has an invalid or overlong ID.`);
+    }
+    if (!task.title.trim() || task.title.length > PLANNER_LIMITS.title || /[\x00-\x1f\x7f]/.test(task.title)) {
+      throw new Error(`Task ${task.id} has an invalid or overlong title.`);
+    }
+    if (!task.scope.trim() || task.scope.length > PLANNER_LIMITS.scope || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(task.scope)) {
+      throw new Error(`Task ${task.id} has an invalid or overlong scope.`);
+    }
+    if (task.targetFiles.length > PLANNER_LIMITS.targetFilesPerTask) {
+      throw new Error(`Task ${task.id} declares too many target files.`);
+    }
+    if (task.dependsOn.length > PLANNER_LIMITS.dependenciesPerTask) {
+      throw new Error(`Task ${task.id} declares too many dependencies.`);
+    }
+    totalTargetFiles += task.targetFiles.length;
+    if (totalTargetFiles > PLANNER_LIMITS.targetFilesTotal) {
+      throw new Error(`Planner declared more than ${PLANNER_LIMITS.targetFilesTotal} target files.`);
+    }
+    if (!Array.isArray(task.acceptanceCriteria) || task.acceptanceCriteria.length === 0
+      || task.acceptanceCriteria.length > PLANNER_LIMITS.criteriaPerTask
+      || !task.acceptanceCriteria.every(entry => typeof entry === "string" && entry.trim()
+        && entry.length <= PLANNER_LIMITS.criterion && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(entry))) {
+      throw new Error(`Task ${task.id} must include 1-${PLANNER_LIMITS.criteriaPerTask} concise, non-empty acceptance criteria (maximum ${PLANNER_LIMITS.criterion} characters each).`);
+    }
+    if (task.agentHint !== undefined && (typeof task.agentHint !== "string"
+      || task.agentHint.length > PLANNER_LIMITS.agentHint || /[\x00-\x1f\x7f]/.test(task.agentHint))) {
+      throw new Error(`Task ${task.id} contains an invalid agent hint.`);
+    }
+
+    const normalizedTargets = (task.targetFiles as string[]).map(target => {
       const normalized = target.replace(/\\/g, "/");
-      if (!normalized.trim() || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized) || normalized.split("/").some(segment => segment === "..")) {
+      const segments = normalized.split("/");
+      if (!normalized.trim() || normalized !== normalized.trim() || normalized.length > PLANNER_LIMITS.targetPath
+        || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)
+        || /[\x00-\x1f\x7f]/.test(normalized)
+        || segments.some(segment => !segment || segment === "." || segment === "..")) {
         throw new Error(`Task ${task.id} contains an unsafe workspace-relative target path: ${target}`);
       }
+      return normalized;
+    });
+    const normalizedPathKeys = normalizedTargets.map(target => target.toLowerCase());
+    if (new Set(normalizedPathKeys).size !== normalizedPathKeys.length) {
+      throw new Error(`Task ${task.id} contains duplicate target paths after normalization.`);
     }
-  }
+    const dependencies = task.dependsOn as string[];
+    if (new Set(dependencies).size !== dependencies.length) {
+      throw new Error(`Task ${task.id} contains duplicate dependency references.`);
+    }
+    return {
+      id: task.id,
+      title: task.title,
+      scope: task.scope,
+      targetFiles: normalizedTargets,
+      dependsOn: dependencies,
+      acceptanceCriteria: task.acceptanceCriteria as string[],
+      agentHint: typeof task.agentHint === "string" ? task.agentHint : undefined,
+    };
+  });
+
   const ids = new Set<string>();
   for (const task of tasks) {
     if (ids.has(task.id)) throw new Error(`Duplicate task id: ${task.id}`);
     ids.add(task.id);
   }
-  for (const task of tasks) for (const dependency of task.dependsOn) if (!ids.has(dependency)) throw new Error(`Unknown dependency ${dependency} in task ${task.id}`);
+  for (const task of tasks) {
+    for (const dependency of task.dependsOn) {
+      if (!ids.has(dependency)) throw new Error(`Unknown dependency ${dependency} in task ${task.id}`);
+    }
+  }
   createIndependentTasks(tasks);
   return tasks;
 }
+
 export async function requestOmniRoute<T>(path: string, body: unknown, config: AxiomRuntimeConfig = DEFAULT_AXIOM_RUNTIME, fetcher: typeof fetch = fetch): Promise<T> {
   const base = config.gatewayUrl.replace(/\/+$/, "");
   let lastError: unknown;
