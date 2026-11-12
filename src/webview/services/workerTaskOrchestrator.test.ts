@@ -29,7 +29,6 @@ function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
     subscribe: vi.fn(() => () => undefined),
   };
   const options: TaskOrchestratorOptions = {
-    ...overrides,
     parentSessionId: "parent-session",
     tasks: [task],
     workspaceRoot: "/workspace/project",
@@ -47,8 +46,11 @@ function setup(overrides: Partial<TaskOrchestratorOptions> = {}) {
     }),
     loadConversation: overrides.loadConversation ?? calls.loadConversation,
     loadProjectMemories: overrides.loadProjectMemories ?? calls.loadProjectMemories,
-    loadAvailableAgents: overrides.loadAvailableAgents ?? calls.loadAvailableAgents,
     onLog: overrides.onLog,
+    ...overrides,
+    loadConversation: overrides.loadConversation ?? calls.loadConversation,
+    loadProjectMemories: overrides.loadProjectMemories ?? calls.loadProjectMemories,
+    loadAvailableAgents: overrides.loadAvailableAgents ?? calls.loadAvailableAgents,
   };
   return { options, calls, outcomes };
 }
