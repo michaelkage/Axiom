@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { mkdir, readFile, writeFile, chmod, rename, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
+import { createCompanionCoordinator } from './companion.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
@@ -82,6 +83,9 @@ export function createAxiomGateway({
   const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
   const sessionTokens = new Map();
+  const companionTokens = new Set();
+  const companion = createCompanionCoordinator({ now });
+  const pairingAttempts = new Map();
 
   const server = http.createServer(async (req, res) => {
     if (!applyCors(req, res, origins)) return sendJson(res, 403, { error: 'Origin not allowed.' });
@@ -92,6 +96,25 @@ export function createAxiomGateway({
 
     const auth = req.headers.authorization || '';
     const presentedToken = auth.startsWith('Bearer ') ? auth.slice(7) : auth.startsWith('token ') ? auth.slice(6) : (req.headers.apikey || '');
+
+    if (url.pathname === '/companion/pairing/claim' && req.method === 'POST') {
+      const address = req.socket.remoteAddress || 'unknown';
+      const timestamp = now();
+      const attempts = (pairingAttempts.get(address) || []).filter(value => timestamp - value < 60_000);
+      if (attempts.length >= 10) return sendJson(res, 429, { error: 'Too many pairing attempts. Wait one minute and try again.' });
+      attempts.push(timestamp);
+      pairingAttempts.set(address, attempts);
+      const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
+      if (body === null) return;
+      let input;
+      try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
+      try {
+        const paired = companion.claimInvite(input);
+        sessionTokens.set(paired.token, now() + paired.expiresIn * 1000);
+        companionTokens.add(paired.token);
+        return sendJson(res, 201, { ok: true, token: paired.token, pairId: paired.pairId, deviceName: paired.deviceName, expiresIn: paired.expiresIn });
+      } catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
+    }
 
     if (url.pathname === '/session/register' && req.method === 'POST') {
       if (!safeEqual(presentedToken, token)) return sendJson(res, 401, { error: 'Gateway pairing token rejected.' });
@@ -113,6 +136,48 @@ export function createAxiomGateway({
       else if (expiresAt) sessionTokens.delete(presentedToken);
     }
     if (!authenticated) return sendJson(res, 401, { error: 'Unauthorized.' });
+
+    const isCompanionSession = companionTokens.has(presentedToken);
+    if (url.pathname === '/companion/pairing' && req.method === 'POST') {
+      if (isCompanionSession) return sendJson(res, 403, { error: 'Only the paired desktop session can create pairing codes.' });
+      try { return sendJson(res, 201, companion.createInvite(presentedToken)); }
+      catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
+    }
+    if (url.pathname === '/companion/approvals' && req.method === 'POST') {
+      const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
+      if (body === null) return;
+      let input;
+      try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
+      try { return sendJson(res, 201, companion.createApproval(presentedToken, input)); }
+      catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
+    }
+    if (url.pathname === '/companion/approvals' && req.method === 'GET') {
+      if (isCompanionSession) return sendJson(res, 403, { error: 'Companion devices cannot read the desktop approval queue.' });
+      return sendJson(res, 200, { approvals: companion.listApprovals(presentedToken) });
+    }
+    const approvalDecision = url.pathname.match(/^\\/companion\\/approvals\\/([a-f0-9-]{36})\\/decision$/);
+    if (approvalDecision && req.method === 'POST') {
+      if (isCompanionSession) return sendJson(res, 403, { error: 'Only the desktop session can decide approvals.' });
+      const body = await readBody(req).catch(error => { sendJson(res, error.status || 400, { error: error.message }); return null; });
+      if (body === null) return;
+      let input;
+      try { input = JSON.parse(body.toString('utf8')); } catch { return sendJson(res, 400, { error: 'Invalid JSON.' }); }
+      try { return sendJson(res, 200, companion.decideApproval(presentedToken, approvalDecision[1], input.decision)); }
+      catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
+    }
+    const approvalStatus = url.pathname.match(/^\\/companion\\/approvals\\/([a-f0-9-]{36})$/);
+    if (approvalStatus && req.method === 'GET') {
+      try { return sendJson(res, 200, companion.getApproval(presentedToken, approvalStatus[1])); }
+      catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
+    }
+    const pairRevocation = url.pathname.match(/^\\/companion\\/pairs\\/([a-f0-9-]{36})$/);
+    if (pairRevocation && req.method === 'DELETE') {
+      if (isCompanionSession) return sendJson(res, 403, { error: 'Only the desktop session can revoke paired devices.' });
+      const removed = companion.revokePair(presentedToken, pairRevocation[1]);
+      for (const pairedToken of removed) { companionTokens.delete(pairedToken); sessionTokens.delete(pairedToken); }
+      return sendJson(res, 200, { ok: true, revoked: removed.length > 0 });
+    }
+    if (isCompanionSession) return sendJson(res, 403, { error: 'Companion credentials are restricted to pairing and approval endpoints.' });
 
     const requestController = new AbortController();
     req.on('aborted', () => requestController.abort(new Error('Client request aborted.')));
