@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AxiomSubTask, TaskExecutionRecord } from "../../shared/axiomRuntime";
+import type { OpenCodeTaskOrchestratorOptions } from "./opencodeTaskOrchestrator";
 import { runOpenCodeSubAgentTasks } from "./opencodeTaskOrchestrator";
 
 const task: AxiomSubTask = {
@@ -11,7 +12,7 @@ const task: AxiomSubTask = {
   acceptanceCriteria: ["Cover successful and failed requests."],
 };
 
-function setup(overrides: Record<string, unknown> = {}) {
+function setup(overrides: Partial<OpenCodeTaskOrchestratorOptions> = {}) {
   const outcomes: TaskExecutionRecord[] = [];
   const calls = {
     loadConversation: vi.fn(async () => [{ id: "history-1", content: "Use the shared fetch wrapper.", relevance: 80 }]),
