@@ -83,7 +83,6 @@ export function createAxiomGateway({
   const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
   const sessionTokens = new Map();
-  const companionTokens = new Set();
   const companion = createCompanionCoordinator({ now });
   const pairingAttempts = new Map();
 
@@ -100,6 +99,9 @@ export function createAxiomGateway({
     if (url.pathname === '/companion/pairing/claim' && req.method === 'POST') {
       const address = req.socket.remoteAddress || 'unknown';
       const timestamp = now();
+      if (pairingAttempts.size > 1000) {
+        for (const [key, values] of pairingAttempts) if (!values.some(value => timestamp - value < 60_000)) pairingAttempts.delete(key);
+      }
       const attempts = (pairingAttempts.get(address) || []).filter(value => timestamp - value < 60_000);
       if (attempts.length >= 10) return sendJson(res, 429, { error: 'Too many pairing attempts. Wait one minute and try again.' });
       attempts.push(timestamp);
@@ -111,7 +113,6 @@ export function createAxiomGateway({
       try {
         const paired = companion.claimInvite(input);
         sessionTokens.set(paired.token, now() + paired.expiresIn * 1000);
-        companionTokens.add(paired.token);
         return sendJson(res, 201, { ok: true, token: paired.token, pairId: paired.pairId, deviceName: paired.deviceName, expiresIn: paired.expiresIn });
       } catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
     }
@@ -137,7 +138,7 @@ export function createAxiomGateway({
     }
     if (!authenticated) return sendJson(res, 401, { error: 'Unauthorized.' });
 
-    const isCompanionSession = companionTokens.has(presentedToken);
+    const isCompanionSession = companion.isCompanionSession(presentedToken);
     if (url.pathname === '/companion/pairing' && req.method === 'POST') {
       if (isCompanionSession) return sendJson(res, 403, { error: 'Only the paired desktop session can create pairing codes.' });
       try { return sendJson(res, 201, companion.createInvite(presentedToken)); }
@@ -174,7 +175,7 @@ export function createAxiomGateway({
     if (pairRevocation && req.method === 'DELETE') {
       if (isCompanionSession) return sendJson(res, 403, { error: 'Only the desktop session can revoke paired devices.' });
       const removed = companion.revokePair(presentedToken, pairRevocation[1]);
-      for (const pairedToken of removed) { companionTokens.delete(pairedToken); sessionTokens.delete(pairedToken); }
+      for (const pairedToken of removed) sessionTokens.delete(pairedToken);
       return sendJson(res, 200, { ok: true, revoked: removed.length > 0 });
     }
     if (isCompanionSession) return sendJson(res, 403, { error: 'Companion credentials are restricted to pairing and approval endpoints.' });
