@@ -243,13 +243,25 @@ function createOpenCode() {
       if (!directory) throw new Error("Cannot isolate agent task without a workspace root.");
       const taskDirectory = await createAgentWorktree(task.id, directory);
       if (signal?.aborted) throw Object.assign(new Error("Parallel task cancelled after worktree setup."), { worktreePath: taskDirectory });
-      const created = await c.session.create({
-        directory: taskDirectory,
-        parentID: parentSessionId,
-        title: "Axiom: " + task.title,
-      });
+      let created: Awaited<ReturnType<typeof c.session.create>>;
+      try {
+        created = await c.session.create({
+          directory: taskDirectory,
+          parentID: parentSessionId,
+          title: "Axiom: " + task.title,
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw Object.assign(
+          new Error(`Could not create child session for "${task.title}": ${detail.slice(0, 1000)}`),
+          { worktreePath: taskDirectory },
+        );
+      }
       if (created.error || !created.data?.id) {
-        throw new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error) : "missing session ID"}`);
+        throw Object.assign(
+          new Error(`Could not create child session for "${task.title}": ${created.error ? JSON.stringify(created.error).slice(0, 1000) : "missing session ID"}`),
+          { worktreePath: taskDirectory },
+        );
       }
       const childSessionId = created.data.id;
       const workerLogs: string[] = [];
