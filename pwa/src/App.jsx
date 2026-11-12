@@ -16,6 +16,7 @@ import { buildSkillSystemPrompt } from './lib/skillRegistry.js';
 import { prepareAttachments, buildAttachmentPrompt, buildOutcomeSummary, MAX_TOTAL_ATTACHMENT_BYTES } from './lib/workspaceCapture.js';
 import { consumeSharedPayload, hasNativeIOSShareTarget } from './lib/shareTarget.js';
 import { getPlatformAdapter } from './lib/platformAdapter.js';
+import { redactSecrets, redactValue, redactForExternalContext } from './lib/securityRedaction.js';
 import { consumeGatewayPairingIntent, registerGatewaySession } from './lib/axiomRuntime.js';
 import { executeTool, listTools, registerTool, serializeToolResult, toOllamaTools } from './lib/toolRegistry.js';
 import { registerGitHubTools } from './lib/githubTools.js';
@@ -122,7 +123,7 @@ export default function App(){
  useEffect(()=>{const timer=setTimeout(()=>{const settings={...state.settings,githubToken:'',supabaseKey:''};const servers=(state.servers||[]).map(({authToken,...server})=>({...server,authToken:''}));const chats=(state.chats||[]).slice(0,40).map(chat=>({...chat,messages:(chat.messages||[]).slice(-300)}));const persisted={...state,chats:chats.map(chat=>({...chat,messages:chat.messages.map(({images,...message})=>message)})),logs:(state.logs||[]).slice(0,100),settings,servers,activeTab:tab};try{localStorage.setItem(STORE,JSON.stringify(persisted));}catch(error){setNotice('Local storage is full. Export or remove older conversations to keep saving new messages.');}},650);return()=>clearTimeout(timer);},[state,tab]);
  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:busy?'auto':'smooth'});},[messages,busy]);
  useEffect(()=>()=>{activeRunRef.current?.abort(new DOMException('Axiom view closed','AbortError'));},[]);
- const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title,detail,time:stamp()},...s.logs].slice(0,100)}));
+ const log=(kind,title,detail='')=>setState(s=>({...s,logs:[{id:uid(),kind,title:redactSecrets(String(title)),detail:typeof detail==='string'?redactSecrets(detail):JSON.stringify(redactValue(detail)),time:stamp()},...s.logs].slice(0,100)}));
 
  async function refreshNativeModels(){
   if(!isNativeAndroid())return;
@@ -517,7 +518,7 @@ export default function App(){
    const availableTools=toOllamaTools();
    const activeSkills=(currentChat?.skillIds||[]).map(id=>(state.skills||[]).find(skill=>skill.id===id)).filter(Boolean);
    const skillPrompt=buildSkillSystemPrompt(activeSkills,listTools());
-   const promptMessages=[...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...priorMessages,userMsg];
+   const promptMessages=redactForExternalContext([...(skillPrompt?[{role:'system',content:skillPrompt}]:[]),...priorMessages,userMsg]);
    const chatRunner=nativeLoadedModel?runNativeToolChat:runOllamaToolChat;
    const runResult=await chatRunner({
     ...(nativeLoadedModel?{}:{baseUrl:base,fetchImpl:gatewayFetch}),
