@@ -7,6 +7,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
+const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
@@ -132,7 +133,7 @@ async function appendRuntimeLog(text) {
   try {
     const logPath = path.join(app.getPath("userData"), "logs", "runtime.log");
     await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
-    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${text}\n`, "utf8");
+    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${redactSecrets(text)}\n`, "utf8");
   } catch { /* Diagnostics must never prevent startup or shutdown. */ }
 }
 
