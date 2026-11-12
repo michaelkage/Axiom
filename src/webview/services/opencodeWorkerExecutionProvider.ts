@@ -15,6 +15,11 @@ export function createOpenCodeWorkerExecutionProvider(
 ): WorkerExecutionProvider {
   return {
     id: "opencode",
+    capabilities: {
+      isolatedWorkspaces: true,
+      cancellation: "cooperative",
+      streamingLogs: true,
+    },
     async execute(request: WorkerExecutionRequest): Promise<WorkerExecutionResult> {
       return runOpenCodeWorkerLifecycle({
         ...dependencies,
