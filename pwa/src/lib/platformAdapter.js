@@ -139,6 +139,9 @@ export function createPlatformAdapter() {
     }),
     secureStorage,
     files,
+    documents: Object.freeze({
+      pick: options => native && Capacitor.getPlatform() === 'ios' ? NativeSecureStorage.pickDocuments(options || { multiple: true }) : Promise.reject(new Error('The native document picker is available in the iOS app.'))
+    }),
     git: Object.freeze({
       listWorkspaces: async () => desktop ? desktop.remoteWorkspace.list() : [],
       createWorktree
