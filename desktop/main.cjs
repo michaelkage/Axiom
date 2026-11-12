@@ -12,7 +12,7 @@ const { listDirectory, readProjectFile, writeProjectFile } = require("./filesyst
 const { createTerminalRunner } = require("./terminal.cjs");
 const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
-const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
+const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -714,65 +714,20 @@ async function applyWorktreeChanges(event, message) {
         });
       }
 
-      // Prepare every replacement beside its destination. This keeps final renames atomic
-      // and preserves executable bits instead of silently converting files to mode 0600.
-      try {
-        for (const item of staged) {
-          if (item.content === null) continue;
-          await fs.promises.mkdir(path.dirname(item.destination), { recursive: true });
-          const checkedDestination = await resolveSafeWorkspaceFile(root, item.relative);
-          if (checkedDestination !== item.destination) throw new Error("Destination path changed during integration preflight: " + item.relative);
-          item.temporary = item.destination + ".axiom-" + process.pid + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".tmp";
-          await fs.promises.writeFile(item.temporary, item.content, { flag: "wx", mode: item.sourceMode });
-          await fs.promises.chmod(item.temporary, item.sourceMode);
-        }
-      } catch (prepareError) {
-        for (const item of staged) if (item.temporary) { try { await fs.promises.unlink(item.temporary); } catch {} }
-        throw new Error("Integration preflight could not stage every file; no destination files were changed. " + prepareError.message);
+      // Create missing parent directories, then revalidate every path before staging.
+      for (const item of staged) {
+        if (item.content === null) continue;
+        await fs.promises.mkdir(path.dirname(item.destination), { recursive: true });
+        const checkedDestination = await resolveSafeWorkspaceFile(root, item.relative);
+        if (checkedDestination !== item.destination) throw new Error("Destination path changed during integration preflight: " + item.relative);
       }
-
-      try {
-        for (const item of staged) {
+      const committedPaths = await applyStagedWorkspaceFiles(staged, {
+        beforeApply: async item => {
           const checkedDestination = await resolveSafeWorkspaceFile(root, item.relative);
           if (checkedDestination !== item.destination) throw new Error("Destination path changed during integration: " + item.relative);
-          if (item.content === null) {
-            try { await fs.promises.unlink(item.destination); }
-            catch (error) { if (error.code !== "ENOENT") throw error; }
-          } else {
-            await fs.promises.rename(item.temporary, item.destination);
-            item.temporary = null;
-          }
-          appliedPaths.push(item.relative);
         }
-      } catch (applyError) {
-        const rollbackErrors = [];
-        for (const item of [...staged].reverse()) {
-          if (!appliedPaths.includes(item.relative)) continue;
-          try {
-            if (item.existed) {
-              const rollbackPath = item.destination + ".axiom-rollback-" + process.pid + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".tmp";
-              try {
-                await fs.promises.writeFile(rollbackPath, item.backup, { flag: "wx", mode: item.backupMode });
-                await fs.promises.chmod(rollbackPath, item.backupMode);
-                await fs.promises.rename(rollbackPath, item.destination);
-              } finally {
-                try { await fs.promises.unlink(rollbackPath); } catch {}
-              }
-            } else {
-              await fs.promises.unlink(item.destination);
-            }
-          } catch (rollbackError) {
-            rollbackErrors.push(item.relative + ": " + rollbackError.message);
-          }
-        }
-        const pathsStillApplied = new Set(rollbackErrors.map(entry => entry.slice(0, entry.indexOf(": "))));
-        appliedPaths.splice(0, appliedPaths.length, ...appliedPaths.filter(relative => pathsStillApplied.has(relative)));
-        throw new Error("Integration transaction failed: " + applyError.message + (rollbackErrors.length
-          ? ". Rollback failed for " + rollbackErrors.join("; ")
-          : ". Applied files were rolled back."));
-      } finally {
-        for (const item of staged) if (item.temporary) { try { await fs.promises.unlink(item.temporary); } catch {} }
-      }
+      });
+      appliedPaths.push(...committedPaths);
 
       sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: true, appliedPaths, remoteRevision: upstream?.sha ?? null });
       if (typeof message.worktreePath === "string") {
@@ -785,6 +740,7 @@ async function applyWorktreeChanges(event, message) {
       }
     });
   } catch (error) {
+    if (Array.isArray(error.appliedPaths)) appliedPaths.splice(0, appliedPaths.length, ...error.appliedPaths);
     sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: false, error: error.message, appliedPaths });
   }
 }
