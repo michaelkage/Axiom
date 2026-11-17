@@ -27,15 +27,16 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
+    "@types/hast": "^3.0.4",
     "@types/node": "^20.x",
     "typescript": "^5.x",
     "vite": "^5.x",
-    "vitest": "^1.x",
-    "@types/hast": "^3.0.4"
+    "vitest": "^1.x"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.5",
     "@opencode-ai/sdk": "^1.2.14",
+    "@supabase/supabase-js": "^2.119.0",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-document": "^2.27.2",
     "@tiptap/extension-mention": "^2.27.2",
