@@ -154,6 +154,8 @@ body > #root > div > div.fixed.bottom-0 > div:first-child > div {
 }
 body > #root > div > div.fixed.bottom-0 textarea { font-size: 13px !important; }
 body > #root > div > div.fixed.bottom-0 nav {
+  position: relative !important;
+  z-index: 10 !important;
   background: #10110e !important; border-top: 1px solid var(--line) !important;
   backdrop-filter: none !important;
 }
