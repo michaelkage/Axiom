@@ -171,6 +171,7 @@ test("cancels an in-flight mobile chat request from the stop control", async ({ 
 test("keeps streamed output attached to its originating chat when history changes", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("axiom.mobile.v1", JSON.stringify({
+      model: "qwen2.5:1.5b",
       activeTab: "chat",
       chats: [
         { id: "chat-running", title: "Running conversation", messages: [] },
