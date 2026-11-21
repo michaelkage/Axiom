@@ -36,22 +36,24 @@ async function resolveBuildOutput(projectRoot, outputDirectory) {
 
 function deploymentCommand(provider, input) {
   if (provider === "vercel") return {
-    executable: input.executables?.vercel || "vercel",
+    executable: "vercel",
     args: ["deploy", input.output, "--yes"],
     credentialName: "VERCEL_TOKEN",
   };
   if (provider === "netlify") {
     const siteId = requiredText(input.siteId, "Netlify site ID", 128);
+    if (!/^[A-Za-z0-9-]{8,128}$/.test(siteId)) throw new TypeError("Netlify site ID contains unsupported characters.");
     return {
-      executable: input.executables?.netlify || "netlify",
+      executable: "netlify",
       args: ["deploy", "--dir", input.output, "--site", siteId, "--json"],
       credentialName: "NETLIFY_AUTH_TOKEN",
     };
   }
   const projectName = requiredText(input.projectName, "Cloudflare Pages project name", 128);
+  if (!/^[a-z0-9][a-z0-9-]{0,58}$/i.test(projectName)) throw new TypeError("Cloudflare Pages project name contains unsupported characters.");
   const branch = "axiom-preview-" + Date.now().toString(36);
   return {
-    executable: input.executables?.wrangler || "wrangler",
+    executable: "wrangler",
     args: ["pages", "deploy", input.output, "--project-name", projectName, "--branch", branch],
     credentialName: "CLOUDFLARE_API_TOKEN",
   };
@@ -96,6 +98,7 @@ function createDeploymentManager(options = {}) {
       env[command.credentialName] = credential;
       if (request.provider === "cloudflare-pages") {
         env.CLOUDFLARE_ACCOUNT_ID = requiredText(request.accountId, "Cloudflare account ID", 128);
+        if (!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID)) throw new TypeError("Cloudflare account ID must be a 32-character hexadecimal identifier.");
       }
       const startedAt = Date.now();
       let result;

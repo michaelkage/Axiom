@@ -63,7 +63,7 @@ test("cloudflare Pages preview uses a non-production branch and account ID", asy
     });
     const result = await manager.deployPreview({
       provider: "cloudflare-pages", projectRoot: root, outputDirectory: "dist",
-      projectName: "axiom", accountId: "account-123",
+      projectName: "axiom", accountId: "0123456789abcdef0123456789abcdef",
     });
     assert.equal(result.previewUrl, "https://axiom-preview.pages.dev");
     assert.ok(invocation.args.some(value => /^axiom-preview-[a-z0-9]+$/.test(value)));
