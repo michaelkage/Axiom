@@ -1,6 +1,7 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, For, createEffect } from "solid-js";
 
 type DeploymentProvider = "vercel" | "netlify" | "cloudflare-pages";
+interface DeploymentHistoryRecord { id: string; provider: DeploymentProvider; previewUrl: string; status: "deployed" | "deployed_unverified"; createdAt: string; durationMs: number; verification: { verified: boolean; status: number | null } }
 interface DeploymentResult {
   provider: DeploymentProvider;
   target: "preview";
@@ -11,7 +12,7 @@ interface DeploymentResult {
 }
 interface DeploymentBridge {
   secureStorage: { set(namespace: string, key: string, value: string): Promise<unknown> };
-  deployment: { preview(request: Record<string, unknown>): Promise<DeploymentResult> };
+  deployment: { preview(request: Record<string, unknown>): Promise<DeploymentResult>; history(): Promise<DeploymentHistoryRecord[]> };
 }
 function bridge(): DeploymentBridge | undefined {
   return (window as unknown as { axiomDesktop?: DeploymentBridge }).axiomDesktop;
@@ -27,6 +28,14 @@ export function DeploymentPanel(props: { workspaceRoot?: string }) {
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [result, setResult] = createSignal<DeploymentResult | null>(null);
+  const [history, setHistory] = createSignal<DeploymentHistoryRecord[]>([]);
+
+  const refreshHistory = async () => {
+    const api = bridge();
+    if (!api) return;
+    try { setHistory(await api.deployment.history()); } catch { /* History is supplemental to the live deployment result. */ }
+  };
+  createEffect(() => { if (props.workspaceRoot) void refreshHistory(); else setHistory([]); });
 
   const saveCredential = async () => {
     const api = bridge();
@@ -56,6 +65,7 @@ export function DeploymentPanel(props: { workspaceRoot?: string }) {
         ...(provider() === "cloudflare-pages" ? { projectName: projectName().trim(), accountId: accountId().trim(), branch: "axiom-preview" } : {}),
       });
       setResult(deployed);
+      await refreshHistory();
       setMessage(deployed.verification.verified
         ? "Preview deployment completed and the endpoint returned HTTP " + deployed.verification.status + "."
         : "Deployment command completed, but the preview endpoint could not be verified: " + (deployed.verification.reason || "unknown response"));
@@ -105,6 +115,16 @@ export function DeploymentPanel(props: { workspaceRoot?: string }) {
     <Show when={result()}>
       <p class="axiom-deployment__result"><strong>{result()!.verification.verified ? "Preview verified" : "Preview deployed; verification pending"}</strong> · {Math.round(result()!.durationMs / 1000)}s</p>
       <a href={result()!.previewUrl} target="_blank" rel="noreferrer">{result()!.previewUrl}</a>
+    </Show>
+    <Show when={history().length > 0}>
+      <div class="axiom-deployment__history">
+        <strong>Recent previews</strong>
+        <For each={history().slice(0, 5)}>{item => <div>
+          <span>{item.provider} · {item.status === "deployed" ? "verified" : "unverified"}</span>
+          <small>{new Date(item.createdAt).toLocaleString()} · {Math.round(item.durationMs / 1000)}s</small>
+          <a href={item.previewUrl} target="_blank" rel="noreferrer">{item.previewUrl}</a>
+        </div>}</For>
+      </div>
     </Show>
     <small>Install the selected provider CLI and build the project first. Production deployment is deliberately not exposed by this workflow.</small>
   </section>;

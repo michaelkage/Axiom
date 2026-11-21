@@ -67,7 +67,9 @@ function extractPreviewUrl(provider, stdout) {
       try {
         const value = JSON.parse(line);
         const candidate = value.deploy_url || value.deployUrl || value.url;
-        if (typeof candidate === "string" && /^https:\/\/[a-z0-9.-]+(?:\/[^\s]*)?$/i.test(candidate)) return candidate;
+        if (typeof candidate === "string") {
+          try { const parsed = new URL(candidate); if (parsed.protocol === "https:" && allowedPreviewHost(provider, parsed.hostname)) return parsed.href; } catch { /* Ignore malformed provider output. */ }
+        }
       } catch { /* CLI may include non-JSON progress lines. */ }
     }
   }

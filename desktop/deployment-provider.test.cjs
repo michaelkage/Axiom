@@ -86,6 +86,7 @@ test("production deployments are rejected by the preview adapter", async () => {
 
 test("provider output URLs must be HTTPS and match the selected provider", () => {
   assert.equal(extractPreviewUrl("vercel", "https://evil.example.com"), null);
+  assert.equal(extractPreviewUrl("netlify", '{"deploy_url":"https://evil.example.com"}'), null);
   assert.equal(extractPreviewUrl("vercel", "https://axiom.vercel.app"), "https://axiom.vercel.app");
 });
 

@@ -75,7 +75,8 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
   }),
   deployment: Object.freeze({
-    preview: request => ipcRenderer.invoke("axiom:deployment-preview", request)
+    preview: request => ipcRenderer.invoke("axiom:deployment-preview", request),
+    history: () => ipcRenderer.invoke("axiom:deployment-history")
   }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),

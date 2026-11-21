@@ -2583,3 +2583,9 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
 .axiom-remote-worker__jobs details{font-size:11px}.axiom-remote-worker__jobs details p{font-family:var(--vscode-editor-font-family)}
 .axiom-remote-worker__error{color:var(--vscode-errorForeground)}
 .axiom-remote-worker__review{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+
+.axiom-deployment__history{display:grid;gap:7px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+.axiom-deployment__history>strong{font-size:12px}
+.axiom-deployment__history>div{display:grid;gap:3px;padding:8px;border:1px solid var(--vscode-panel-border);border-radius:6px}
+.axiom-deployment__history span{font-size:11px}.axiom-deployment__history small{font-size:10px;color:var(--vscode-descriptionForeground)}
+.axiom-deployment__history a{font-size:11px;overflow-wrap:anywhere}

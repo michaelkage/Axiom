@@ -8,6 +8,7 @@ const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
+const { createDeploymentHistoryStore } = require("./deployment-history.cjs");
 const { validateRemoteWorkerConfig, createRemoteWorkerHostClient } = require("./remote-worker-host-client.cjs");
 const { applyRemoteWorkerPatch } = require("./remote-patch-importer.cjs");
 const { validateBrowserNavigation } = require("./browser-url.cjs");
@@ -1130,6 +1131,11 @@ ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
   return result;
 });
 
+ipcMain.handle("axiom:deployment-history", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) return [];
+  return createDeploymentHistoryStore(app.getPath("userData")).list(selectedWorkspace);
+});
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
@@ -1144,6 +1150,8 @@ ipcMain.handle("axiom:deployment-preview", async (event, request) => {
     projectRoot: selectedWorkspace,
     target: "preview",
   });
+  try { await createDeploymentHistoryStore(app.getPath("userData")).append(selectedWorkspace, result); }
+  catch (historyError) { await appendRuntimeLog("Deployment succeeded but history could not be saved: " + redactSecrets(historyError.message || historyError).slice(0, 500)); }
   await appendRuntimeLog("Created " + result.provider + " preview deployment for " + path.basename(selectedWorkspace) + ".");
   return result;
 });
