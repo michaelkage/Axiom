@@ -27,6 +27,10 @@ test("builds a fail-closed namespace with read-only plugin and workspace mounts"
     });
     assert.ok(args.includes("--unshare-all"));
     assert.ok(args.includes("--cap-drop"));
+    assert.ok(args.includes("--rlimit-cpu"));
+    assert.ok(args.includes("--rlimit-nproc"));
+    assert.ok(args.includes("--rlimit-nofile"));
+    assert.ok(args.includes("--rlimit-fsize"));
     assert.ok(args.includes("--ro-bind"));
     assert.ok(!args.includes("--share-net"));
     assert.ok(args.includes("--chdir"));
