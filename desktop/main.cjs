@@ -24,6 +24,7 @@ const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createProviderCredentialManager } = require("./provider-credentials.cjs");
 const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
 const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
+const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -833,6 +834,10 @@ function currentExecutionLedger() {
 function currentProviderCredentialManager() {
   return createProviderCredentialManager(currentSecureCredentialStore());
 }
+function currentProjectKnowledgeStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createProjectKnowledgeStore({ userDataPath: app.getPath("userData"), workspaceRoot: selectedWorkspace });
+}
 function currentExecutionArtifactStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
@@ -1430,6 +1435,36 @@ ipcMain.handle("axiom:provider-credential-save", (event, request) => {
 ipcMain.handle("axiom:provider-credential-remove", (event, providerId) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return currentProviderCredentialManager().remove(providerId);
+});
+
+ipcMain.handle("axiom:knowledge-index-read", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().readIndex();
+});
+ipcMain.handle("axiom:knowledge-index-update", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object") throw new TypeError("Invalid project index update.");
+  return currentProjectKnowledgeStore().updateIndex(request.changed || [], request.removed || []);
+});
+ipcMain.handle("axiom:knowledge-index-search", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().searchIndex(request?.query, request?.limit);
+});
+ipcMain.handle("axiom:knowledge-memory-read", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().readMemory();
+});
+ipcMain.handle("axiom:knowledge-memory-upsert", async (event, record) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().upsertMemory(record);
+});
+ipcMain.handle("axiom:knowledge-memory-search", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().searchMemory(request?.query, request?.limit);
+});
+ipcMain.handle("axiom:knowledge-memory-remove", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().removeMemory(id);
 });
 
 ipcMain.handle("axiom:artifact-list", async (event, taskId) => {
