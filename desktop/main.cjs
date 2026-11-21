@@ -7,6 +7,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
+const { createDeploymentManager } = require("./deployment-provider.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
@@ -924,6 +925,26 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
   await shell.openExternal(url.toString());
   return true;
+});
+
+
+
+ipcMain.handle("axiom:deployment-preview", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
+  if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
+    throw new Error("Deployment requests must target the currently selected project.");
+  }
+  const manager = createDeploymentManager({
+    getCredential: provider => currentSecureCredentialStore().get("deployment", provider),
+  });
+  const result = await manager.deployPreview({
+    ...request,
+    projectRoot: selectedWorkspace,
+    target: "preview",
+  });
+  await appendRuntimeLog("Created " + result.provider + " preview deployment for " + path.basename(selectedWorkspace) + ".");
+  return result;
 });
 
 ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {

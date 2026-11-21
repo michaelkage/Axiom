@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     cancel: id => ipcRenderer.invoke("axiom:remote-workspace-cancel", id),
     cleanup: id => ipcRenderer.invoke("axiom:remote-workspace-cleanup", id)
   }),
+  deployment: Object.freeze({
+    preview: request => ipcRenderer.invoke("axiom:deployment-preview", request)
+  }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),

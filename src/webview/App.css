@@ -2532,3 +2532,15 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.axiom-deployment{display:grid;gap:10px;padding:14px;border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}
+.axiom-deployment__heading,.axiom-deployment__actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.axiom-deployment__heading>div{display:grid;gap:3px}.axiom-deployment__heading small,.axiom-deployment>small{color:var(--vscode-descriptionForeground);font-size:11px}
+.axiom-deployment__heading>span{font-size:10px;letter-spacing:.08em;color:var(--vscode-descriptionForeground);border:1px solid var(--vscode-panel-border);border-radius:20px;padding:3px 8px}
+.axiom-deployment label{display:grid;gap:5px;font-size:12px;color:var(--vscode-descriptionForeground)}
+.axiom-deployment input,.axiom-deployment select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+.axiom-deployment__actions button{padding:7px 11px;border-radius:6px;border:1px solid var(--vscode-button-border,transparent);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}
+.axiom-deployment__actions button:last-child{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+.axiom-deployment__actions button:disabled{opacity:.5;cursor:not-allowed}
+.axiom-deployment__result{margin:0;color:var(--vscode-testing-iconPassed)}
+.axiom-deployment a{overflow-wrap:anywhere}
