@@ -1228,8 +1228,7 @@ ipcMain.handle("axiom:deployment-history", async event => {
 });
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  ({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\\nProject: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + " | Project: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
   if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
     throw new Error("Deployment requests must target the currently selected project.");
@@ -1344,8 +1343,7 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
 
 ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  ({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\\nCommit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + " | Commit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
   return runRemoteWorkspaceOperation(job, "commit-push", async signal => {
@@ -1381,8 +1379,7 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
 
 ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  ({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
   return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
@@ -1419,8 +1416,7 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
 
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  ({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
