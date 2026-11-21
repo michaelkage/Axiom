@@ -79,6 +79,11 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     preview: request => ipcRenderer.invoke("axiom:deployment-preview", request),
     history: () => ipcRenderer.invoke("axiom:deployment-history")
   }),
+  providerCredentials: Object.freeze({
+    status: () => ipcRenderer.invoke("axiom:provider-credential-status"),
+    save: request => ipcRenderer.invoke("axiom:provider-credential-save", request),
+    remove: providerId => ipcRenderer.invoke("axiom:provider-credential-remove", providerId)
+  }),
   executionLedger: Object.freeze({
     list: () => ipcRenderer.invoke("axiom:execution-ledger-list"),
     get: objectiveId => ipcRenderer.invoke("axiom:execution-ledger-get", objectiveId),

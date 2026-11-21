@@ -21,6 +21,7 @@ const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createExecutionLedger } = require("./execution-ledger.cjs");
+const { createProviderCredentialManager } = require("./provider-credentials.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -823,6 +824,9 @@ function currentExecutionLedger() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createExecutionLedger(app.getPath("userData"), selectedWorkspace);
 }
+function currentProviderCredentialManager() {
+  return createProviderCredentialManager(currentSecureCredentialStore());
+}
 
 ipcMain.handle("axiom:secure-storage-get", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -1402,6 +1406,19 @@ ipcMain.handle("axiom:execution-ledger-remove", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid execution-ledger removal request.");
   return currentExecutionLedger().remove(request.objectiveId, request.expectedRevision);
+});
+ipcMain.handle("axiom:provider-credential-status", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return ["github", "supabase"].map(providerId => currentProviderCredentialManager().status(providerId));
+});
+ipcMain.handle("axiom:provider-credential-save", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid provider credential request.");
+  return currentProviderCredentialManager().save(request.providerId, request.secret);
+});
+ipcMain.handle("axiom:provider-credential-remove", (event, providerId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProviderCredentialManager().remove(providerId);
 });
 
 ipcMain.handle("axiom:project-context-save", async (event, context) => {
