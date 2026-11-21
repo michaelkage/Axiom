@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     setEnabled: request => ipcRenderer.invoke("axiom:mcp-enable", request),
     remove: id => ipcRenderer.invoke("axiom:mcp-remove", id)
   }),
+  telemetry: Object.freeze({ snapshot: () => ipcRenderer.invoke("axiom:telemetry-snapshot") }),
   omniRoute: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:omniroute-status"),
     check: settings => ipcRenderer.invoke("axiom:omniroute-check", settings),
@@ -78,6 +79,34 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   deployment: Object.freeze({
     preview: request => ipcRenderer.invoke("axiom:deployment-preview", request),
     history: () => ipcRenderer.invoke("axiom:deployment-history")
+  }),
+  providerCredentials: Object.freeze({
+    status: () => ipcRenderer.invoke("axiom:provider-credential-status"),
+    save: request => ipcRenderer.invoke("axiom:provider-credential-save", request),
+    remove: providerId => ipcRenderer.invoke("axiom:provider-credential-remove", providerId)
+  }),
+  projectKnowledge: Object.freeze({
+    scanWorkspace: () => ipcRenderer.invoke("axiom:knowledge-index-scan"),
+    readIndex: () => ipcRenderer.invoke("axiom:knowledge-index-read"),
+    updateIndex: request => ipcRenderer.invoke("axiom:knowledge-index-update", request),
+    searchIndex: request => ipcRenderer.invoke("axiom:knowledge-index-search", request),
+    readMemory: () => ipcRenderer.invoke("axiom:knowledge-memory-read"),
+    upsertMemory: record => ipcRenderer.invoke("axiom:knowledge-memory-upsert", record),
+    searchMemory: request => ipcRenderer.invoke("axiom:knowledge-memory-search", request),
+    removeMemory: id => ipcRenderer.invoke("axiom:knowledge-memory-remove", id)
+  }),
+  artifacts: Object.freeze({
+    list: taskId => ipcRenderer.invoke("axiom:artifact-list", taskId),
+    put: request => ipcRenderer.invoke("axiom:artifact-put", request),
+    read: artifactId => ipcRenderer.invoke("axiom:artifact-read", artifactId),
+    remove: artifactId => ipcRenderer.invoke("axiom:artifact-remove", artifactId)
+  }),
+  executionLedger: Object.freeze({
+    list: () => ipcRenderer.invoke("axiom:execution-ledger-list"),
+    get: objectiveId => ipcRenderer.invoke("axiom:execution-ledger-get", objectiveId),
+    create: objective => ipcRenderer.invoke("axiom:execution-ledger-create", objective),
+    commit: request => ipcRenderer.invoke("axiom:execution-ledger-commit", request),
+    remove: request => ipcRenderer.invoke("axiom:execution-ledger-remove", request)
   }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
