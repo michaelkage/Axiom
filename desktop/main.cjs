@@ -1108,11 +1108,26 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
     },
   });
   browserWindow.removeMenu();
-  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [] };
+  const browserProjectId = selectedWorkspace
+    ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40)
+    : null;
+  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [], projectId: browserProjectId, openedAt: Date.now(), initialUrl: url };
   browserSessions.set(sessionId, entry);
   const pageSession = browserWindow.webContents.session;
   pageSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   pageSession.on("will-download", (_downloadEvent, item) => item.cancel());
+  pageSession.webRequest.onErrorOccurred({ urls: ["http://*/*", "https://*/*"] }, (_details) => {
+    let origin = "unknown origin";
+    try { origin = new URL(_details.url).origin; } catch {}
+    recordBrowserError(entry, "Network request failed (" + String(_details.error || "unknown").slice(0, 120) + ") at " + origin);
+  });
+  pageSession.webRequest.onCompleted({ urls: ["http://*/*", "https://*/*"] }, details => {
+    if (details.statusCode >= 400) {
+      let origin = "unknown origin";
+      try { origin = new URL(details.url).origin; } catch {}
+      recordBrowserError(entry, "Network response " + details.statusCode + " at " + origin);
+    }
+  });
   browserWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   browserWindow.webContents.on("will-navigate", (navigationEvent, target) => {
     try { validateBrowserNavigation(target); }
@@ -1132,6 +1147,24 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   });
   browserWindow.on("closed", () => {
     browserSessions.delete(sessionId);
+    if (entry.projectId && entry.errors.length) {
+      const store = createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") });
+      const data = redactSecrets(JSON.stringify({
+        sessionId,
+        openedAt: entry.openedAt,
+        closedAt: Date.now(),
+        initialOrigin: (() => { try { return new URL(entry.initialUrl).origin; } catch { return "unknown"; } })(),
+        finalOrigin: (() => { try { return new URL(entry.window.webContents.getURL()).origin; } catch { return "unknown"; } })(),
+        diagnostics: entry.errors.slice(-40)
+      })).slice(0, 64 * 1024);
+      void store.put({
+        projectId: entry.projectId,
+        kind: "log",
+        name: "Browser diagnostics " + sessionId,
+        data,
+        metadata: { producer: "browser-session", sessionId, diagnosticCount: entry.errors.length, capturedAt: Date.now() }
+      }).catch(error => appendRuntimeLog("Could not persist browser diagnostics artifact: " + redactSecrets(error?.message || error).slice(0, 400)));
+    }
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === entry.ownerId) {
       mainWindow.webContents.send("axiom:browser-closed", sessionId);
     }
