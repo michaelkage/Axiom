@@ -18,7 +18,7 @@ test("builds a fail-closed namespace with read-only plugin and workspace mounts"
     const adapter = createLinuxBubblewrapAdapter();
     const args = adapter.buildArgs({
       executable: process.execPath,
-      args: ["--version"],
+      args: ["--version", path.join(plugin, "index.cjs")],
       cwd: plugin,
       pluginRoot: plugin,
       workspaceRoot: workspace,
@@ -31,12 +31,16 @@ test("builds a fail-closed namespace with read-only plugin and workspace mounts"
     assert.ok(!args.includes("--share-net"));
     assert.ok(args.includes("--chdir"));
     assert.ok(args.includes(workspace));
+    assert.ok(args.includes("/workspace"));
+    assert.ok(args.includes("/opt/axiom-plugin/index.cjs"));
+    assert.ok(args.includes("/opt/axiom-plugin"));
     const writeArgs = adapter.buildArgs({
       executable: process.execPath, args: [], cwd: plugin, pluginRoot: plugin,
       workspaceRoot: workspace, limits: { filesystem: ["project.write"], network: true }
     });
     assert.ok(writeArgs.includes("--bind"));
     assert.ok(writeArgs.includes("--share-net"));
+    assert.ok(writeArgs.includes("/workspace"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
