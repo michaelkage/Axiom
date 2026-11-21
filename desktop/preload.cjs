@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     remove: providerId => ipcRenderer.invoke("axiom:provider-credential-remove", providerId)
   }),
   projectKnowledge: Object.freeze({
+    scanWorkspace: () => ipcRenderer.invoke("axiom:knowledge-index-scan"),
     readIndex: () => ipcRenderer.invoke("axiom:knowledge-index-read"),
     updateIndex: request => ipcRenderer.invoke("axiom:knowledge-index-update", request),
     searchIndex: request => ipcRenderer.invoke("axiom:knowledge-index-search", request),
