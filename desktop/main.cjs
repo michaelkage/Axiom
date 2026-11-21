@@ -831,7 +831,7 @@ function currentProviderCredentialManager() {
 function currentExecutionArtifactStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
-  return createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts", projectId) });
+  return createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") });
 }
 
 ipcMain.handle("axiom:secure-storage-get", (event, request) => {
