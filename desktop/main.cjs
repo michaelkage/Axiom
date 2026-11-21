@@ -23,6 +23,8 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createProviderCredentialManager } = require("./provider-credentials.cjs");
 const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
+const { createExecutionTelemetry } = require("./execution-telemetry.cjs");
+const { createOpenCodeTelemetryBridge } = require("./opencode-telemetry-bridge.cjs");
 const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
 const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
@@ -37,6 +39,8 @@ let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+const executionTelemetry = createExecutionTelemetry();
+let openCodeTelemetryBridge;
 let secureCredentialStore;
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
@@ -402,6 +406,18 @@ async function createWindow() {
   }
 
   activeRuntimeUrl = serverUrl;
+  openCodeTelemetryBridge = createOpenCodeTelemetryBridge({
+    telemetry: executionTelemetry,
+    onMetric: metric => {
+      void appendRuntimeLog("Model request completed: provider=" + metric.providerId + " model=" + metric.modelId + " durationMs=" + metric.durationMs + " inputTokens=" + metric.inputTokens + " outputTokens=" + metric.outputTokens + ".");
+      if (selectedWorkspace) {
+        const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+        void currentExecutionArtifactStore().put({ projectId, kind: "report", name: "Model request " + metric.id, data: JSON.stringify(metric), metadata: { producer: "model-telemetry", providerId: metric.providerId, modelId: metric.modelId } }).catch(error => appendRuntimeLog("Model telemetry artifact persistence failed: " + redactSecrets(error?.message || error).slice(0, 300)));
+      }
+    },
+    onError: error => { void appendRuntimeLog("OpenCode telemetry stream error: " + redactSecrets(error?.message || error).slice(0, 300)); }
+  });
+  openCodeTelemetryBridge.start(activeRuntimeUrl);
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -1675,6 +1691,7 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
 
 async function stopRuntime() {
   stoppingRuntime = true;
+  if (openCodeTelemetryBridge) await openCodeTelemetryBridge.stop();
   const child = runtimeProcess;
   runtimeProcess = null;
   if (!child || child.exitCode !== null || child.signalCode !== null) {
