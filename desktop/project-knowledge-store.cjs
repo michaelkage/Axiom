@@ -17,7 +17,37 @@ function createProjectKnowledgeStore(options={}){
  async function upsertMemory(input){const v=await readMemory();if(!input||typeof input.id!=="string"||!/^[A-Za-z0-9._:-]{1,160}$/.test(input.id)||!["convention","decision","accepted-fix","known-failure"].includes(input.kind)||!["user","verified-task","repository"].includes(input.source?.type)||typeof input.source.reference!=="string"||!input.source.reference.trim()||input.source.reference.length>240||typeof input.title!=="string"||!input.title.trim()||input.title.length>180||typeof input.content!=="string"||!input.content.trim()||input.content.length>8000||SECRET_VALUE.test(input.title+" "+input.content)||!Number.isFinite(input.confidence)||input.confidence<0||input.confidence>1)throw new TypeError("Invalid or sensitive project memory record.");const now=Date.now(),old=v.records.find(x=>x.id===input.id),record={id:input.id,projectId:v.projectId,kind:input.kind,title:input.title.trim(),content:input.content.trim(),source:{type:input.source.type,reference:input.source.reference.trim()},createdAt:old?.createdAt||now,updatedAt:now,expiresAt:Number.isFinite(input.expiresAt)&&input.expiresAt>now?input.expiresAt:null,confidence:input.confidence,tags:[...new Set((Array.isArray(input.tags)?input.tags:[]).filter(x=>typeof x==="string"&&/^[a-z0-9-]{1,40}$/i.test(x)))].slice(0,30)};const next={...v,revision:v.revision+1,records:[...v.records.filter(x=>x.id!==record.id),record].sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,MAX_MEMORY)};await writeAtomic(memoryFile,next);return record;}
  async function searchMemory(query,limit=12){const v=await readMemory(),terms=String(query||"").toLowerCase().split(/[^a-z0-9_-]+/).filter(x=>x.length>1).slice(0,30);return v.records.filter(r=>!r.expiresAt||r.expiresAt>Date.now()).map(r=>({...r,score:terms.reduce((n,t)=>n+((r.title+" "+r.content+" "+r.tags.join(" ")).toLowerCase().includes(t)?1:0),0)+r.confidence*.25})).filter(r=>r.score>0).sort((a,b)=>b.score-a.score).slice(0,Math.min(Math.max(limit|0,1),50));}
  async function removeMemory(id){const v=await readMemory(),next={...v,revision:v.revision+1,records:v.records.filter(x=>x.id!==id)};await writeAtomic(memoryFile,next);return next.records.length!==v.records.length;}
- async function scanWorkspace(){const base=await fs.realpath(options.workspaceRoot),changed=[],seen=new Set(),queue=[base];let visited=0;while(queue.length&&visited<MAX_FILES){const dir=queue.shift();let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch{continue;}for(const entry of entries){if(visited>=MAX_FILES)break;if([".git","node_modules","dist","out","build",".next",".cache","coverage"].includes(entry.name))continue;const absolute=path.join(dir,entry.name),relative=path.relative(base,absolute).split(path.sep).join("/");if(!relative||relative.startsWith("../")||path.isAbsolute(relative))continue;let stat;try{stat=await fs.lstat(absolute);}catch{continue;}if(stat.isSymbolicLink())continue;if(stat.isDirectory()){queue.push(absolute);continue;}if(!stat.isFile()||stat.size>MAX_FILE_BYTES)continue;visited++;let bytes;try{bytes=await fs.readFile(absolute);}catch{continue;}const text=bytes.toString("utf8");const ext=path.extname(entry.name).toLowerCase(),kind=/\\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|cs|cpp|h|vue|svelte)$/.test(ext)?"source":/\\.(md|mdx|rst|txt)$/.test(ext)?"documentation":/(package\\.json|tsconfig.*\\.json|vite\\.config\\.|\\.ya?ml$|\\.toml$)/i.test(entry.name)?"config":/\\.(png|jpe?g|gif|svg|webp|ico|woff2?|ttf|mp4|pdf)$/i.test(ext)?"asset":"other";const imports=[];if(kind==="source"){const re=/(?:from\\s*|import\\s*\\(|require\\s*\\()(["'])(\\.{1,2}\\/[^"']+)\\1/g;let match;while((match=re.exec(text))&&imports.length<500){const target=path.posix.normalize(path.posix.join(path.posix.dirname(relative),match[2]));if(!target.startsWith("../")&&!target.startsWith("/"))imports.push(target);} }const symbols=[];if(kind==="source"){const re=/\\b(?:export\\s+)?(?:async\\s+)?(?:function|class|interface|type|enum|const)\\s+([A-Za-z_$][\\w$]*)/g;let match;while((match=re.exec(text))&&symbols.length<2000)symbols.push(match[1]);}changed.push({path:relative,kind,size:stat.size,modifiedAt:stat.mtimeMs,contentHash:crypto.createHash("sha256").update(bytes).digest("hex"),imports:[...new Set(imports)],symbols:[...new Set(symbols)]});seen.add(relative);}}const current=await readIndex(),removed=current.entries.map(x=>x.path).filter(x=>!seen.has(x));return updateIndex(changed,removed);}
+ async function scanWorkspace(){
+  const base=await fs.realpath(options.workspaceRoot),changed=[],seen=new Set(),queue=[base];let visited=0;
+  const sourceExt=new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs",".py",".go",".rs",".java",".cs",".cpp",".h",".vue",".svelte"]);
+  const docExt=new Set([".md",".mdx",".rst",".txt"]),assetExt=new Set([".png",".jpg",".jpeg",".gif",".svg",".webp",".ico",".woff",".woff2",".ttf",".mp4",".pdf"]);
+  while(queue.length&&visited<MAX_FILES){
+   const dir=queue.shift();let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch{continue;}
+   for(const entry of entries){
+    if(visited>=MAX_FILES)break;
+    if([".git","node_modules","dist","out","build",".next",".cache","coverage"].includes(entry.name))continue;
+    const absolute=path.join(dir,entry.name),relative=path.relative(base,absolute).split(path.sep).join("/");
+    if(!relative||relative.startsWith("../")||path.isAbsolute(relative))continue;
+    let stat;try{stat=await fs.lstat(absolute);}catch{continue;}
+    if(stat.isSymbolicLink())continue;
+    if(stat.isDirectory()){queue.push(absolute);continue;}
+    if(!stat.isFile()||stat.size>MAX_FILE_BYTES)continue;
+    visited++;let bytes;try{bytes=await fs.readFile(absolute);}catch{continue;}
+    const text=bytes.toString("utf8"),ext=path.extname(entry.name).toLowerCase();
+    const kind=sourceExt.has(ext)?"source":docExt.has(ext)?"documentation":assetExt.has(ext)?"asset":/(package\.json|tsconfig.*\.json|vite\.config\.|\.ya?ml$|\.toml$)/i.test(entry.name)?"config":"other";
+    const imports=[],symbols=[];
+    if(kind==="source"){
+     const importPattern=/(?:from\s*|import\s*\(|require\s*\()(["'])(\.{1,2}\/[^"']+)\1/g;let match;
+     while((match=importPattern.exec(text))&&imports.length<500){const target=path.posix.normalize(path.posix.join(path.posix.dirname(relative),match[2]));if(!target.startsWith("../")&&!target.startsWith("/"))imports.push(target);}
+     const symbolPattern=/\b(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|enum|const)\s+([A-Za-z_$][\w$]*)/g;
+     while((match=symbolPattern.exec(text))&&symbols.length<2000)symbols.push(match[1]);
+    }
+    changed.push({path:relative,kind,size:stat.size,modifiedAt:stat.mtimeMs,contentHash:crypto.createHash("sha256").update(bytes).digest("hex"),imports:[...new Set(imports)],symbols:[...new Set(symbols)]});seen.add(relative);
+   }
+  }
+  const current=await readIndex(),removed=current.entries.map(x=>x.path).filter(x=>!seen.has(x));
+  return updateIndex(changed,removed);
+ }
  return Object.freeze({readIndex,updateIndex,searchIndex,readMemory,upsertMemory,searchMemory,removeMemory,scanWorkspace});
 }
 module.exports={createProjectKnowledgeStore,safeRelative,MAX_FILES,MAX_MEMORY};
