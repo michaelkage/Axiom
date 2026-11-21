@@ -170,6 +170,7 @@ describe("bounded transient worker recovery", () => {
       };
     });
     const { options, outcomes } = setup({
+      maxAutomaticRetries: 1,
       workerProvider: {
         id: "retry-test",
         capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },

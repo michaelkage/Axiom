@@ -99,7 +99,7 @@ export async function runSubAgentTasks(
     signal: options.signal,
     timeoutMs: options.timeoutMs ?? 120_000,
     maxRetries: options.maxAutomaticRetries ?? 1,
-    maxTotalAttempts: options.maxTotalAttempts ?? options.tasks.length * ((options.maxAutomaticRetries ?? 1) + 1),
+    maxTotalAttempts: options.maxTotalAttempts ?? options.tasks.length * ((options.maxAutomaticRetries ?? 0) + 1),
     maxConcurrency: options.maxConcurrency ?? 3,
   });
 }

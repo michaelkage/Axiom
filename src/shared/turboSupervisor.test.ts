@@ -9,7 +9,7 @@ describe("Turbo supervisor policy", () => {
     expect(decideTurboNext([task("a", { status: "succeeded" }), task("b", { dependsOn: ["a"] })], policy)).toMatchObject({ action: "dispatch", taskIds: ["b"] });
   });
   it("retries within bounds and requests replan after exhaustion", () => {
-    expect(decideTurboNext([task("a", { status: "failed", attempts: 1 })], policy)).toMatchObject({ action: "retry", taskIds: ["a"] });
+    expect(decideTurboNext([task("a", { status: "failed", attempts: 1, lastError: "ECONNRESET while contacting provider" })], policy)).toMatchObject({ action: "retry", taskIds: ["a"] });
     expect(decideTurboNext([task("a", { status: "failed", attempts: 2 })], policy).action).toBe("replan");
   });
   it("waits for active siblings before replanning exhausted work", () => {
@@ -39,7 +39,7 @@ describe("Turbo supervisor policy", () => {
   it("does not replan exhausted work while all worker slots are occupied", () => {
     expect(decideTurboNext([
       task("exhausted", { status: "failed", attempts: 2 }),
-      task("retryable", { status: "failed", attempts: 1 }),
+      task("retryable", { status: "failed", attempts: 1, lastError: "429 rate limit" }),
       task("active-a", { status: "running", attempts: 1 }),
       task("active-b", { status: "running", attempts: 1 }),
     ], policy)).toMatchObject({ action: "wait" });
@@ -105,12 +105,22 @@ describe("Turbo supervisor policy", () => {
 
   it("does not retry failed work until its dependencies have succeeded", () => {
     const prerequisite = task("prerequisite", { status: "running", attempts: 1 });
-    const dependent = task("dependent", { status: "failed", attempts: 1, dependsOn: ["prerequisite"] });
+    const dependent = task("dependent", { status: "failed", attempts: 1, dependsOn: ["prerequisite"], lastError: "ETIMEDOUT" });
     expect(decideTurboNext([prerequisite, dependent], policy)).toMatchObject({ action: "wait" });
     expect(decideTurboNext([
       task("prerequisite", { status: "succeeded", attempts: 1 }),
       dependent,
     ], policy)).toMatchObject({ action: "retry", taskIds: ["dependent"] });
+  });
+
+
+  it("does not automatically retry permission or unknown failures", () => {
+    expect(decideTurboNext([
+      task("permission", { status: "failed", attempts: 1, lastError: "Permission denied: approval required" }),
+    ], policy)).toMatchObject({ action: "blocked", taskIds: ["permission"] });
+    expect(decideTurboNext([
+      task("unknown", { status: "failed", attempts: 1 }),
+    ], policy)).toMatchObject({ action: "blocked", taskIds: ["unknown"] });
   });
 
   it("blocks invalid attempt counters instead of dispatching malformed work", () => {
