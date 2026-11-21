@@ -29,6 +29,11 @@ export interface TaskOrchestratorOptions {
   loadProjectMemories: (request: string) => WorkerContextRecord[];
   loadAvailableAgents: () => Promise<string[]>;
   workerProvider: WorkerExecutionProvider;
+  /** Retries only errors classified as safe for automatic retry. */
+  maxAutomaticRetries?: number;
+  maxTotalAttempts?: number;
+  maxConcurrency?: number;
+  timeoutMs?: number;
 }
 
 /**
@@ -49,6 +54,9 @@ export async function runSubAgentTasks(
   ]);
 
   if (options.signal?.aborted) throw new Error("Parallel task cancelled before worker execution.");
+
+  const maxAutomaticRetries = Number.isInteger(options.maxAutomaticRetries) && (options.maxAutomaticRetries ?? 0) >= 0
+    ? Math.min(options.maxAutomaticRetries!, 3) : 1;
 
   return executeTaskBatches(options.tasks, async (task, completed, signal) => {
     if (signal?.aborted) throw new Error("Parallel task cancelled before worker startup.");
@@ -90,7 +98,13 @@ export async function runSubAgentTasks(
       contextEstimatedTokensAfter: packed.estimatedTokens,
       contextSavingsPercent: packed.estimatedSavingsPercent,
     };
-  }, options.onOutcome, { signal: options.signal, timeoutMs: 120_000 });
+  }, options.onOutcome, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs ?? 120_000,
+    maxRetries: maxAutomaticRetries,
+    maxTotalAttempts: options.maxTotalAttempts ?? options.tasks.length * (maxAutomaticRetries + 1),
+    maxConcurrency: options.maxConcurrency ?? 3,
+  });
 }
 
 /** Build a secret-screened project-memory snapshot for one orchestration request. */

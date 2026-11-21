@@ -1,3 +1,5 @@
+import { classifyRecovery } from "./recovery";
+
 export type TurboWorkerStatus = "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled" | "timed_out";
 export interface TurboTask {
   id: string;
@@ -81,7 +83,7 @@ export function decideTurboNext(tasks: TurboTask[], policy: TurboPolicy): TurboD
   // automatically; doing so can create concurrent writers against the same task scope.
   const timedOut = tasks.filter(task => task.status === "timed_out");
   const failed = tasks.filter(task => task.status === "failed");
-  const retryable = failed.filter(task => task.attempts < task.maxAttempts && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
+  const retryable = failed.filter(task => task.attempts < task.maxAttempts && classifyRecovery(task.lastError).safeToRetryAutomatically && task.dependsOn.every(id => byId.get(id)!.status === "succeeded"));
   if (retryable.length && active < Math.max(1, policy.maxParallelWorkers)) {
     return { action: "retry", taskIds: retryable.slice(0, Math.max(1, policy.maxParallelWorkers) - active).map(task => task.id), reason: "Retry failed work within its per-task attempt limit." };
   }
