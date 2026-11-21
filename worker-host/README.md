@@ -11,12 +11,18 @@ Run npm start from this directory. The default bind address is 127.0.0.1. For re
 ## Protocol v1
 
 - GET /v1/health: protocol compatibility.
+- GET /v1/jobs: list the latest 50 durable jobs with a bounded recent-log tail.
 - POST /v1/jobs: submit idempotent task metadata, prompt, repository URL and branch.
-- GET /v1/jobs/:id: retrieve durable job state.
+- GET /v1/jobs/:id: retrieve durable job state and patch availability.
 - GET /v1/jobs/:id/events: bounded Server-Sent Events log stream.
+- GET /v1/jobs/:id/patch: retrieve a completed job's Git diff, capped at 8 MiB.
 - POST /v1/jobs/:id/cancel: request cancellation; terminal cancellation is recorded only after the worker process exits.
 
-All endpoints require Authorization: Bearer TOKEN. Job metadata and bounded logs are persisted. Active jobs found after an unclean restart become interrupted and are never retried. Their workspaces are retained for inspection. The host clones a clean isolated checkout and invokes opencode run using an argument array, not a shell string. It does not commit or push changes; review and publication remain explicit client actions.
+All endpoints require Authorization: Bearer TOKEN. Job metadata, bounded logs and patch availability are persisted. Active jobs found after an unclean restart become interrupted and are never retried. Their workspaces are retained for inspection. The host clones a clean isolated checkout and invokes opencode run using an argument array, not a shell string. After successful execution it captures a binary-capable Git diff into a separate private patch file. Patch capture refuses secret-like filenames (for example .env, credential/secret files and private keys) and enforces the 8 MiB transfer limit. It does not commit or push changes; review and publication remain explicit client actions.
+
+## Axiom desktop connection
+
+In Axiom, open **Persistent cloud workspaces**, enter the HTTPS Worker Host URL, the same Git repository URL used by the open local project, the base branch, and the host bearer token. Save the settings, test the connection, then enable remote workers. The bearer token and connection settings are stored in OS-backed secure storage and are not exposed to the renderer. New parallel worker tasks are submitted to the host; after completion Axiom downloads the bounded patch, verifies that the configured repository matches one of the local Git remotes, applies the patch to a detached local worktree, and opens the normal diff/quality-gate review flow. It never auto-integrates remote changes. Jobs remain on the host if the desktop closes and can be listed, cancelled or imported for review after reconnecting.
 
 ## Security
 

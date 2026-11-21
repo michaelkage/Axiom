@@ -164,7 +164,7 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
       if (current.status !== "succeeded") {
         throw Object.assign(new Error(current.error || "Remote worker execution failed."), {
           sessionId: "remote:" + job.id,
-          worktreePath: current.workspacePath || undefined,
+          remoteWorkspacePath: current.workspacePath || undefined,
         });
       }
       if (!current.patchAvailable) throw new Error(current.patchError || "Remote Worker Host completed without a transferable source patch.");

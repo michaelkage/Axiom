@@ -1121,6 +1121,7 @@ ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
     workspaceRoot: selectedWorkspace,
     userDataPath: app.getPath("userData"),
     taskId: request?.taskId,
+    jobId: request?.jobId,
     repositoryUrl,
     patch: request?.patch,
   });
