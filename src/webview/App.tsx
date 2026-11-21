@@ -12,6 +12,7 @@ import { VerificationPanel } from "./components/VerificationPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const DeploymentPanel = lazy(() => import("./components/DeploymentPanel").then(module => ({ default: module.DeploymentPanel })));
+const BrowserInspectorPanel = lazy(() => import("./components/BrowserInspectorPanel").then(module => ({ default: module.BrowserInspectorPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
@@ -1764,6 +1765,11 @@ function App() {
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
+        <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async snapshot => {
+          const sessionId = sync.currentSessionId();
+          if (!sessionId) throw new Error("Open a conversation before sending browser evidence.");
+          await sendPrompt(sessionId, "Analyze this live browser evidence. Identify actionable UI, runtime, accessibility or functional defects. Distinguish observed facts from hypotheses. Do not claim a fix or successful verification unless you actually perform it.\n\n" + JSON.stringify(snapshot, null, 2));
+        }} />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">

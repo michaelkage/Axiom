@@ -58,6 +58,27 @@ describe("runBoundedRepair", () => {
     expect(result.finalEvidence.output).not.toContain("secret-token-value");
   });
 
+  it("enforces the duration budget when verification never settles", async () => {
+    const result = await runBoundedRepair({
+      maxDurationMs: 25,
+      verify: () => new Promise(() => undefined),
+      repair: async () => "must not run",
+    });
+    expect(result.status).toBe("timed_out");
+    expect(result.attempts).toHaveLength(0);
+  });
+
+  it("enforces the duration budget when a repair worker never settles", async () => {
+    const verify = vi.fn(async () => failed);
+    const result = await runBoundedRepair({
+      maxDurationMs: 25,
+      verify,
+      repair: () => new Promise(() => undefined),
+    });
+    expect(result.status).toBe("timed_out");
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+
   it("honours cancellation before running repair", async () => {
     const controller = new AbortController();
     controller.abort();

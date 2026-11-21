@@ -74,6 +74,26 @@ export async function runBoundedRepair(options: RepairControllerOptions): Promis
   const now = options.now ?? Date.now;
   const startedAt = now();
   const controller = new AbortController();
+  let deadlineExceeded = false;
+  const deadlineTimer = setTimeout(() => {
+    deadlineExceeded = true;
+    controller.abort(new Error("Repair time budget exhausted."));
+  }, maxDurationMs);
+  const withinBudget = <T>(operation: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
+    if (controller.signal.aborted) return reject(controller.signal.reason ?? new Error("Repair cancelled."));
+    const onAbort = () => {
+      controller.signal.removeEventListener("abort", onAbort);
+      reject(controller.signal.reason ?? new Error("Repair cancelled."));
+    };
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(value => {
+      controller.signal.removeEventListener("abort", onAbort);
+      resolve(value);
+    }, error => {
+      controller.signal.removeEventListener("abort", onAbort);
+      reject(error);
+    });
+  });
   const parentAbort = () => controller.abort(options.signal?.reason);
   options.signal?.addEventListener("abort", parentAbort, { once: true });
   if (options.signal?.aborted) parentAbort();
@@ -87,7 +107,7 @@ export async function runBoundedRepair(options: RepairControllerOptions): Promis
     if (aborted(controller.signal)) return finish("cancelled", { status: "unverified", output: "Cancelled before verification." }, "Repair was cancelled.");
     if (expired()) return finish("timed_out", { status: "unverified", output: "Repair time budget expired before verification." }, "Repair time budget exhausted.");
 
-    let evidence = normalizeEvidence(await options.verify(controller.signal));
+    let evidence = normalizeEvidence(await withinBudget(options.verify(controller.signal)));
     if (evidence.status === "passed") return finish("passed", evidence, "The required verification passed.");
     if (evidence.status === "unverified") return finish("blocked", evidence, "Verification did not provide trustworthy failure evidence; automatic repair was not attempted.");
     if (!evidence.command || evidence.exitCode === undefined || evidence.exitCode === 0) {
@@ -100,7 +120,7 @@ export async function runBoundedRepair(options: RepairControllerOptions): Promis
       const attemptStartedAt = now();
       let repairSummary: string;
       try {
-        repairSummary = redactDiagnostic(await options.repair(evidence, attempt, controller.signal)).slice(0, 4000);
+        repairSummary = redactDiagnostic(await withinBudget(options.repair(evidence, attempt, controller.signal))).slice(0, 4000);
       } catch (error) {
         const advice = classifyRecovery(error);
         const failure = normalizeEvidence({
@@ -126,7 +146,7 @@ export async function runBoundedRepair(options: RepairControllerOptions): Promis
 
       if (aborted(controller.signal)) return finish("cancelled", evidence, "Repair was cancelled after the repair worker returned.");
       if (expired()) return finish("timed_out", evidence, "Repair time budget exhausted after the repair worker returned.");
-      const verified = normalizeEvidence(await options.verify(controller.signal));
+      const verified = normalizeEvidence(await withinBudget(options.verify(controller.signal)));
       const record: RepairAttemptRecord = {
         attempt, startedAt: attemptStartedAt, finishedAt: now(),
         failure: evidence, repairSummary, verification: verified,
@@ -142,10 +162,12 @@ export async function runBoundedRepair(options: RepairControllerOptions): Promis
     }
     return finish("failed", evidence, "The configured repair-attempt limit was reached.");
   } catch (error) {
+    if (deadlineExceeded) return finish("timed_out", { status: "unverified", output: redactDiagnostic(error) }, "Repair time budget exhausted.");
     if (controller.signal.aborted) return finish("cancelled", { status: "unverified", output: redactDiagnostic(error) }, "Repair was cancelled.");
     if (expired()) return finish("timed_out", { status: "unverified", output: redactDiagnostic(error) }, "Repair time budget exhausted.");
     throw error;
   } finally {
+    clearTimeout(deadlineTimer);
     options.signal?.removeEventListener("abort", parentAbort);
   }
 }

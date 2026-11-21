@@ -183,6 +183,33 @@ describe("bounded transient worker recovery", () => {
     expect(outcomes.some(record => record.status === "succeeded" && record.attempt === 2)).toBe(true);
   });
 
+
+  it("uses a consistent default retry count and total-attempt budget", async () => {
+    let calls = 0;
+    const execute = vi.fn(async request => {
+      calls++;
+      if (calls === 1) throw new Error("ECONNRESET while contacting the model provider");
+      return {
+        sessionId: "default-retry-session",
+        taskId: request.task.id,
+        title: request.task.title,
+        summary: "Recovered with the default retry policy.",
+        worktreePath: "/tmp/axiom-worker-default-retry",
+        logs: [],
+      };
+    });
+    const { options } = setup({
+      workerProvider: {
+        id: "default-retry-test",
+        capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
+        execute,
+      },
+    });
+    const results = await runSubAgentTasks(options);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(results[0].result.sessionId).toBe("default-retry-session");
+  });
+
   it("does not retry permission failures automatically", async () => {
     const execute = vi.fn(async () => { throw new Error("Permission denied: approval required"); });
     const { options } = setup({

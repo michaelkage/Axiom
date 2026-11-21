@@ -50,6 +50,13 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     cancel: id => ipcRenderer.invoke("axiom:remote-workspace-cancel", id),
     cleanup: id => ipcRenderer.invoke("axiom:remote-workspace-cleanup", id)
   }),
+  browser: Object.freeze({
+    open: url => ipcRenderer.invoke("axiom:browser-open", url),
+    navigate: (sessionId, url) => ipcRenderer.invoke("axiom:browser-navigate", { sessionId, url }),
+    inspect: sessionId => ipcRenderer.invoke("axiom:browser-inspect", { sessionId }),
+    screenshot: sessionId => ipcRenderer.invoke("axiom:browser-screenshot", { sessionId }),
+    close: sessionId => ipcRenderer.invoke("axiom:browser-close", { sessionId })
+  }),
   deployment: Object.freeze({
     preview: request => ipcRenderer.invoke("axiom:deployment-preview", request)
   }),

@@ -8,6 +8,7 @@ const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
+const { validateBrowserNavigation } = require("./browser-url.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
