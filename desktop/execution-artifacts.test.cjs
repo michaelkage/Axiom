@@ -26,3 +26,20 @@ test("does not expose artifacts across project boundaries", async () => {
     await assert.rejects(() => store.read("project-b", record.id), /not found/);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test("redacts credential material from text artifacts and metadata before persistence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-artifacts-"));
+  try {
+    const store = createExecutionArtifactStore({ root });
+    const record = await store.put({
+      projectId: "project-redaction",
+      kind: "log",
+      name: "Sensitive output",
+      data: "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789",
+      metadata: { note: "api_key=super-secret-value" }
+    });
+    const stored = await store.read("project-redaction", record.id);
+    assert.doesNotMatch(stored.data.toString(), /abcdefghijklmnopqrstuvwxyz0123456789/);
+    assert.doesNotMatch(JSON.stringify(record.metadata), /super-secret-value/);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
