@@ -1222,6 +1222,21 @@ ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
     patch: request?.patch,
   });
   await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + String(request.taskId) + ".");
+  if (typeof request.patch === "string") {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: String(request.taskId),
+        kind: "patch",
+        name: "Remote worker patch " + String(request.jobId || request.taskId),
+        data: request.patch,
+        metadata: { producer: "remote-worker-patch-import", jobId: String(request.jobId || "").slice(0, 160), importedAt: Date.now() }
+      });
+    } catch (artifactError) {
+      await appendRuntimeLog("Could not persist remote patch artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400));
+    }
+  }
   return result;
 });
 
