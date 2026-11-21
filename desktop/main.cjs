@@ -528,7 +528,7 @@ async function runQualityGate(event, message) {
   const checks = [];
   const addCheck = async (name, command, args, cwd, timeout) => {
     const result = await run(command, args, cwd, timeout);
-    checks.push({ name, state: result.exitCode === 0 ? "passed" : "failed", exitCode: result.exitCode, output: result.output || "Command completed without output." });
+    checks.push({ name, command: [command, ...args].join(" "), state: result.exitCode === 0 ? "passed" : "failed", exitCode: result.exitCode, output: result.output || "Command completed without output." });
   };
   try {
     validateWorkspace(message.workspaceRoot);
@@ -602,7 +602,7 @@ async function runQualityGate(event, message) {
       checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." })),
       files: Array.isArray(message.changedPaths) ? message.changedPaths : []
     });
-    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status, checks, ranProjectCheck });
+    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status, checks, ranProjectCheck });
     sendHostMessage(event, { type: "project-state-updated" });
   } catch (error) {
     try {
@@ -614,7 +614,7 @@ async function runQualityGate(event, message) {
       });
       sendHostMessage(event, { type: "project-state-updated" });
     } catch { /* A history write failure must not hide the verification error. */ }
-    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status: "Blocked", checks, error: error.message });
+    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status: "Blocked", checks, error: error.message });
   }
 }
 
