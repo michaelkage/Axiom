@@ -20,10 +20,10 @@ function createExecutionArtifactStore(options = {}) {
     const projectId = safeId(input?.projectId, "project ID");
     const taskId = input.taskId == null ? null : safeId(input.taskId, "task ID");
     if (!KINDS.has(input.kind) || typeof input.name !== "string" || !input.name.trim() || input.name.length > 200) throw new TypeError("Artifact kind or name is invalid.");
-    const data = Buffer.isBuffer(input.data) ? input.data : typeof input.data === "string" ? Buffer.from(input.data, "utf8") : null;
+    const data = Buffer.isBuffer(input.data) ? input.data : typeof input.data === "string" ? Buffer.from(redactSecrets(input.data), "utf8") : null;
     if (!data || data.length > MAX_ARTIFACT_BYTES) throw new TypeError("Artifact data must be bytes or text within the 16 MiB limit.");
     const metadata = input.metadata ?? {};
-    const metadataText = JSON.stringify(metadata);
+    const metadataText = redactSecrets(JSON.stringify(metadata));
     if (Buffer.byteLength(metadataText, "utf8") > MAX_METADATA_BYTES) throw new TypeError("Artifact metadata exceeds the size limit.");
     const directory = path.join(root, projectId);
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
