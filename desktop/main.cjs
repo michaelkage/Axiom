@@ -1351,21 +1351,68 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
   if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
     throw new Error("A terminal request needs a request ID and command.");
   }
-  return terminalRunner.run({
-    requestId: request.requestId,
-    command: request.command,
-    cwd: request.cwd,
-    onOutput: chunk => {
-      if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
-        requestId: request.requestId,
-        stream: chunk.stream,
-        text: chunk.text
+  const startedAt = Date.now();
+  const output = [];
+  let outputBytes = 0;
+  const maxCaptureBytes = 1024 * 1024;
+  const capture = chunk => {
+    const remaining = maxCaptureBytes - outputBytes;
+    if (remaining <= 0) return;
+    const text = redactSecrets(chunk.text).slice(0, remaining);
+    if (!text) return;
+    output.push("[" + chunk.stream + "] " + text);
+    outputBytes += Buffer.byteLength(text, "utf8");
+  };
+  let result;
+  let failure;
+  try {
+    result = await terminalRunner.run({
+      requestId: request.requestId,
+      command: request.command,
+      cwd: request.cwd,
+      onOutput: chunk => {
+        capture(chunk);
+        if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+          requestId: request.requestId,
+          stream: chunk.stream,
+          text: chunk.text
+        });
+      }
+    });
+    return result;
+  } catch (error) {
+    failure = redactSecrets(error?.message || error);
+    throw error;
+  } finally {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: typeof request.taskId === "string" ? request.taskId : null,
+        kind: "log",
+        name: "Terminal execution " + request.requestId,
+        data: (output.join("\\n") + (failure ? "\\n[error] " + failure : "")).slice(0, maxCaptureBytes),
+        metadata: {
+          producer: "terminal",
+          requestId: request.requestId,
+          command: redactSecrets(request.command).slice(0, 1000),
+          cwd: typeof request.cwd === "string" ? request.cwd.slice(0, 500) : "",
+          startedAt,
+          finishedAt: Date.now(),
+          exitCode: result?.exitCode ?? null,
+          signal: result?.signal ?? null,
+          truncated: outputBytes >= maxCaptureBytes,
+          failed: Boolean(failure)
+        }
       });
+    } catch (artifactError) {
+      await appendRuntimeLog("Could not persist terminal execution artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 500));
     }
-  });
+  }
 });
 
 ipcMain.handle("axiom:terminal-cancel", async (event, requestId) => {
