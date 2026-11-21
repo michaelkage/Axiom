@@ -65,7 +65,17 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
-let workerOwnership;\nlet workerOwnershipWorkspace = null;\nfunction ownershipForWorkspace(workspaceRoot) {\n  const root = path.resolve(workspaceRoot);\n  if (!workerOwnership || workerOwnershipWorkspace !== root) {\n    const id = require("node:crypto").createHash("sha256").update(root).digest("hex").slice(0, 40);\n    workerOwnership = createWorkerOwnershipRegistry({ filePath: path.join(app.getPath("userData"), "worker-ownership", id + ".json"), workspaceRoot: root });\n    workerOwnershipWorkspace = root;\n  }\n  return workerOwnership;\n}
+let workerOwnership;
+let workerOwnershipWorkspace = null;
+function ownershipForWorkspace(workspaceRoot) {
+  const root = path.resolve(workspaceRoot);
+  if (!workerOwnership || workerOwnershipWorkspace !== root) {
+    const id = require("node:crypto").createHash("sha256").update(root).digest("hex").slice(0, 40);
+    workerOwnership = createWorkerOwnershipRegistry({ filePath: path.join(app.getPath("userData"), "worker-ownership", id + ".json"), workspaceRoot: root });
+    workerOwnershipWorkspace = root;
+  }
+  return workerOwnership;
+}
 const browserSessions = new Map();
 const remoteWorkspaceOperations = new Map();
 const remoteWorkspaceInstanceId = require("node:crypto").randomUUID();
@@ -166,7 +176,8 @@ async function appendRuntimeLog(text) {
   try {
     const logPath = path.join(app.getPath("userData"), "logs", "runtime.log");
     await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
-    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${redactSecrets(text)}\n`, "utf8");
+    await fs.promises.appendFile(logPath, `[${new Date().toISOString()}] ${redactSecrets(text)}
+`, "utf8");
   } catch { /* Diagnostics must never prevent startup or shutdown. */ }
 }
 
@@ -200,7 +211,8 @@ async function runtimeExecutable() {
       ["opencode"],
       { encoding: "utf8", windowsHide: true, timeout: 5000 }
     );
-    if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+    if (globalLookup.stdout.trim()) return globalLookup.stdout.split(/\r?
+/).map(line => line.trim()).find(Boolean);
   } catch { /* Fall through to the actionable runtime-not-found error. */ }
   throw new Error("Axiom's bundled runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
@@ -288,7 +300,11 @@ async function startRuntime(workspace) {
   runtimeProcess.on("error", error => {
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
-      void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nRestart Axiom after reviewing the log.`, buttons: ["OK"] });
+      void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}
+
+Runtime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}
+
+Restart Axiom after reviewing the log.`, buttons: ["OK"] });
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
@@ -298,7 +314,10 @@ async function startRuntime(workspace) {
         type: "warning",
         title: "Axiom runtime stopped",
         message: "The local AI runtime has stopped unexpectedly.",
-        detail: `Exit code: ${code ?? "unknown"}\nSignal: ${signal || "none"}\n\nYour project files are still on disk. Restart Axiom to reconnect. Diagnostics: ${path.join(app.getPath("userData"), "logs", "runtime.log")}`,
+        detail: `Exit code: ${code ?? "unknown"}
+Signal: ${signal || "none"}
+
+Your project files are still on disk. Restart Axiom to reconnect. Diagnostics: ${path.join(app.getPath("userData"), "logs", "runtime.log")}`,
         buttons: ["Restart Axiom", "Quit"],
         defaultId: 0,
         cancelId: 1
@@ -320,7 +339,12 @@ async function startRuntime(workspace) {
     await appendRuntimeLog(`Runtime startup failed: ${error.stack || error.message}`);
     await stopRuntime();
     const detail = recentOutput.trim();
-    throw new Error(error.message + (detail ? "\n\nRecent runtime output:\n" + detail : "") + "\n\nA diagnostic log was saved in Axiom’s user-data folder.");
+    throw new Error(error.message + (detail ? "
+
+Recent runtime output:
+" + detail : "") + "
+
+A diagnostic log was saved in Axiom’s user-data folder.");
   }
   await appendRuntimeLog("Runtime ready at " + url);
   return url;
@@ -369,7 +393,11 @@ async function createWindow() {
         type: "error",
         title: "Axiom could not start",
         message: "Axiom could not start its local AI runtime.",
-        detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nYou can retry startup, choose a different project, or quit. No project files have been changed by this startup attempt.`,
+        detail: `${error.message}
+
+Runtime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}
+
+You can retry startup, choose a different project, or quit. No project files have been changed by this startup attempt.`,
         buttons: ["Retry", "Choose Another Project", "Quit"],
         defaultId: 0,
         cancelId: 2
@@ -424,7 +452,8 @@ async function createWindow() {
     const details = detailsOrLevel && typeof detailsOrLevel === "object"
       ? detailsOrLevel
       : { level: detailsOrLevel, message, lineNumber: line, sourceId };
-    const text = String(details.message || "").replace(/[\\r\\n\\t]+/g, " ").slice(0, 800);
+    const text = String(details.message || "").replace(/[\\r\
+\\t]+/g, " ").slice(0, 800);
     if (!text) return;
     void appendRuntimeLog(
       `Renderer console (level=${details.level ?? "unknown"}): ${text} at ${diagnosticUrl(details.sourceId || "")}:${details.lineNumber ?? details.line ?? 0}`
@@ -490,7 +519,8 @@ async function run(command, args, cwd, timeout = 120000) {
   } catch (error) {
     return {
       exitCode: typeof error.code === "number" ? error.code : 1,
-      output: ((error.stdout || "") + (error.stderr || "") + "\n" + (error.message || "")).slice(-12000)
+      output: ((error.stdout || "") + (error.stderr || "") + "
+" + (error.message || "")).slice(-12000)
     };
   }
 }
@@ -529,12 +559,18 @@ async function inspectWorktree(event, message) {
       try {
         const full = await resolveSafeWorkspaceFile(message.worktreePath, file.path);
         const inspected = await readRegularFileNoFollow(full, 1024 * 1024);
-        patch += "\n\n--- NEW FILE: " + file.path + " ---\n";
+        patch += "
+
+--- NEW FILE: " + file.path + " ---
+";
         patch += inspected.size > 1024 * 1024
           ? "[Preview omitted: untracked file exceeds the 1 MiB review-preview limit.]"
           : inspected.content.toString("utf8").slice(0, 30000);
       } catch (error) {
-        patch += "\n\n--- UNREADABLE NEW FILE: " + file.path + " ---\n" + String(error.message || error).slice(0, 500);
+        patch += "
+
+--- UNREADABLE NEW FILE: " + file.path + " ---
+" + String(error.message || error).slice(0, 500);
       }
     }
     const whitespace = await run("git", ["diff", "--check", "HEAD", "--"], message.worktreePath);
@@ -574,7 +610,8 @@ async function runQualityGate(event, message) {
       try {
         const full = await resolveSafeWorkspaceFile(message.worktreePath, file.path);
         const inspected = await readRegularFileNoFollow(full, 5 * 1024 * 1024);
-        const lines = inspected.content.toString("utf8").split(/\r?\n/);
+        const lines = inspected.content.toString("utf8").split(/\r?
+/);
         lines.forEach((line, index) => {
           if (/[ \t]+$/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": trailing whitespace");
           if (/^(<<<<<<< |=======|>>>>>>> )/.test(line)) untrackedIssues.push(file.path + ":" + (index + 1) + ": possible unresolved conflict marker");
@@ -587,7 +624,8 @@ async function runQualityGate(event, message) {
       name: "Untracked file whitespace and conflict-marker check",
       state: untrackedIssues.length ? "failed" : "passed",
       exitCode: untrackedIssues.length ? 1 : 0,
-      output: untrackedIssues.join("\n") || "No whitespace issues or common conflict markers found in untracked files."
+      output: untrackedIssues.join("
+") || "No whitespace issues or common conflict markers found in untracked files."
     });
 
     const packageFile = path.join(message.worktreePath, "package.json");
@@ -653,7 +691,8 @@ async function upstreamRevision(root) {
     if (remotes.output.trim()) throw new Error("Remote drift check cannot run because this branch has no upstream tracking branch. Configure an upstream before integrating worker changes.");
     return null;
   }
-  const ref = upstream.output.trim().split(/\r?\n/).at(-1);
+  const ref = upstream.output.trim().split(/\r?
+/).at(-1);
   const prefix = "refs/remotes/";
   if (!ref.startsWith(prefix) || !ref.slice(prefix.length).includes("/")) throw new Error("Cannot safely identify the workspace remote tracking branch: " + ref);
   const remote = ref.slice(prefix.length).split("/")[0];
@@ -662,11 +701,13 @@ async function upstreamRevision(root) {
   if (fetched.exitCode !== 0) throw new Error("Remote drift check could not refresh " + ref + ". Integration is blocked to avoid overwriting remote work. " + fetched.output);
   const revision = await run("git", ["rev-parse", "--verify", ref], root, 15000);
   if (revision.exitCode !== 0) throw new Error("Remote drift check could not resolve " + ref + ". " + revision.output);
-  return { ref, sha: revision.output.trim().split(/\r?\n/).at(-1) };
+  return { ref, sha: revision.output.trim().split(/\r?
+/).at(-1) };
 }
 async function blobAtRevision(root, revision, relativePath) {
   const result = await run("git", ["rev-parse", "--verify", revision + ":" + relativePath], root, 15000);
-  if (result.exitCode === 0) return result.output.trim().split(/\r?\n/).at(-1);
+  if (result.exitCode === 0) return result.output.trim().split(/\r?
+/).at(-1);
   if (/Needed a single revision|unknown revision|invalid object name|does not exist/.test(result.output)) return null;
   throw new Error("Could not compare remote file revision for " + relativePath + ". " + result.output);
 }
@@ -893,7 +934,8 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
     return result;
   } catch (error) {
     const detail = String(error instanceof Error ? error.message : error || "Unknown runtime error")
-      .replace(/[\\r\\n\\t]+/g, " ")
+      .replace(/[\\r\
+\\t]+/g, " ")
       .slice(0, 500);
     const diagnostic = "MCP worker probe failed: " + (detail || "Unknown runtime error.");
     await taskStore.record({
@@ -1002,7 +1044,8 @@ function ownedBrowserSession(event, id) {
   return entry;
 }
 function recordBrowserError(entry, value) {
-  const safe = redactSecrets(String(value || "Browser error")).replace(/[\r\n\t]+/g, " ").slice(0, 1200);
+  const safe = redactSecrets(String(value || "Browser error")).replace(/[\r
+\t]+/g, " ").slice(0, 1200);
   if (!safe) return;
   entry.errors.push(safe);
   if (entry.errors.length > 40) entry.errors.splice(0, entry.errors.length - 40);
@@ -1562,7 +1605,7 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
       });
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: true, path: worktreePath });
     } catch (error) {
-      if (typeof message.taskId === "string" && workerOwnership) workerOwnership.release(message.taskId);
+      if (typeof message.taskId === "string" && message.workspaceRoot) ownershipForWorkspace(message.workspaceRoot).release(message.taskId);
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: false, error: error.message });
     }
   } else if (message.type === "inspect-agent-worktree") {
