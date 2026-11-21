@@ -29,28 +29,32 @@ function createPluginRuntime(options = {}) {
   if (!options.pluginRoot || typeof authorize !== "function" || typeof executeSandbox !== "function") throw new TypeError("Plugin runtime requires a plugin root, capability authorizer, and OS sandbox adapter.");
   async function run(manifestInput, request = {}) {
     const manifest = validatePluginManifest(manifestInput);
-    const entry = path.resolve(pluginRoot, manifest.id, manifest.entry);
-    if (!entry.startsWith(path.resolve(pluginRoot, manifest.id) + path.sep)) throw new Error("Plugin entry escaped its installation directory.");
+    const pluginDirectory = path.resolve(pluginRoot, manifest.id);
+    const entry = path.resolve(pluginDirectory, manifest.entry);
+    if (!entry.startsWith(pluginDirectory + path.sep)) throw new Error("Plugin entry escaped its installation directory.");
     const granted = [];
     for (const capability of manifest.capabilities) {
       if (await authorize({ pluginId: manifest.id, capability, request }) !== true) throw new Error("Plugin capability denied: " + capability);
       granted.push(capability);
     }
+    const needsWorkspace = granted.some(capability => capability === "project.read" || capability === "project.write");
+    if (needsWorkspace && (typeof request.workspaceRoot !== "string" || !path.isAbsolute(request.workspaceRoot))) throw new Error("A project capability requires an absolute workspace root.");
     const args = Array.isArray(request.args) ? request.args : [];
     if (args.length > MAX_ARGS || args.some(value => typeof value !== "string" || value.length > 4096 || value.includes("\0"))) throw new TypeError("Plugin arguments are invalid.");
     const runId = crypto.randomUUID();
-    return executeSandbox({
+    const result = await executeSandbox({
       executable: process.execPath,
       args: ["--disable-proto=throw", "--max-old-space-size=" + manifest.resources.memoryMb, entry],
-      cwd: path.dirname(entry),
+      cwd: pluginDirectory,
+      pluginRoot: pluginDirectory,
+      workspaceRoot: needsWorkspace ? request.workspaceRoot : undefined,
       env: { NODE_ENV: "production", AXIOM_PLUGIN_ID: manifest.id, AXIOM_PLUGIN_CAPABILITIES: granted.join(",") },
       stdin: JSON.stringify({ protocol: 1, runId, args }),
       limits: { timeoutMs: manifest.resources.timeoutMs, memoryMb: manifest.resources.memoryMb, stdoutBytes: 256 * 1024, stderrBytes: 64 * 1024, network: granted.includes("network.request"), filesystem: granted.filter(value => value.startsWith("project.") || value === "artifact.write") },
       runId
-    }).then(result => {
-      if (!result || result.exitCode !== 0) throw new Error("Sandboxed plugin execution failed.");
-      return { runId, pluginId: manifest.id, exitCode: 0, stdout: String(result.stdout || "").slice(-256 * 1024), stderr: String(result.stderr || "").slice(-64 * 1024) };
     });
+    if (!result || result.exitCode !== 0 || result.timedOut || result.outputLimitExceeded) throw new Error(result?.timedOut ? "Plugin execution exceeded its time limit." : result?.outputLimitExceeded ? "Plugin execution exceeded its output limit." : "Sandboxed plugin execution failed.");
+    return { runId, pluginId: manifest.id, exitCode: 0, stdout: String(result.stdout || "").slice(-256 * 1024), stderr: String(result.stderr || "").slice(-64 * 1024) };
   }
   return Object.freeze({ run });
 }
