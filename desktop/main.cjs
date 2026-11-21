@@ -1523,6 +1523,7 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
       });
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: true, path: worktreePath });
     } catch (error) {
+      if (typeof message.taskId === "string") workerOwnership.release(message.taskId);
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: false, error: error.message });
     }
   } else if (message.type === "inspect-agent-worktree") {
