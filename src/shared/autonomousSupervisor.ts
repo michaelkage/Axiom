@@ -3,7 +3,7 @@ import type { AxiomSubTask, TaskExecutionRecord, TaskExecutionStatus } from "./a
 export type ObjectiveStatus = "active" | "paused" | "blocked" | "completed" | "failed" | "cancelled";
 export type SupervisorEventType =
   | "objective.started" | "objective.paused" | "objective.resumed" | "objective.cancelled"
-  | "task.outcome" | "task.replanned" | "budget.exhausted" | "objective.completed" | "objective.blocked";
+  | "task.outcome" | "task.replanned" | "budget.exhausted" | "objective.completed" | "objective.blocked" | "task.recovered";
 
 export interface SupervisorBudget {
   maxAttempts: number;
@@ -18,6 +18,7 @@ export interface SupervisorTask extends AxiomSubTask {
   error?: string;
   summary?: string;
   updatedAt: number;
+  sessionId?: string;
 }
 export interface SupervisorEvent {
   id: string;
@@ -199,4 +200,39 @@ export function getSupervisorSnapshot(objective: AutonomousObjective, now = Date
     completionPercent: Math.round((counts.succeeded / objective.tasks.length) * 100),
     latestEvent: objective.events[objective.events.length - 1] ?? null,
   };
+}
+
+/**
+ * Reconcile persisted running tasks after process restart. A task is returned
+ * to queued only when its recorded session is no longer alive; live sessions
+ * remain attached and are not duplicated. Recovery is idempotent.
+ */
+export function recoverAutonomousObjective(
+  current: AutonomousObjective,
+  options: { isSessionAlive?: (sessionId: string) => boolean; now?: () => number } = {},
+): AutonomousObjective {
+  const objective = structuredClone(current);
+  if (TERMINAL_OBJECTIVES.has(objective.status) || objective.status === "paused") return objective;
+  const now = options.now?.() ?? Date.now();
+  let changed = false;
+  for (const task of objective.tasks) {
+    if (task.status !== "running") continue;
+    if (task.sessionId && options.isSessionAlive?.(task.sessionId) === true) continue;
+    const previousSessionId = task.sessionId;
+    task.status = "queued";
+    task.updatedAt = now;
+    delete task.sessionId;
+    task.error = "Worker session was not recoverable after restart; task was safely re-queued.";
+    appendEvent(objective, "task.recovered", {
+      previousAttempt: task.attempt,
+      ...(previousSessionId ? { previousSessionId } : {}),
+      action: "requeued",
+    }, now, task.id);
+    changed = true;
+  }
+  if (changed) {
+    objective.updatedAt = now;
+    objective.revision++;
+  }
+  return objective;
 }

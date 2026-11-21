@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySupervisorTaskOutcome, createAutonomousObjective, getSupervisorSnapshot, setObjectiveStatus } from "./autonomousSupervisor";
+import { applySupervisorTaskOutcome, createAutonomousObjective, getSupervisorSnapshot, setObjectiveStatus, recoverAutonomousObjective } from "./autonomousSupervisor";
 
 const tasks = [
   { id: "plan", title: "Plan", scope: "Plan work", targetFiles: ["docs/plan.md"], dependsOn: [], acceptanceCriteria: ["Plan is clear"] },
@@ -68,5 +68,26 @@ describe("autonomous supervisor domain", () => {
     expect(objective.status).toBe("cancelled");
     expect(objective.tasks.every(task => task.status === "cancelled")).toBe(true);
     expect(() => setObjectiveStatus(objective, "resume")).toThrow(/terminal/);
+  });
+});
+
+describe("autonomous objective restart recovery", () => {
+  it("requeues dead worker sessions without incrementing attempts or duplicating live sessions", () => {
+    let objective = createAutonomousObjective({ id: "recovery", title: "Recover", instruction: "Resume safely", tasks });
+    objective.tasks[0].status = "running";
+    objective.tasks[0].attempt = 2;
+    objective.tasks[0].sessionId = "dead-session";
+    objective.tasks[1].status = "running";
+    objective.tasks[1].attempt = 1;
+    objective.tasks[1].sessionId = "live-session";
+    const recovered = recoverAutonomousObjective(objective, { isSessionAlive: id => id === "live-session", now: () => 500 });
+    expect(recovered.tasks[0]).toMatchObject({ status: "queued", attempt: 2 });
+    expect(recovered.tasks[0].sessionId).toBeUndefined();
+    expect(recovered.tasks[1]).toMatchObject({ status: "running", attempt: 1, sessionId: "live-session" });
+    expect(recovered.events.filter(event => event.type === "task.recovered")).toHaveLength(1);
+  });
+  it("does not change the revision when recovery has nothing to reconcile", () => {
+    const objective = createAutonomousObjective({ id: "recovery", title: "Recover", instruction: "Resume safely", tasks });
+    expect(recoverAutonomousObjective(objective).revision).toBe(objective.revision);
   });
 });
