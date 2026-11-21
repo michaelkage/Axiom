@@ -857,7 +857,11 @@ async function requirePrivilegedApproval({ title, message, detail, approveLabel 
     cancelId: 1,
     noLink: true
   });
-  if (result.response !== 0) throw new Error("Operation cancelled: explicit main-process approval was not granted.");
+  if (result.response !== 0) {
+    await appendRuntimeLog("Privileged operation denied by the user: " + title + ".");
+    throw new Error("Operation cancelled: explicit main-process approval was not granted.");
+  }
+  await appendRuntimeLog("Privileged operation approved by the user: " + title + ".");
   return true;
 }
 
