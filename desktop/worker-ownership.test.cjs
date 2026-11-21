@@ -32,7 +32,7 @@ test("persists ownership and restores claims after a process restart", t => {
   assert.equal(restored.validateChanges("task-persisted", ["src/owned/file.ts"]).allowed, true);
   assert.throws(() => restored.claim("other-task", ["src/owned/file.ts"]), /conflict/);
   assert.equal(restored.release("task-persisted"), true);
-  assert.equal(createWorkerOwnershipRegistry({ filePath, workspaceRoot: root }).validateChanges("task-persisted", []), undefined);
+  assert.throws(() => createWorkerOwnershipRegistry({ filePath, workspaceRoot: root }).validateChanges("task-persisted", []), /no registered/);
 });
 
 test("fails closed for ownership state belonging to another workspace", t => {
