@@ -845,6 +845,22 @@ function trustedRenderer(event) {
   return !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
 }
 
+async function requirePrivilegedApproval({ title, message, detail, approveLabel = "Approve" }) {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Axiom cannot request approval because its main window is unavailable.");
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "warning",
+    title,
+    message,
+    detail: redactSecrets(String(detail || "")).slice(0, 3000),
+    buttons: [approveLabel, "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true
+  });
+  if (result.response !== 0) throw new Error("Operation cancelled: explicit main-process approval was not granted.");
+  return true;
+}
+
 function currentProjectStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
@@ -1210,7 +1226,7 @@ ipcMain.handle("axiom:deployment-history", async event => {
   if (!selectedWorkspace) return [];
   return createDeploymentHistoryStore(app.getPath("userData")).list(selectedWorkspace);
 });
-ipcMain.handle("axiom:deployment-preview", async (event, request) => {
+ipcMain.handle("axiom:deployment-preview", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\\nProject: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
   if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
@@ -1324,7 +1340,7 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
   }));
 });
 
-ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
+ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\\nCommit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
@@ -1359,7 +1375,7 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   });
 });
 
-ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
+ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
@@ -1395,7 +1411,7 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
   });
 });
 
-ipcMain.handle("axiom:terminal-run", async (event, request) => {
+ipcMain.handle("axiom:terminal-run", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
