@@ -29,6 +29,9 @@ export interface RemoteWorkerExecutionProviderOptions {
   branch: string;
   pollIntervalMs?: number;
   createIdempotencyKey?: (request: WorkerExecutionRequest) => string;
+  maxExecutionMs?: number;
+  cancellationTimeoutMs?: number;
+  now?: () => number;
 }
 const TERMINAL = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
 const WORKSPACE_TOKEN = "__AXIOM_WORKSPACE_ROOT__";
@@ -60,6 +63,11 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
   }
   const pollIntervalMs = Number.isInteger(options.pollIntervalMs) && options.pollIntervalMs! >= 100
     ? Math.min(options.pollIntervalMs!, 10_000) : 1000;
+  const maxExecutionMs = Number.isFinite(options.maxExecutionMs) && (options.maxExecutionMs ?? 0) >= 1000
+    ? Math.min(options.maxExecutionMs!, 24 * 60 * 60 * 1000) : 60 * 60 * 1000;
+  const cancellationTimeoutMs = Number.isFinite(options.cancellationTimeoutMs) && (options.cancellationTimeoutMs ?? 0) >= 100
+    ? Math.min(options.cancellationTimeoutMs!, 5 * 60 * 1000) : 30_000;
+  const now = options.now ?? Date.now;
   return {
     id: "remote",
     capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
@@ -81,6 +89,9 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
       }
       const seenLogs = new Set<string>();
       let cancelRequested = false;
+      let cancellationRequestedAt: number | null = null;
+      let timedOut = false;
+      const startedAt = now();
       let current = job;
       while (!TERMINAL.has(current.status)) {
         for (const entry of current.logs || []) {
@@ -88,9 +99,19 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
           seenLogs.add(entry.id);
           try { request.onLog?.(request.task.id, entry.message); } catch { /* log observers are isolated */ }
         }
-        if (request.signal?.aborted && !cancelRequested) {
+        if (!cancelRequested && (request.signal?.aborted || now() - startedAt >= maxExecutionMs)) {
           cancelRequested = true;
-          try { await options.transport.cancel(job.id); } catch { /* Keep polling; an unconfirmed cancellation must remain quarantined. */ }
+          timedOut = !request.signal?.aborted;
+          cancellationRequestedAt = now();
+          try { void options.transport.cancel(job.id).catch(() => undefined); } catch { /* Keep polling; an unconfirmed cancellation must remain quarantined. */ }
+        }
+        if (cancelRequested && cancellationRequestedAt !== null && now() - cancellationRequestedAt >= cancellationTimeoutMs) {
+          throw Object.assign(new Error("Remote worker cancellation could not be confirmed before the quarantine deadline."), {
+            name: "RemoteWorkerCancellationUnconfirmedError",
+            workerAbortUnconfirmed: true,
+            sessionId: "remote:" + job.id,
+            worktreePath: current.workspacePath || job.workspacePath || undefined,
+          });
         }
         await delay(pollIntervalMs);
         try { current = await options.transport.get(job.id); } catch (error) {
@@ -102,6 +123,12 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
         if (typeof entry.id !== "string" || seenLogs.has(entry.id)) continue;
         seenLogs.add(entry.id);
         try { request.onLog?.(request.task.id, entry.message); } catch { /* log observers are isolated */ }
+      }
+      if (timedOut && current.status === "cancelled") {
+        throw Object.assign(new Error("Remote worker timed out after " + maxExecutionMs + "ms; cancellation was confirmed."), {
+          name: "RemoteWorkerTimeoutError", sessionId: "remote:" + job.id,
+          worktreePath: current.workspacePath || job.workspacePath || undefined,
+        });
       }
       if (current.status === "cancelled" || current.status === "interrupted") {
         throw Object.assign(new Error(current.error || "Remote worker did not complete."), {

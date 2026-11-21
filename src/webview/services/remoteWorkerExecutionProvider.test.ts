@@ -62,6 +62,28 @@ describe("remote worker execution provider", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(host.cancel).toHaveBeenCalledWith("remote-job-1");
   });
+
+  it("quarantines a remote worker when cancellation cannot be confirmed", async () => {
+    const controller = new AbortController();
+    const host = transport({
+      submit: vi.fn(async () => job({ status: "running", logs: [] })),
+      get: vi.fn(async () => job({ status: "running", logs: [] })),
+    });
+    const pending = createRemoteWorkerExecutionProvider({
+      transport: host,
+      repositoryUrl: "https://github.com/acme/repo.git",
+      branch: "main",
+      pollIntervalMs: 100,
+      cancellationTimeoutMs: 200,
+    }).execute(request(controller.signal));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({
+      name: "RemoteWorkerCancellationUnconfirmedError",
+      workerAbortUnconfirmed: true,
+      sessionId: "remote:remote-job-1",
+    });
+  });
+
   it("rejects interrupted hosts without retrying or claiming success", async () => {
     const host = transport({ get: vi.fn(async () => job({ status: "interrupted", error: "Host restarted." })) });
     await expect(createRemoteWorkerExecutionProvider({ transport: host, repositoryUrl: "https://github.com/acme/repo.git", branch: "main", pollIntervalMs: 100 }).execute(request()))
