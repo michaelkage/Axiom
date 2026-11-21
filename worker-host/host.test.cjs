@@ -31,7 +31,7 @@ test("returns a bounded binary-capable patch for remote worker changes",async t=
   const host=createWorkerHost({
     token,dataDirectory,workspaceDirectory:path.join(dataDirectory,"workspaces"),
     provisionWorkspace:async()=>({workspacePath:workspace}),
-    runWorker:async()=>{await fs.writeFile(path.join(workspace,"feature.js"),"export const feature = true;\\n");return {summary:"added feature",exitCode:0};},
+    runWorker:async()=>{await fs.writeFile(path.join(workspace,"feature.js"),"export const feature = true;\\n");execFileSync("git",["add","feature.js"],{cwd:workspace});execFileSync("git",["commit","-m","worker feature"],{cwd:workspace});return {summary:"added feature",exitCode:0};},
   });
   const address=await host.start({port:0});
   t.after(async()=>{await host.stop();await fs.rm(dataDirectory,{recursive:true,force:true});});
