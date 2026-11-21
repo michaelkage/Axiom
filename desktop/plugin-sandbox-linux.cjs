@@ -45,7 +45,10 @@ function createLinuxBubblewrapAdapter(options = {}) {
     });
     const args = [
       "--die-with-parent", "--new-session", "--unshare-all",
-      "--cap-drop", "ALL", "--ro-bind", "/", "/",
+      "--cap-drop", "ALL",
+      "--rlimit-cpu", String(Math.ceil(Number(limits.timeoutMs || 30000) / 1000) + 1),
+      "--rlimit-nproc", "64", "--rlimit-nofile", "128", "--rlimit-fsize", String(16 * 1024 * 1024),
+      "--ro-bind", "/", "/",
       "--tmpfs", "/home", "--tmpfs", "/root", "--tmpfs", "/run",
       "--tmpfs", "/tmp",
       "--dir", PLUGIN_MOUNT,
@@ -125,6 +128,7 @@ function createLinuxBubblewrapAdapter(options = {}) {
           stderr: stderr.toString("utf8")
         });
       });
+      child.stdin?.on("error", () => {});
       child.stdin?.end(typeof request.stdin === "string" ? request.stdin : "");
     });
   }
