@@ -28,7 +28,7 @@ async function applyRemoteWorkerPatch(options = {}) {
   const patch = options.patch;
   if (!workspaceRoot || !userDataPath) throw new TypeError("Local project root and user data directory are required.");
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(taskId)) throw new TypeError("Remote task ID is invalid.");
-  if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new TypeError("Remote job ID is invalid.");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) throw new TypeError("Remote job ID is invalid.");
   if (typeof patch !== "string" || !patch.length || Buffer.byteLength(patch, "utf8") > MAX_PATCH_BYTES || !/^diff --git /m.test(patch)) {
     throw new TypeError("Remote worker patch must contain Git file-change headers and be no larger than 8 MiB.");
   }
@@ -47,6 +47,7 @@ async function applyRemoteWorkerPatch(options = {}) {
   let imported = {};
   try { imported = JSON.parse(await fs.readFile(importMapPath, "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw new Error("Remote import history could not be read safely."); }
+  if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Remote import history has an invalid format.");
   const existingWorktree = imported[jobId];
   if (typeof existingWorktree === "string") {
     try { if ((await fs.stat(existingWorktree)).isDirectory()) return { worktreePath: existingWorktree, alreadyImported: true }; }
@@ -67,7 +68,7 @@ async function applyRemoteWorkerPatch(options = {}) {
       cwd: worktreePath, timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
     });
     imported[jobId] = worktreePath;
-    const temporaryMap = importMapPath + "." + process.pid + ".tmp";
+    const temporaryMap = importMapPath + "." + process.pid + "." + crypto.randomUUID() + ".tmp";
     await fs.writeFile(temporaryMap, JSON.stringify(imported), { encoding: "utf8", mode: 0o600 });
     await fs.rename(temporaryMap, importMapPath);
     return { worktreePath, alreadyImported: false };

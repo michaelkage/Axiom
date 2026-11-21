@@ -45,6 +45,7 @@ test("refuses patches from a repository that does not match the open project",as
 test("rejects malformed, oversized and path-traversal patches without changing the project",async t=>{
   const f=await fixture();t.after(()=>fs.rm(f.root,{recursive:true,force:true}));
   await assert.rejects(applyRemoteWorkerPatch({workspaceRoot:f.project,userDataPath:f.data,taskId:"task-3",jobId:"33333333-3333-4333-8333-333333333333",repositoryUrl:"https://github.com/acme/project.git",patch:"not a diff"}),/Git file-change headers/i);
+  await assert.rejects(applyRemoteWorkerPatch({workspaceRoot:f.project,userDataPath:f.data,taskId:"task-3",jobId:"not-a-uuid",repositoryUrl:"https://github.com/acme/project.git",patch}),/Remote job ID is invalid/i);
   const traversal="diff --git a/../../outside.txt b/../../outside.txt\n--- a/../../outside.txt\n+++ b/../../outside.txt\n@@ -0,0 +1 @@\n+escape\n";
   await assert.rejects(applyRemoteWorkerPatch({workspaceRoot:f.project,userDataPath:f.data,taskId:"task-4",jobId:"44444444-4444-4444-8444-444444444444",repositoryUrl:"https://github.com/acme/project.git",patch:traversal}));
   await assert.rejects(fs.access(path.join(f.root,"outside.txt")));
