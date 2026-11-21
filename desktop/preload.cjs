@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     setEnabled: request => ipcRenderer.invoke("axiom:mcp-enable", request),
     remove: id => ipcRenderer.invoke("axiom:mcp-remove", id)
   }),
+  telemetry: Object.freeze({ snapshot: () => ipcRenderer.invoke("axiom:telemetry-snapshot") }),
   omniRoute: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:omniroute-status"),
     check: settings => ipcRenderer.invoke("axiom:omniroute-check", settings),
