@@ -84,6 +84,12 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     save: request => ipcRenderer.invoke("axiom:provider-credential-save", request),
     remove: providerId => ipcRenderer.invoke("axiom:provider-credential-remove", providerId)
   }),
+  artifacts: Object.freeze({
+    list: taskId => ipcRenderer.invoke("axiom:artifact-list", taskId),
+    put: request => ipcRenderer.invoke("axiom:artifact-put", request),
+    read: artifactId => ipcRenderer.invoke("axiom:artifact-read", artifactId),
+    remove: artifactId => ipcRenderer.invoke("axiom:artifact-remove", artifactId)
+  }),
   executionLedger: Object.freeze({
     list: () => ipcRenderer.invoke("axiom:execution-ledger-list"),
     get: objectiveId => ipcRenderer.invoke("axiom:execution-ledger-get", objectiveId),
