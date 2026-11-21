@@ -33,8 +33,10 @@ function createLinuxBubblewrapAdapter(options = {}) {
     const args = [
       "--die-with-parent", "--new-session", "--unshare-all",
       "--cap-drop", "ALL", "--ro-bind", "/", "/",
+      "--tmpfs", "/home", "--tmpfs", "/root", "--tmpfs", "/var",
+      "--tmpfs", "/run", "--tmpfs", "/tmp", "--tmpfs", "/mnt", "--tmpfs", "/media",
       "--ro-bind", pluginDir, pluginDir,
-      "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+      "--proc", "/proc", "--dev", "/dev",
       "--chdir", cwd,
       "--clearenv", "--setenv", "PATH", DEFAULT_PATH,
       "--setenv", "HOME", "/tmp",
