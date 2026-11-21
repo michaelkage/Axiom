@@ -6,7 +6,7 @@ interface RemoteWorkerJob {
   summary?: string | null; error?: string | null; patchAvailable?: boolean;
   patchError?: string | null; logs: Array<{ id: string; message: string }>;
 }
-interface ImportedRemoteJob { taskId: string; title: string; worktreePath: string }
+interface ImportedRemoteJob { jobId: string; taskId: string; title: string; worktreePath: string }
 interface RemoteWorkerSettings {
   hostUrl: string; repositoryUrl: string; branch: string;
   enabled: boolean; tokenConfigured: boolean;
@@ -109,7 +109,7 @@ export function RemoteWorkerHostPanel(props: { workspaceRoot?: string }) {
   const importJobPatch = async (job: RemoteWorkerJob) => {
     const api = bridge();
     if (!api || !props.workspaceRoot || jobBusy()) return;
-    if (imported().some(item => item.taskId === job.taskId)) {
+    if (imported().some(item => item.jobId === job.id)) {
       setNotice("This remote job already has a local review worktree.");
       return;
     }
@@ -117,7 +117,7 @@ export function RemoteWorkerHostPanel(props: { workspaceRoot?: string }) {
     try {
       const patch = await api.getPatch(job.id);
       const local = await api.applyPatch({ jobId: job.id, taskId: job.taskId, title: job.title, patch: patch.patch });
-      setImported(items => [...items, { taskId: job.taskId, title: job.title, worktreePath: local.worktreePath }]);
+      setImported(items => [...items, { jobId: job.id, taskId: job.taskId, title: job.title, worktreePath: local.worktreePath }]);
       setNotice("Remote changes imported into an isolated local review worktree. Review the diff and quality gate before integrating.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not import remote patch."); }
     finally { setJobBusy(null); }
