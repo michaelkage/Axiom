@@ -27,10 +27,13 @@ test("uses bearer auth for job lifecycle and patch retrieval without exposing th
   await client.get("job-1");
   await client.getPatch("job-1");
   await client.cancel("job-1");
-  assert.equal(calls.length,6);
+  await client.retry("job-1", { idempotencyKey: "retry-key-1", prompt: "Retry safely" });
+  assert.equal(calls.length,7);
   assert.equal(calls[0].url,"https://worker.example.com/v1/health");
   assert.equal(calls[1].url,"https://worker.example.com/v1/jobs");
   assert.ok(calls.every(call=>call.options.headers.authorization==="Bearer "+valid.token));
   assert.equal(calls[3].url,"https://worker.example.com/v1/jobs/job-1/patch");
+  assert.equal(calls[6].url,"https://worker.example.com/v1/jobs/job-1/retry");
+  assert.deepEqual(JSON.parse(calls[6].options.body), { idempotencyKey: "retry-key-1", prompt: "Retry safely" });
   assert.ok(!JSON.stringify(calls.map(call=>call.options.body)).includes(valid.token));
 });
