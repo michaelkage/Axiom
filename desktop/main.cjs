@@ -1109,6 +1109,10 @@ ipcMain.handle("axiom:remote-worker-patch", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return createRemoteWorkerHostClientForApp().getPatch(id);
 });
+ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().retry(request?.id, { idempotencyKey: request?.idempotencyKey, prompt: request?.prompt });
+});
 ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   await createRemoteWorkerHostClientForApp().cancel(id);

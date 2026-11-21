@@ -63,6 +63,7 @@ function createRemoteWorkerHostClient(options = {}) {
     get: id => request("GET", "/jobs/" + encodeURIComponent(id)),
     getPatch: id => request("GET", "/jobs/" + encodeURIComponent(id) + "/patch"),
     cancel: id => request("POST", "/jobs/" + encodeURIComponent(id) + "/cancel", {}),
+    retry: (id, input) => request("POST", "/jobs/" + encodeURIComponent(id) + "/retry", input),
   });
 }
 module.exports = { validateRemoteWorkerConfig, createRemoteWorkerHostClient };

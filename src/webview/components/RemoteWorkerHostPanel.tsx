@@ -17,6 +17,7 @@ interface RemoteWorkerBridge {
   list(): Promise<{ jobs: RemoteWorkerJob[] }>;
   getPatch(id: string): Promise<{ patch: string; bytes: number }>;
   cancel(id: string): Promise<unknown>;
+  retry(request: { id: string; idempotencyKey: string; prompt: string }): Promise<RemoteWorkerJob>;
   applyPatch(request: { jobId: string; taskId: string; title: string; patch: string }): Promise<{ worktreePath: string }>;
   save(request: { hostUrl: string; repositoryUrl: string; branch: string; token: string; enabled: boolean }): Promise<RemoteWorkerSettings>;
 }
@@ -106,6 +107,21 @@ export function RemoteWorkerHostPanel(props: { workspaceRoot?: string }) {
     finally { setJobBusy(null); }
   };
 
+  const retryJob = async (job: RemoteWorkerJob) => {
+    const api = bridge();
+    if (!api || jobBusy()) return;
+    const prompt = window.prompt("This job was interrupted and its prompt is not retained on the Worker Host. Review the original task and enter the instruction to retry it in a fresh isolated workspace:");
+    if (!prompt?.trim()) return;
+    setJobBusy(job.id); setNotice("");
+    try {
+      const idempotencyKey = "retry-" + job.id + "-" + crypto.randomUUID();
+      const retried = await api.retry({ id: job.id, idempotencyKey, prompt: prompt.trim() });
+      setNotice("Retry submitted as a new isolated job " + retried.id + ". The interrupted workspace was preserved.");
+      await refreshJobs();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not retry remote job."); }
+    finally { setJobBusy(null); }
+  };
+
   const importJobPatch = async (job: RemoteWorkerJob) => {
     const api = bridge();
     if (!api || !props.workspaceRoot || jobBusy()) return;
@@ -163,6 +179,9 @@ export function RemoteWorkerHostPanel(props: { workspaceRoot?: string }) {
             <div class="axiom-remote-worker__job-actions">
               <Show when={["queued", "provisioning", "running"].includes(job.status)}>
                 <button type="button" disabled={jobBusy() === job.id} onClick={() => void cancelJob(job)}>Cancel job</button>
+              </Show>
+              <Show when={["interrupted", "failed", "cancelled"].includes(job.status)}>
+                <button type="button" disabled={jobBusy() === job.id} onClick={() => void retryJob(job)}>Retry in fresh workspace</button>
               </Show>
               <Show when={job.status === "succeeded" && job.patchAvailable}>
                 <button type="button" disabled={jobBusy() === job.id || !props.workspaceRoot} onClick={() => void importJobPatch(job)}>{jobBusy() === job.id ? "Importing…" : "Import patch for review"}</button>

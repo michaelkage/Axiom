@@ -92,3 +92,20 @@ test("lists durable remote jobs without returning stored prompts",async t=>{
   assert.equal("prompt" in listed,false);
   assert.ok(listed.logs.length<=5);
 });
+
+test("failed jobs can be retried with an explicit prompt in a fresh isolated job",async t=>{
+  const f=await fixture({runWorker:async()=>{throw Error("worker crashed");}});
+  t.after(()=>f.host.stop());
+  const original=await f.request("/v1/jobs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload())});
+  const job=await original.json();
+  for(let i=0;i<50&&f.host.getJob(job.id)?.status!=="failed";i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(f.host.getJob(job.id).status,"failed");
+  const retry=await f.request("/v1/jobs/"+job.id+"/retry",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idempotencyKey:"retry-"+job.id,prompt:"Retry the implementation safely"})});
+  assert.equal(retry.status,202);
+  const retried=await retry.json();
+  assert.notEqual(retried.id,job.id);
+  assert.equal(retried.taskId,job.taskId);
+  assert.equal(retried.status,"queued");
+  const duplicate=await f.request("/v1/jobs/"+job.id+"/retry",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idempotencyKey:"retry-"+job.id,prompt:"Retry the implementation safely"})});
+  assert.equal((await duplicate.json()).id,retried.id);
+});
