@@ -17,6 +17,7 @@ import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
 import { loadRelevantWorkerProjectMemories, runSubAgentTasks as orchestrateSubAgentTasks } from "../services/workerTaskOrchestrator";
 import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
 import { createOpenCodeWorkerExecutionProvider } from "../services/opencodeWorkerExecutionProvider";
+import { createRemoteWorkerExecutionProvider } from "../services/remoteWorkerExecutionProvider";
 import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 
@@ -159,6 +160,40 @@ function createOpenCode() {
     if (!c) throw new Error("Not connected to the OpenCode runtime.");
     const directory = workspaceRoot();
 
+    const desktop = (window as Window & { axiomDesktop?: { remoteWorker?: {
+      config: () => Promise<{ enabled: boolean; configured?: boolean; hostUrl?: string; repositoryUrl?: string; branch?: string }>;
+      submit: (request: Record<string, unknown>) => Promise<any>;
+      get: (id: string) => Promise<any>;
+      getPatch: (id: string) => Promise<{ patch: string; bytes: number }>;
+      cancel: (id: string) => Promise<unknown>;
+      applyPatch: (request: Record<string, unknown>) => Promise<{ worktreePath: string }>;
+    } } }).axiomDesktop;
+    let remoteConfig: { enabled: boolean; repositoryUrl?: string; branch?: string } | null = null;
+    try { remoteConfig = await desktop?.remoteWorker?.config() ?? null; } catch { remoteConfig = null; }
+    const remoteEnabled = Boolean(remoteConfig?.enabled && remoteConfig.repositoryUrl && remoteConfig.branch && desktop?.remoteWorker);
+    const workerProvider = remoteEnabled
+      ? createRemoteWorkerExecutionProvider({
+          repositoryUrl: remoteConfig!.repositoryUrl!,
+          branch: remoteConfig!.branch!,
+          transport: {
+            submit: input => desktop!.remoteWorker!.submit(input),
+            get: id => desktop!.remoteWorker!.get(id),
+            getPatch: id => desktop!.remoteWorker!.getPatch(id),
+            cancel: async id => { await desktop!.remoteWorker!.cancel(id); },
+          },
+          applyPatch: input => desktop!.remoteWorker!.applyPatch(input),
+        })
+      : createOpenCodeWorkerExecutionProvider({
+          createWorktree: createAgentWorktree,
+          createSession: input => c.session.create(input),
+          promptSession: input => c.session.prompt(input),
+          abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
+          getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
+            data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
+          }>,
+          subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
+        });
+
     return orchestrateSubAgentTasks({
       parentSessionId,
       tasks,
@@ -194,16 +229,7 @@ function createOpenCode() {
         const agentResponse = await c.app.agents();
         return (agentResponse.data ?? []).map(agent => agent.name);
       },
-      workerProvider: createOpenCodeWorkerExecutionProvider({
-        createWorktree: createAgentWorktree,
-        createSession: input => c.session.create(input),
-        promptSession: input => c.session.prompt(input),
-        abortSession: sessionId => c.session.abort({ sessionID: sessionId }),
-        getMessages: sessionId => c.session.messages({ sessionID: sessionId }) as unknown as Promise<{
-          data?: Array<{ info?: { role?: string }; parts?: Array<{ type?: string; text?: string }> }>;
-        }>,
-        subscribe: (onEvent, worktreePath) => subscribeToEvents(onEvent as (event: Event) => void, undefined, worktreePath),
-      }),
+      workerProvider,
     });
   }
 

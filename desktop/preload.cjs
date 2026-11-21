@@ -50,6 +50,15 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     cancel: id => ipcRenderer.invoke("axiom:remote-workspace-cancel", id),
     cleanup: id => ipcRenderer.invoke("axiom:remote-workspace-cleanup", id)
   }),
+  remoteWorker: Object.freeze({
+    config: () => ipcRenderer.invoke("axiom:remote-worker-config"),
+    save: request => ipcRenderer.invoke("axiom:remote-worker-config-save", request),
+    submit: request => ipcRenderer.invoke("axiom:remote-worker-submit", request),
+    get: id => ipcRenderer.invoke("axiom:remote-worker-get", id),
+    getPatch: id => ipcRenderer.invoke("axiom:remote-worker-patch", id),
+    cancel: id => ipcRenderer.invoke("axiom:remote-worker-cancel", id),
+    applyPatch: request => ipcRenderer.invoke("axiom:remote-worker-apply-patch", request)
+  }),
   browser: Object.freeze({
     open: url => ipcRenderer.invoke("axiom:browser-open", url),
     navigate: (sessionId, url) => ipcRenderer.invoke("axiom:browser-navigate", { sessionId, url }),

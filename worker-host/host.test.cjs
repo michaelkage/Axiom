@@ -15,3 +15,64 @@ test("redacts common API tokens from retained worker logs",async t=>{const f=awa
 
 test("resolves the remote workspace token before invoking OpenCode",async t=>{let observed;const f=await fixture({runWorker:async(j,workspace)=>{observed={prompt:j.prompt,workspace};return {summary:"done",exitCode:0};}});t.after(()=>f.host.stop());const r=await f.request("/v1/jobs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload({prompt:"Work in __AXIOM_WORKSPACE_ROOT__"}))});const j=await r.json();for(let i=0;i<50&&f.host.getJob(j.id).status!=="succeeded";i++)await new Promise(r=>setTimeout(r,10));assert.equal(observed.prompt,"Work in "+observed.workspace);});
 test("bounds concurrent remote worker processes",async t=>{let active=0,maxActive=0;const f=await fixture({maxConcurrent:1,runWorker:async()=>{active++;maxActive=Math.max(maxActive,active);await new Promise(r=>setTimeout(r,30));active--;return {summary:"done",exitCode:0};}});t.after(()=>f.host.stop());const submit=extra=>f.request("/v1/jobs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload(extra))});const a=await submit();const b=await submit({idempotencyKey:"request-unique-2",taskId:"task-2"});const ja=await a.json(),jb=await b.json();for(let i=0;i<100&&(!["succeeded","failed"].includes(f.host.getJob(ja.id).status)||!["succeeded","failed"].includes(f.host.getJob(jb.id).status));i++)await new Promise(r=>setTimeout(r,10));assert.equal(f.host.getJob(ja.id).status,"succeeded");assert.equal(f.host.getJob(jb.id).status,"succeeded");assert.equal(maxActive,1);});
+
+
+test("returns a bounded binary-capable patch for remote worker changes",async t=>{
+  const dataDirectory=await fs.mkdtemp(path.join(os.tmpdir(),"axiom-worker-patch-"));
+  const workspace=path.join(dataDirectory,"workspace");
+  await fs.mkdir(workspace,{recursive:true});
+  const exec=async(args)=>require("node:child_process").execFileSync("git",args,{cwd:workspace,encoding:"utf8",stdio:["ignore","pipe","pipe"]});
+  exec(["init"]);
+  exec(["config","user.email","axiom@example.invalid"]);
+  exec(["config","user.name","Axiom Test"]);
+  await fs.writeFile(path.join(workspace,"README.md"),"base\\n");
+  exec(["add","README.md"]);exec(["commit","-m","base"]);
+  const token="test-token-with-at-least-thirty-two-characters";
+  const host=createWorkerHost({
+    token,dataDirectory,workspaceDirectory:path.join(dataDirectory,"workspaces"),
+    provisionWorkspace:async()=>({workspacePath:workspace}),
+    runWorker:async()=>{await fs.writeFile(path.join(workspace,"feature.js"),"export const feature = true;\\n");return {summary:"added feature",exitCode:0};},
+  });
+  const address=await host.start({port:0});
+  t.after(async()=>{await host.stop();await fs.rm(dataDirectory,{recursive:true,force:true});});
+  const base="http://127.0.0.1:"+address.port;
+  const headers={authorization:"Bearer "+token,"content-type":"application/json"};
+  const submitted=await fetch(base+"/v1/jobs",{method:"POST",headers,body:JSON.stringify(payload())});
+  const job=await submitted.json();
+  for(let i=0;i<100&&!host.getJob(job.id)?.patchAvailable&&!host.getJob(job.id)?.patchError;i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(host.getJob(job.id).status,"succeeded");
+  assert.equal(host.getJob(job.id).patchAvailable,true);
+  const response=await fetch(base+"/v1/jobs/"+job.id+"/patch",{headers});
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.match(result.patch,/feature\.js/);
+  assert.match(result.patch,/export const feature = true/);
+  assert.ok(result.bytes>0&&result.bytes<=8*1024*1024);
+});
+
+test("blocks remote patch transfer when secret-like files are changed",async t=>{
+  const dataDirectory=await fs.mkdtemp(path.join(os.tmpdir(),"axiom-worker-secret-patch-"));
+  const workspace=path.join(dataDirectory,"workspace");
+  await fs.mkdir(workspace,{recursive:true});
+  const exec=async(args)=>require("node:child_process").execFileSync("git",args,{cwd:workspace,encoding:"utf8",stdio:["ignore","pipe","pipe"]});
+  exec(["init"]);exec(["config","user.email","axiom@example.invalid"]);exec(["config","user.name","Axiom Test"]);
+  await fs.writeFile(path.join(workspace,"README.md"),"base\\n");exec(["add","README.md"]);exec(["commit","-m","base"]);
+  const token="test-token-with-at-least-thirty-two-characters";
+  const host=createWorkerHost({
+    token,dataDirectory,workspaceDirectory:path.join(dataDirectory,"workspaces"),
+    provisionWorkspace:async()=>({workspacePath:workspace}),
+    runWorker:async()=>{await fs.writeFile(path.join(workspace,".env"),"API_KEY=do-not-transfer\\n");return {summary:"created environment file",exitCode:0};},
+  });
+  const address=await host.start({port:0});
+  t.after(async()=>{await host.stop();await fs.rm(dataDirectory,{recursive:true,force:true});});
+  const base="http://127.0.0.1:"+address.port;
+  const headers={authorization:"Bearer "+token,"content-type":"application/json"};
+  const submitted=await fetch(base+"/v1/jobs",{method:"POST",headers,body:JSON.stringify(payload())});
+  const job=await submitted.json();
+  for(let i=0;i<100&&!host.getJob(job.id)?.patchError;i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(host.getJob(job.id).status,"succeeded");
+  assert.equal(host.getJob(job.id).patchAvailable,false);
+  assert.match(host.getJob(job.id).patchError,/secret-like files/i);
+  const response=await fetch(base+"/v1/jobs/"+job.id+"/patch",{headers});
+  assert.equal(response.status,409);
+});

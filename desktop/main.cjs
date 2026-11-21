@@ -8,6 +8,7 @@ const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
+const { validateRemoteWorkerConfig, createRemoteWorkerHostClient } = require("./remote-worker-host-client.cjs");
 const { validateBrowserNavigation } = require("./browser-url.cjs");
 const { normalizeBrowserAction, buildBrowserActionScript } = require("./browser-actions.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
@@ -34,6 +35,24 @@ function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
 }
+
+function readRemoteWorkerSettings() {
+  const store = currentSecureCredentialStore();
+  return {
+    hostUrl: store.get("worker-host", "host-url"),
+    repositoryUrl: store.get("worker-host", "repository-url"),
+    branch: store.get("worker-host", "branch"),
+    enabled: store.get("worker-host", "enabled") === "true",
+    tokenConfigured: Boolean(store.get("worker-host", "token")),
+  };
+}
+function createRemoteWorkerHostClientForApp() {
+  return createRemoteWorkerHostClient({
+    getConfig: async () => ({ hostUrl: currentSecureCredentialStore().get("worker-host", "host-url") }),
+    getToken: async () => currentSecureCredentialStore().get("worker-host", "token"),
+  });
+}
+
 let activeRuntimeUrl = null;
 let mainWindow;
 let isQuitting = false;
@@ -1048,6 +1067,76 @@ ipcMain.handle("axiom:browser-close", (event, request) => {
   entry.window.close();
   browserSessions.delete(request.sessionId);
   return { closed: true };
+});
+
+
+ipcMain.handle("axiom:remote-worker-config", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return readRemoteWorkerSettings();
+});
+ipcMain.handle("axiom:remote-worker-config-save", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const savedToken = currentSecureCredentialStore().get("worker-host", "token");
+  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request?.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  const store = currentSecureCredentialStore();
+  store.set("worker-host", "host-url", validated.hostUrl);
+  store.set("worker-host", "repository-url", validated.repositoryUrl);
+  store.set("worker-host", "branch", validated.branch);
+  store.set("worker-host", "token", validated.token);
+  store.set("worker-host", "enabled", request.enabled === true ? "true" : "false");
+  return readRemoteWorkerSettings();
+});
+ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().submit(request);
+});
+ipcMain.handle("axiom:remote-worker-get", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().get(id);
+});
+ipcMain.handle("axiom:remote-worker-patch", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().getPatch(id);
+});
+ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await createRemoteWorkerHostClientForApp().cancel(id);
+  return { requested: true };
+});
+ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a local project before importing remote worker changes.");
+  if (!request || typeof request.patch !== "string" || !request.patch.length || Buffer.byteLength(request.patch, "utf8") > 8 * 1024 * 1024) {
+    throw new TypeError("Remote worker patch must contain 1 byte to 8 MiB of diff data.");
+  }
+  if (!/^diff --git /m.test(request.patch)) throw new Error("Remote worker returned a patch without Git file-change headers.");
+  const taskId = String(request.taskId || "").trim();
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(taskId)) throw new TypeError("Remote task ID is invalid.");
+  const worktreePath = await createDetachedWorktree({
+    workspaceRoot: selectedWorkspace,
+    userDataPath: app.getPath("userData"),
+    taskId: "remote-" + taskId,
+  });
+  const patchDirectory = path.join(app.getPath("userData"), "remote-worker-patches");
+  const patchFile = path.join(patchDirectory, require("node:crypto").randomUUID() + ".patch");
+  try {
+    await fs.promises.mkdir(patchDirectory, { recursive: true, mode: 0o700 });
+    await fs.promises.writeFile(patchFile, request.patch, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await execFileAsync("git", ["apply", "--check", "--binary", patchFile], {
+      cwd: worktreePath, timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
+    });
+    await execFileAsync("git", ["apply", "--binary", patchFile], {
+      cwd: worktreePath, timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
+    });
+    await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + taskId + ".");
+    return { worktreePath };
+  } catch (error) {
+    try { await execFileAsync("git", ["-C", selectedWorkspace, "worktree", "remove", "--force", worktreePath], { timeout: 30000, windowsHide: true }); } catch {}
+    try { await fs.promises.rm(worktreePath, { recursive: true, force: true }); } catch {}
+    throw new Error("Remote patch could not be applied safely to the current local revision: " + redactSecrets(error.message || error).slice(0, 1200));
+  } finally {
+    try { await fs.promises.unlink(patchFile); } catch {}
+  }
 });
 
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {

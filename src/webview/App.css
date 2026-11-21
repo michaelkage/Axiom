@@ -2562,3 +2562,14 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
 .axiom-browser__action-form{display:grid;gap:8px;padding:10px;border:1px solid var(--vscode-panel-border);border-radius:7px}
 .axiom-browser__action-form label{display:grid;gap:4px;font-size:11px;color:var(--vscode-descriptionForeground)}
 .axiom-browser__action-form input,.axiom-browser__action-form select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+
+.axiom-remote-worker{display:grid;gap:10px;padding:14px;border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}
+.axiom-remote-worker__heading,.axiom-remote-worker__actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.axiom-remote-worker__heading>div{display:grid;gap:3px}.axiom-remote-worker__heading small,.axiom-remote-worker>small{color:var(--vscode-descriptionForeground);font-size:11px}
+.axiom-remote-worker__heading>span{font-size:10px;letter-spacing:.08em;border:1px solid var(--vscode-panel-border);border-radius:20px;padding:3px 8px}
+.axiom-remote-worker label:not(.axiom-remote-worker__toggle){display:grid;gap:5px;font-size:12px;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker input:not([type=checkbox]){width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+.axiom-remote-worker__toggle{display:flex;align-items:center;gap:8px;font-size:12px}
+.axiom-remote-worker__saved{color:var(--vscode-testing-iconPassed);font-size:11px}
+.axiom-remote-worker button{padding:7px 11px;border:1px solid var(--vscode-panel-border);border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer}
+.axiom-remote-worker button:disabled{opacity:.5;cursor:not-allowed}.axiom-remote-worker p{margin:0;font-size:12px;color:var(--vscode-descriptionForeground)}

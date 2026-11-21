@@ -13,6 +13,7 @@ const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const DeploymentPanel = lazy(() => import("./components/DeploymentPanel").then(module => ({ default: module.DeploymentPanel })));
 const BrowserInspectorPanel = lazy(() => import("./components/BrowserInspectorPanel").then(module => ({ default: module.BrowserInspectorPanel })));
+const RemoteWorkerHostPanel = lazy(() => import("./components/RemoteWorkerHostPanel").then(module => ({ default: module.RemoteWorkerHostPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
@@ -1764,6 +1765,7 @@ function App() {
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
+        <RemoteWorkerHostPanel />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
         <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async snapshot => {
           const sessionId = sync.currentSessionId();

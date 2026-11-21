@@ -9,6 +9,8 @@ export interface RemoteWorkerHostJob {
   summary?: string | null;
   error?: string | null;
   logs: Array<{ id: string; message: string }>;
+  patchAvailable?: boolean;
+  patchError?: string | null;
 }
 export interface RemoteWorkerHostTransport {
   submit(input: {
@@ -22,6 +24,7 @@ export interface RemoteWorkerHostTransport {
   }): Promise<RemoteWorkerHostJob>;
   get(jobId: string): Promise<RemoteWorkerHostJob>;
   cancel(jobId: string): Promise<void>;
+  getPatch(jobId: string): Promise<{ patch: string; bytes: number }>;
 }
 export interface RemoteWorkerExecutionProviderOptions {
   transport: RemoteWorkerHostTransport;
@@ -32,6 +35,7 @@ export interface RemoteWorkerExecutionProviderOptions {
   maxExecutionMs?: number;
   cancellationTimeoutMs?: number;
   now?: () => number;
+  applyPatch: (input: { jobId: string; taskId: string; title: string; patch: string }) => Promise<{ worktreePath: string }>;
 }
 const TERMINAL = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
 const WORKSPACE_TOKEN = "__AXIOM_WORKSPACE_ROOT__";
@@ -54,7 +58,8 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 /** Executes tasks on an authenticated Worker Host through an injected main-process transport. */
 export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecutionProviderOptions): WorkerExecutionProvider {
   if (!options.transport || typeof options.transport.submit !== "function"
-    || typeof options.transport.get !== "function" || typeof options.transport.cancel !== "function") {
+    || typeof options.transport.get !== "function" || typeof options.transport.cancel !== "function"
+    || typeof options.transport.getPatch !== "function" || typeof options.applyPatch !== "function") {
     throw new TypeError("A complete remote worker host transport is required.");
   }
   if (typeof options.repositoryUrl !== "string" || !options.repositoryUrl.trim()
@@ -110,7 +115,7 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
             name: "RemoteWorkerCancellationUnconfirmedError",
             workerAbortUnconfirmed: true,
             sessionId: "remote:" + job.id,
-            worktreePath: current.workspacePath || job.workspacePath || undefined,
+            remoteWorkspacePath: current.workspacePath || job.workspacePath || undefined,
           });
         }
         await delay(pollIntervalMs);
@@ -127,14 +132,14 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
       if (timedOut && current.status === "cancelled") {
         throw Object.assign(new Error("Remote worker timed out after " + maxExecutionMs + "ms; cancellation was confirmed."), {
           name: "RemoteWorkerTimeoutError", sessionId: "remote:" + job.id,
-          worktreePath: current.workspacePath || job.workspacePath || undefined,
+          remoteWorkspacePath: current.workspacePath || job.workspacePath || undefined,
         });
       }
       if (current.status === "cancelled" || current.status === "interrupted") {
         throw Object.assign(new Error(current.error || "Remote worker did not complete."), {
           name: current.status === "cancelled" ? "AbortError" : "RemoteWorkerInterruptedError",
           sessionId: "remote:" + job.id,
-          worktreePath: current.workspacePath || undefined,
+          remoteWorkspacePath: current.workspacePath || undefined,
         });
       }
       if (current.status !== "succeeded") {
@@ -143,14 +148,22 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
           worktreePath: current.workspacePath || undefined,
         });
       }
-      if (!current.workspacePath) throw new Error("Remote Worker Host completed without returning its workspace path.");
+      if (!current.patchAvailable) throw new Error(current.patchError || "Remote Worker Host completed without a transferable source patch.");
+      const transferred = await options.transport.getPatch(job.id);
+      if (typeof transferred?.patch !== "string" || !transferred.patch.length || transferred.patch.length > 8 * 1024 * 1024) {
+        throw new Error("Remote Worker Host returned an empty or oversized source patch.");
+      }
+      const localWorktree = await options.applyPatch({ jobId: job.id, taskId: request.task.id, title: request.task.title, patch: transferred.patch });
+      if (!localWorktree?.worktreePath || typeof localWorktree.worktreePath !== "string") {
+        throw new Error("Axiom could not materialize the remote changes in a local review worktree.");
+      }
       return {
         sessionId: "remote:" + job.id,
         taskId: request.task.id,
         title: request.task.title,
         ...(request.agent ? { agent: request.agent } : {}),
         summary: current.summary || "Remote execution completed.",
-        worktreePath: current.workspacePath,
+        worktreePath: localWorktree.worktreePath,
         logs: current.logs.map(entry => entry.message).slice(-200),
       };
     },
