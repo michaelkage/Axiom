@@ -35,7 +35,7 @@ function createLinuxBubblewrapAdapter(options = {}) {
       "--cap-drop", "ALL", "--ro-bind", "/", "/",
       "--ro-bind", pluginDir, pluginDir,
       "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-      "--dir", "/run", "--chdir", cwd,
+      "--chdir", cwd,
       "--clearenv", "--setenv", "PATH", DEFAULT_PATH,
       "--setenv", "HOME", "/tmp",
       "--setenv", "NODE_ENV", "production"
