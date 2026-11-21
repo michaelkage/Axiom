@@ -1226,7 +1226,9 @@ ipcMain.handle("axiom:deployment-history", async event => {
   if (!selectedWorkspace) return [];
   return createDeploymentHistoryStore(app.getPath("userData")).list(selectedWorkspace);
 });
-ipcMain.handle("axiom:deployment-preview", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\\nProject: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
+ipcMain.handle("axiom:deployment-preview", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  ({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + "\\nProject: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
   if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
@@ -1340,7 +1342,9 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
   }));
 });
 
-ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\\nCommit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
+ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  ({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + "\\nCommit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
@@ -1375,7 +1379,9 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   });
 });
 
-ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
+ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  ({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const job = request && remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
@@ -1411,7 +1417,188 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
   });
 });
 
-ipcMain.handle("axiom:terminal-run", async (event, request) => {\n  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
+ipcMain.handle("axiom:terminal-run", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  ({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!terminalRunner) throw new Error("The project terminal is not ready.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
+    throw new Error("A terminal request needs a request ID and command.");
+  }
+  const startedAt = Date.now();
+  const output = [];
+  let outputBytes = 0;
+  const maxCaptureBytes = 1024 * 1024;
+  const capture = chunk => {
+    const remaining = maxCaptureBytes - outputBytes;
+    if (remaining <= 0) return;
+    const text = redactSecrets(chunk.text).slice(0, remaining);
+    if (!text) return;
+    output.push("[" + chunk.stream + "] " + text);
+    outputBytes += Buffer.byteLength(text, "utf8");
+  };
+  let result;
+  let failure;
+  try {
+    result = await terminalRunner.run({
+      requestId: request.requestId,
+      command: request.command,
+      cwd: request.cwd,
+      onOutput: chunk => {
+        capture(chunk);
+        if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+          requestId: request.requestId,
+          stream: chunk.stream,
+          text: chunk.text
+        });
+      }
+    });
+    return result;
+  } catch (error) {
+    failure = redactSecrets(error?.message || error);
+    throw error;
+  } finally {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: typeof request.taskId === "string" ? request.taskId : null,
+        kind: "log",
+        name: "Terminal execution " + request.requestId,
+        data: (output.join("\({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!terminalRunner) throw new Error("The project terminal is not ready.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
+    throw new Error("A terminal request needs a request ID and command.");
+  }
+  const startedAt = Date.now();
+  const output = [];
+  let outputBytes = 0;
+  const maxCaptureBytes = 1024 * 1024;
+  const capture = chunk => {
+    const remaining = maxCaptureBytes - outputBytes;
+    if (remaining <= 0) return;
+    const text = redactSecrets(chunk.text).slice(0, remaining);
+    if (!text) return;
+    output.push("[" + chunk.stream + "] " + text);
+    outputBytes += Buffer.byteLength(text, "utf8");
+  };
+  let result;
+  let failure;
+  try {
+    result = await terminalRunner.run({
+      requestId: request.requestId,
+      command: request.command,
+      cwd: request.cwd,
+      onOutput: chunk => {
+        capture(chunk);
+        if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+          requestId: request.requestId,
+          stream: chunk.stream,
+          text: chunk.text
+        });
+      }
+    });
+    return result;
+  } catch (error) {
+    failure = redactSecrets(error?.message || error);
+    throw error;
+  } finally {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: typeof request.taskId === "string" ? request.taskId : null,
+        kind: "log",
+        name: "Terminal execution " + request.requestId,
+        data: (output.join("\({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
+    try {
+      const result = await pushReconciledWorkspace(job, {
+        signal,
+        verify: async (directory, operationSignal) => {
+          await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
+          return true;
+        }
+      });
+      return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
+    } finally { await persistRemoteWorkspaceJobs(); }
+  });
+});
+
+ipcMain.handle("axiom:remote-workspace-cancel", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (typeof id !== "string" || !remoteWorkspaceJobs.has(id)) throw new Error("Remote workspace job not found in this session.");
+  return cancelRemoteWorkspaceOperation(id);
+});
+
+ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const job = remoteWorkspaceJobs.get(id);
+  if (!job) throw new Error("Remote workspace job not found in this session.");
+  return runRemoteWorkspaceOperation(job, "cleanup", async () => {
+    const result = await cleanupRemoteWorkspace(job, { onState: persistRemoteWorkspaceJobs });
+    remoteWorkspaceJobs.delete(id);
+    await persistRemoteWorkspaceJobs();
+    return result;
+  });
+});
+
+ipcMain.handle("axiom:terminal-run", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  ({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!terminalRunner) throw new Error("The project terminal is not ready.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
+    throw new Error("A terminal request needs a request ID and command.");
+  }
+  const startedAt = Date.now();
+  const output = [];
+  let outputBytes = 0;
+  const maxCaptureBytes = 1024 * 1024;
+  const capture = chunk => {
+    const remaining = maxCaptureBytes - outputBytes;
+    if (remaining <= 0) return;
+    const text = redactSecrets(chunk.text).slice(0, remaining);
+    if (!text) return;
+    output.push("[" + chunk.stream + "] " + text);
+    outputBytes += Buffer.byteLength(text, "utf8");
+  };
+  let result;
+  let failure;
+  try {
+    result = await terminalRunner.run({
+      requestId: request.requestId,
+      command: request.command,
+      cwd: request.cwd,
+      onOutput: chunk => {
+        capture(chunk);
+        if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+          requestId: request.requestId,
+          stream: chunk.stream,
+          text: chunk.text
+        });
+      }
+    });
+    return result;
+  } catch (error) {
+    failure = redactSecrets(error?.message || error);
+    throw error;
+  } finally {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: typeof request.taskId === "string" ? request.taskId : null,
+        kind: "log",
+        name: "Terminal execution " + request.requestId,
+        data: (output.join("\({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
