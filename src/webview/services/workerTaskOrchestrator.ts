@@ -29,6 +29,11 @@ export interface TaskOrchestratorOptions {
   loadProjectMemories: (request: string) => WorkerContextRecord[];
   loadAvailableAgents: () => Promise<string[]>;
   workerProvider: WorkerExecutionProvider;
+  /** Retries only errors classified as safe for automatic retry. */
+  maxAutomaticRetries?: number;
+  maxTotalAttempts?: number;
+  maxConcurrency?: number;
+  timeoutMs?: number;
 }
 
 /**
@@ -90,7 +95,13 @@ export async function runSubAgentTasks(
       contextEstimatedTokensAfter: packed.estimatedTokens,
       contextSavingsPercent: packed.estimatedSavingsPercent,
     };
-  }, options.onOutcome, { signal: options.signal, timeoutMs: 120_000 });
+  }, options.onOutcome, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs ?? 120_000,
+    maxRetries: options.maxAutomaticRetries ?? 1,
+    maxTotalAttempts: options.maxTotalAttempts ?? options.tasks.length * ((options.maxAutomaticRetries ?? 1) + 1),
+    maxConcurrency: options.maxConcurrency ?? 3,
+  });
 }
 
 /** Build a secret-screened project-memory snapshot for one orchestration request. */
