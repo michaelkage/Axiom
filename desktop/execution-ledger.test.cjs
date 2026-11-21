@@ -59,3 +59,18 @@ test("only terminal objectives can be removed", async () => fixture(async root =
   assert.equal(await ledger.remove("objective-1", 2), true);
   assert.equal(await ledger.get("objective-1"), null);
 }));
+
+test("shares write serialization across store instances and makes event retries idempotent", async () => fixture(async root => {
+  const workspace = path.join(root, "project");
+  const first = createExecutionLedger(root, workspace);
+  const second = createExecutionLedger(root, workspace);
+  await first.create(objective());
+  const next = { ...objective(), revision: 2, updatedAt: 2 };
+  const event = { id: "objective-1:2", type: "task.outcome", sequence: 2, at: 2, payload: {} };
+  next.events.push(event);
+  const initial = await first.commit("objective-1", 1, next, event);
+  const retried = await second.commit("objective-1", 1, next, event);
+  assert.equal(initial.objective.revision, 2);
+  assert.equal(retried.duplicate, true);
+  assert.equal((await first.get("objective-1")).events.length, 2);
+}));
