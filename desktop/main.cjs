@@ -1097,6 +1097,20 @@ ipcMain.handle("axiom:browser-screenshot", async (event, request) => {
   const image = await entry.window.webContents.capturePage();
   const bytes = image.toJPEG(72);
   if (bytes.length > 5 * 1024 * 1024) throw new Error("Screenshot exceeds the 5 MiB transfer limit.");
+  if (selectedWorkspace) {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        kind: "screenshot",
+        name: "Browser screenshot " + request.sessionId,
+        data: bytes,
+        metadata: { producer: "browser", sessionId: request.sessionId, url: entry.window.webContents.getURL(), capturedAt: Date.now(), format: "jpeg" }
+      });
+    } catch (error) {
+      await appendRuntimeLog("Could not persist browser screenshot artifact: " + redactSecrets(error?.message || error).slice(0, 500));
+    }
+  }
   return { dataUrl: "data:image/jpeg;base64," + bytes.toString("base64") };
 });
 ipcMain.handle("axiom:browser-close", (event, request) => {
@@ -1191,6 +1205,18 @@ ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   });
   try { await createDeploymentHistoryStore(app.getPath("userData")).append(selectedWorkspace, result); }
   catch (historyError) { await appendRuntimeLog("Deployment succeeded but history could not be saved: " + redactSecrets(historyError.message || historyError).slice(0, 500)); }
+  try {
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+    await currentExecutionArtifactStore().put({
+      projectId,
+      kind: "deployment",
+      name: result.provider + " preview deployment",
+      data: JSON.stringify(result),
+      metadata: { producer: "deployment", provider: result.provider, status: result.status, previewUrl: result.previewUrl, finishedAt: result.finishedAt }
+    });
+  } catch (artifactError) {
+    await appendRuntimeLog("Could not persist deployment artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 500));
+  }
   await appendRuntimeLog("Created " + result.provider + " preview deployment for " + path.basename(selectedWorkspace) + ".");
   return result;
 });
