@@ -9,6 +9,7 @@ const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
 const { validateBrowserNavigation } = require("./browser-url.cjs");
+const { normalizeBrowserAction, buildBrowserActionScript } = require("./browser-actions.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
@@ -38,6 +39,7 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+const browserSessions = new Map();
 const remoteWorkspaceOperations = new Map();
 const remoteWorkspaceInstanceId = require("node:crypto").randomUUID();
 async function runRemoteWorkspaceOperation(job, kind, operation) {
@@ -416,7 +418,7 @@ async function createWindow() {
   });
   mainWindow.webContents.on("render-process-gone", (_event, details) => { void appendRuntimeLog("Renderer process exited: " + JSON.stringify(details)); });
   mainWindow.once("ready-to-show", () => mainWindow.show());
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => { for (const entry of browserSessions.values()) { try { entry.window.close(); } catch {} } browserSessions.clear(); mainWindow = null; });
   const htmlPath = app.isPackaged
     ? path.join(process.resourcesPath, "out", "src", "webview", "standalone.html")
     : path.join(__dirname, "..", "out", "src", "webview", "standalone.html");
@@ -929,6 +931,103 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
 });
 
 
+
+
+function ownedBrowserSession(event, id) {
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new TypeError("Invalid browser session ID.");
+  const entry = browserSessions.get(id);
+  if (!entry || entry.ownerId !== event.sender.id || entry.window.isDestroyed()) throw new Error("Browser session not found or no longer owned by this window.");
+  return entry;
+}
+function recordBrowserError(entry, value) {
+  const safe = redactSecrets(String(value || "Browser error")).replace(/[\r\n\t]+/g, " ").slice(0, 1200);
+  if (!safe) return;
+  entry.errors.push(safe);
+  if (entry.errors.length > 40) entry.errors.splice(0, entry.errors.length - 40);
+}
+ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const url = validateBrowserNavigation(rawUrl);
+  const sessionId = require("node:crypto").randomUUID();
+  const browserWindow = new BrowserWindow({
+    parent: mainWindow, width: 1280, height: 860, minWidth: 720, minHeight: 520,
+    title: "Axiom Browser", backgroundColor: "#ffffff", show: false,
+    webPreferences: {
+      partition: "axiom-browser-" + sessionId, contextIsolation: true,
+      nodeIntegration: false, sandbox: true, webSecurity: true,
+      allowRunningInsecureContent: false, spellcheck: false,
+    },
+  });
+  browserWindow.removeMenu();
+  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [] };
+  browserSessions.set(sessionId, entry);
+  const pageSession = browserWindow.webContents.session;
+  pageSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  pageSession.on("will-download", (_downloadEvent, item) => item.cancel());
+  browserWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  browserWindow.webContents.on("will-navigate", (navigationEvent, target) => {
+    try { validateBrowserNavigation(target); }
+    catch { navigationEvent.preventDefault(); recordBrowserError(entry, "Blocked navigation to a non-HTTP(S) URL."); }
+  });
+  browserWindow.webContents.on("console-message", (_consoleEvent, detailsOrLevel, message, line, sourceId) => {
+    const details = detailsOrLevel && typeof detailsOrLevel === "object"
+      ? detailsOrLevel
+      : { level: detailsOrLevel, message, lineNumber: line, sourceId };
+    if (details.level === "error" || details.level === 2) recordBrowserError(entry, "Console: " + String(details.message || "").slice(0, 1000));
+  });
+  browserWindow.webContents.on("did-fail-load", (_loadEvent, code, description, failedUrl, isMainFrame) => {
+    if (code !== -3 && isMainFrame) recordBrowserError(entry, "Navigation failed (" + code + "): " + String(description || failedUrl).slice(0, 500));
+  });
+  browserWindow.webContents.on("render-process-gone", (_goneEvent, details) => {
+    recordBrowserError(entry, "Page renderer exited: " + String(details.reason || "unknown"));
+  });
+  browserWindow.on("closed", () => browserSessions.delete(sessionId));
+  try {
+    await browserWindow.loadURL(url);
+    if (!browserWindow.isDestroyed()) browserWindow.show();
+    await appendRuntimeLog("Browser intelligence opened " + new URL(url).origin + ".");
+    return { sessionId, url: browserWindow.webContents.getURL(), title: browserWindow.webContents.getTitle() };
+  } catch (error) {
+    browserSessions.delete(sessionId);
+    if (!browserWindow.isDestroyed()) browserWindow.close();
+    throw new Error("Could not open browser page: " + redactSecrets(error.message || error).slice(0, 1000));
+  }
+});
+ipcMain.handle("axiom:browser-navigate", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const url = validateBrowserNavigation(request.url);
+  await entry.window.loadURL(url);
+  return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
+});
+ipcMain.handle("axiom:browser-inspect", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const page = await entry.window.webContents.executeJavaScript("({url:location.href,title:document.title||'',capturedAt:new Date().toISOString(),viewport:{width:innerWidth,height:innerHeight},description:document.querySelector('meta[name=description]')?.content||'',headings:Array.from(document.querySelectorAll('h1,h2,h3,h4')).slice(0,80).map(n=>({level:Number(n.tagName.slice(1)),text:(n.innerText||n.textContent||'').trim().slice(0,240)})),controls:Array.from(document.querySelectorAll('button,input,textarea,select,[role=button],[role=textbox]')).slice(0,120).map(n=>({tag:n.tagName.toLowerCase(),type:n.getAttribute('type')||n.getAttribute('role')||'',label:(n.getAttribute('aria-label')||n.labels?.[0]?.innerText||n.innerText||n.textContent||'').trim().slice(0,160),placeholder:(n.getAttribute('placeholder')||'').slice(0,160),disabled:Boolean(n.disabled||n.getAttribute('aria-disabled')==='true')})),links:Array.from(document.querySelectorAll('a[href]')).slice(0,100).map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,160),href:n.href.slice(0,1000)})),text:(document.body?.innerText||'').slice(0,16000)})", true);
+  return { ...page, errors: [...entry.errors] };
+});
+ipcMain.handle("axiom:browser-act", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const action = normalizeBrowserAction(request?.action);
+  const result = await entry.window.webContents.executeJavaScript(buildBrowserActionScript(action), true);
+  await appendRuntimeLog("Browser action " + action.type + " executed against an explicitly matched visible control.");
+  return result;
+});
+ipcMain.handle("axiom:browser-screenshot", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const dataUrl = (await entry.window.webContents.capturePage()).toDataURL();
+  if (dataUrl.length > 10 * 1024 * 1024) throw new Error("Screenshot exceeds the 10 MiB transfer limit.");
+  return { dataUrl };
+});
+ipcMain.handle("axiom:browser-close", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  entry.window.close();
+  browserSessions.delete(request.sessionId);
+  return { closed: true };
+});
 
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");

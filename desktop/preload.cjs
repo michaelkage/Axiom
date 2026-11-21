@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     open: url => ipcRenderer.invoke("axiom:browser-open", url),
     navigate: (sessionId, url) => ipcRenderer.invoke("axiom:browser-navigate", { sessionId, url }),
     inspect: sessionId => ipcRenderer.invoke("axiom:browser-inspect", { sessionId }),
+    act: (sessionId, action) => ipcRenderer.invoke("axiom:browser-act", { sessionId, action }),
     screenshot: sessionId => ipcRenderer.invoke("axiom:browser-screenshot", { sessionId }),
     close: sessionId => ipcRenderer.invoke("axiom:browser-close", { sessionId })
   }),
