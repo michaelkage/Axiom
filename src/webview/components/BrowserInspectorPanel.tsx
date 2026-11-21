@@ -30,7 +30,7 @@ function normalizeError(error: unknown): string {
 }
 
 export function BrowserInspectorPanel(props: {
-  onAnalyze: (snapshot: BrowserSnapshot) => Promise<void>;
+  onAnalyze: (snapshot: BrowserSnapshot, screenshotDataUrl?: string) => Promise<void>;
   canAnalyze?: boolean;
 }) {
   const [url, setUrl] = createSignal("http://localhost:3000");
@@ -92,7 +92,7 @@ export function BrowserInspectorPanel(props: {
     const page = snapshot();
     if (!page || analysisBusy()) return;
     setAnalysisBusy(true);
-    try { await props.onAnalyze(page); setNotice("Browser evidence sent to the current Axiom conversation."); }
+    try { await props.onAnalyze(page, screenshot()); setNotice("Browser evidence sent to the current Axiom conversation."); }
     catch (error) { setNotice(normalizeError(error)); }
     finally { setAnalysisBusy(false); }
   };

@@ -1058,9 +1058,10 @@ ipcMain.handle("axiom:browser-act", async (event, request) => {
 ipcMain.handle("axiom:browser-screenshot", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const entry = ownedBrowserSession(event, request?.sessionId);
-  const dataUrl = (await entry.window.webContents.capturePage()).toDataURL();
-  if (dataUrl.length > 10 * 1024 * 1024) throw new Error("Screenshot exceeds the 10 MiB transfer limit.");
-  return { dataUrl };
+  const image = await entry.window.webContents.capturePage();
+  const bytes = image.toJPEG(72);
+  if (bytes.length > 5 * 1024 * 1024) throw new Error("Screenshot exceeds the 5 MiB transfer limit.");
+  return { dataUrl: "data:image/jpeg;base64," + bytes.toString("base64") };
 });
 ipcMain.handle("axiom:browser-close", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");

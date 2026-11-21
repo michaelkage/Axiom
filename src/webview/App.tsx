@@ -1767,10 +1767,11 @@ function App() {
         <McpIntegrationsPanel />
         <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
-        <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async snapshot => {
+        <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {
           const sessionId = sync.currentSessionId();
           if (!sessionId) throw new Error("Open a conversation before sending browser evidence.");
-          await sendPrompt(sessionId, "Analyze this live browser evidence. Identify actionable UI, runtime, accessibility or functional defects. Distinguish observed facts from hypotheses. Do not claim a fix or successful verification unless you actually perform it.\n\n" + JSON.stringify(snapshot, null, 2));
+          const imageParts = screenshot ? [{ type: "file" as const, mime: "image/jpeg", url: screenshot, filename: "axiom-browser.jpg" }] : [];
+          await sendPrompt(sessionId, "Analyze this live browser evidence using the screenshot and structured page data. Identify actionable UI, runtime, accessibility or functional defects. Distinguish observed facts from hypotheses. Do not claim a fix or successful verification unless you actually perform it.\n\n" + JSON.stringify(snapshot, null, 2), undefined, imageParts);
         }} />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
