@@ -22,6 +22,7 @@ const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatus
 const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createProviderCredentialManager } = require("./provider-credentials.cjs");
+const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -827,6 +828,11 @@ function currentExecutionLedger() {
 function currentProviderCredentialManager() {
   return createProviderCredentialManager(currentSecureCredentialStore());
 }
+function currentExecutionArtifactStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  return createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts", projectId) });
+}
 
 ipcMain.handle("axiom:secure-storage-get", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -1419,6 +1425,31 @@ ipcMain.handle("axiom:provider-credential-save", (event, request) => {
 ipcMain.handle("axiom:provider-credential-remove", (event, providerId) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return currentProviderCredentialManager().remove(providerId);
+});
+
+ipcMain.handle("axiom:artifact-list", async (event, taskId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionArtifactStore().list(require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40), taskId);
+});
+ipcMain.handle("axiom:artifact-put", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || typeof request.data !== "string" || request.data.length > 22 * 1024 * 1024) throw new TypeError("Invalid or oversized artifact request.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const data = request.encoding === "base64" ? Buffer.from(request.data, "base64") : request.data;
+  const record = await currentExecutionArtifactStore().put({ ...request, projectId, data });
+  await appendRuntimeLog("Stored " + record.kind + " execution artifact " + record.id + " for project " + projectId + ".");
+  return record;
+});
+ipcMain.handle("axiom:artifact-read", async (event, artifactId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const result = await currentExecutionArtifactStore().read(projectId, artifactId);
+  return { record: result.record, data: result.data.toString("base64"), encoding: "base64" };
+});
+ipcMain.handle("axiom:artifact-remove", async (event, artifactId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  return currentExecutionArtifactStore().remove(projectId, artifactId);
 });
 
 ipcMain.handle("axiom:project-context-save", async (event, context) => {
