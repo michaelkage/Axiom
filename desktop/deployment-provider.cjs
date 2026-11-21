@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
+const { randomBytes } = require("node:crypto");
 const { redactSecrets: redactDiagnostic } = require("./security-redaction.cjs");
 
 const execFileAsync = promisify(execFile);
@@ -51,7 +52,7 @@ function deploymentCommand(provider, input) {
   }
   const projectName = requiredText(input.projectName, "Cloudflare Pages project name", 128);
   if (!/^[a-z0-9][a-z0-9-]{0,58}$/i.test(projectName)) throw new TypeError("Cloudflare Pages project name contains unsupported characters.");
-  const branch = "axiom-preview-" + Date.now().toString(36);
+  const branch = "axiom-preview-" + randomBytes(4).toString("hex");
   return {
     executable: "wrangler",
     args: ["pages", "deploy", input.output, "--project-name", projectName, "--branch", branch],
@@ -75,9 +76,54 @@ function extractPreviewUrl(provider, stdout) {
     : provider === "netlify" ? value.includes(".netlify.app") : value.includes(".pages.dev")) || null;
 }
 
+function allowedPreviewHost(provider, hostname) {
+  const suffix = provider === "vercel" ? ".vercel.app" : provider === "netlify" ? ".netlify.app" : ".pages.dev";
+  return hostname.endsWith(suffix) && hostname.length > suffix.length;
+}
+
+async function verifyPreviewUrl(provider, previewUrl, fetchImpl = globalThis.fetch, timeoutMs = 15000) {
+  const checkedAt = new Date().toISOString();
+  if (typeof fetchImpl !== "function") return { verified: false, status: null, checkedAt, reason: "HTTP verification is unavailable in this runtime." };
+  const controller = new AbortController();
+  const boundedTimeout = Number.isFinite(timeoutMs) ? Math.min(Math.max(timeoutMs, 1000), 30000) : 15000;
+  const timer = setTimeout(() => controller.abort(), boundedTimeout);
+  try {
+    let current = new URL(previewUrl);
+    if (current.protocol !== "https:" || current.username || current.password || !allowedPreviewHost(provider, current.hostname)) {
+      return { verified: false, status: null, checkedAt, reason: "Preview URL did not match the selected provider HTTPS domain." };
+    }
+    let redirects = 0;
+    while (redirects <= 4) {
+      const response = await fetchImpl(current.href, { method: "HEAD", redirect: "manual", signal: controller.signal });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers?.get?.("location");
+        if (!location || redirects === 4) return { verified: false, status: response.status, checkedAt, reason: "Preview endpoint returned an incomplete or excessive redirect chain." };
+        const next = new URL(location, current);
+        if (next.protocol !== "https:" || next.username || next.password || !allowedPreviewHost(provider, next.hostname)) {
+          return { verified: false, status: response.status, checkedAt, reason: "Preview endpoint redirected outside the selected provider domain." };
+        }
+        current = next;
+        redirects++;
+        continue;
+      }
+      let finalResponse = response;
+      if (response.status === 405 || response.status === 501) {
+        finalResponse = await fetchImpl(current.href, { method: "GET", redirect: "manual", signal: controller.signal });
+        try { await finalResponse.body?.cancel?.(); } catch { /* Response body is intentionally discarded. */ }
+      }
+      const verified = finalResponse.status >= 200 && finalResponse.status < 300;
+      return { verified, status: finalResponse.status, checkedAt, finalUrl: current.href, redirects, ...(verified ? {} : { reason: "Preview endpoint returned HTTP " + finalResponse.status + "." }) };
+    }
+    return { verified: false, status: null, checkedAt, reason: "Preview redirect limit exceeded." };
+  } catch (error) {
+    return { verified: false, status: null, checkedAt, reason: redactDiagnostic(error).slice(0, 500) };
+  } finally { clearTimeout(timer); }
+}
+
 function createDeploymentManager(options = {}) {
   const getCredential = options.getCredential;
   const execute = options.execFile || execFileAsync;
+  const fetchImpl = options.fetch || globalThis.fetch;
   if (typeof getCredential !== "function") throw new TypeError("Deployment manager requires a secure credential provider.");
   return Object.freeze({
     async deployPreview(request) {
@@ -115,6 +161,7 @@ function createDeploymentManager(options = {}) {
       if (!previewUrl) {
         throw new Error("The provider command completed but did not return a verifiable preview URL. Output: " + redactDiagnostic(result.stdout || result.stderr || "").slice(-2000));
       }
+      const verification = await verifyPreviewUrl(request.provider, previewUrl, fetchImpl, request.verificationTimeoutMs);
       return {
         provider: request.provider,
         target: "preview",
@@ -123,10 +170,11 @@ function createDeploymentManager(options = {}) {
         finishedAt: Date.now(),
         durationMs: Date.now() - startedAt,
         outputDirectory: path.relative(root, output).split(path.sep).join("/"),
-        status: "deployed",
+        status: verification.verified ? "deployed" : "deployed_unverified",
+        verification,
       };
     },
   });
 }
 
-module.exports = { createDeploymentManager, resolveBuildOutput, deploymentCommand, extractPreviewUrl, PROVIDERS };
+module.exports = { createDeploymentManager, resolveBuildOutput, deploymentCommand, extractPreviewUrl, verifyPreviewUrl, PROVIDERS };

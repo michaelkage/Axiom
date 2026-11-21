@@ -6,7 +6,8 @@ interface DeploymentResult {
   target: "preview";
   previewUrl: string;
   durationMs: number;
-  status: "deployed";
+  status: "deployed" | "deployed_unverified";
+  verification: { verified: boolean; status: number | null; reason?: string };
 }
 interface DeploymentBridge {
   secureStorage: { set(namespace: string, key: string, value: string): Promise<unknown> };
@@ -55,7 +56,9 @@ export function DeploymentPanel(props: { workspaceRoot?: string }) {
         ...(provider() === "cloudflare-pages" ? { projectName: projectName().trim(), accountId: accountId().trim(), branch: "axiom-preview" } : {}),
       });
       setResult(deployed);
-      setMessage("Preview deployment completed. Axiom has received the provider URL.");
+      setMessage(deployed.verification.verified
+        ? "Preview deployment completed and the endpoint returned HTTP " + deployed.verification.status + "."
+        : "Deployment command completed, but the preview endpoint could not be verified: " + (deployed.verification.reason || "unknown response"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Preview deployment failed.");
     } finally {
@@ -100,7 +103,7 @@ export function DeploymentPanel(props: { workspaceRoot?: string }) {
     </div>
     <Show when={message()}><p role="status">{message()}</p></Show>
     <Show when={result()}>
-      <p class="axiom-deployment__result"><strong>Preview ready</strong> · {Math.round(result()!.durationMs / 1000)}s</p>
+      <p class="axiom-deployment__result"><strong>{result()!.verification.verified ? "Preview verified" : "Preview deployed; verification pending"}</strong> · {Math.round(result()!.durationMs / 1000)}s</p>
       <a href={result()!.previewUrl} target="_blank" rel="noreferrer">{result()!.previewUrl}</a>
     </Show>
     <small>Install the selected provider CLI and build the project first. Production deployment is deliberately not exposed by this workflow.</small>

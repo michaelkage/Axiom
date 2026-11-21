@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { createDeploymentManager, resolveBuildOutput, extractPreviewUrl, deploymentCommand } = require("./deployment-provider.cjs");
+const { createDeploymentManager, resolveBuildOutput, extractPreviewUrl, deploymentCommand, verifyPreviewUrl } = require("./deployment-provider.cjs");
+const healthyFetch = async () => ({ status: 200, headers: { get: () => null }, body: { cancel: async () => undefined } });
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-deploy-"));
@@ -30,6 +31,7 @@ test("vercel preview deployment uses a credential environment variable and retur
   try {
     const manager = createDeploymentManager({
       getCredential: async provider => provider === "vercel" ? "vercel-secret-token" : null,
+      fetch: healthyFetch,
       execFile: async (binary, args, options) => {
         invocation = { binary, args, options };
         return { stdout: "Preview: https://axiom-preview.vercel.app", stderr: "" };
@@ -56,6 +58,7 @@ test("cloudflare Pages preview uses a non-production branch and account ID", asy
   try {
     const manager = createDeploymentManager({
       getCredential: async () => "cloudflare-secret",
+      fetch: healthyFetch,
       execFile: async (binary, args, options) => {
         invocation = { binary, args, options };
         return { stdout: "https://axiom-preview.pages.dev", stderr: "" };
@@ -67,7 +70,7 @@ test("cloudflare Pages preview uses a non-production branch and account ID", asy
     });
     assert.equal(result.previewUrl, "https://axiom-preview.pages.dev");
     assert.ok(invocation.args.some(value => /^axiom-preview-[a-z0-9]+$/.test(value)));
-    assert.equal(invocation.options.env.CLOUDFLARE_ACCOUNT_ID, "account-123");
+    assert.equal(invocation.options.env.CLOUDFLARE_ACCOUNT_ID, "0123456789abcdef0123456789abcdef");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
@@ -84,4 +87,40 @@ test("production deployments are rejected by the preview adapter", async () => {
 test("provider output URLs must be HTTPS and match the selected provider", () => {
   assert.equal(extractPreviewUrl("vercel", "https://evil.example.com"), null);
   assert.equal(extractPreviewUrl("vercel", "https://axiom.vercel.app"), "https://axiom.vercel.app");
+});
+
+
+test("preview verification follows only same-provider HTTPS redirects", async () => {
+  let calls = 0;
+  const result = await verifyPreviewUrl("vercel", "https://axiom.vercel.app", async () => {
+    calls++;
+    if (calls === 1) return { status: 302, headers: { get: () => "/ready" } };
+    return { status: 200, headers: { get: () => null } };
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.redirects, 1);
+  assert.equal(result.finalUrl, "https://axiom.vercel.app/ready");
+});
+
+test("preview verification rejects redirects outside the provider domain", async () => {
+  const result = await verifyPreviewUrl("vercel", "https://axiom.vercel.app", async () => ({
+    status: 302, headers: { get: () => "https://attacker.example/collect" },
+  }));
+  assert.equal(result.verified, false);
+  assert.match(result.reason, /outside the selected provider domain/i);
+});
+
+test("deployment remains explicitly unverified when the provider preview is not reachable", async () => {
+  const root = await fixture();
+  try {
+    const manager = createDeploymentManager({
+      getCredential: async () => "vercel-secret-token",
+      execFile: async () => ({ stdout: "https://axiom-preview.vercel.app", stderr: "" }),
+      fetch: async () => ({ status: 503, headers: { get: () => null } }),
+    });
+    const result = await manager.deployPreview({ provider: "vercel", projectRoot: root, outputDirectory: "dist" });
+    assert.equal(result.status, "deployed_unverified");
+    assert.equal(result.verification.verified, false);
+    assert.equal(result.verification.status, 503);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
