@@ -17,7 +17,7 @@ function validateRemoteWorkerConfig(input) {
     throw new Error("Remote repository URL must use HTTPS and must not embed credentials.");
   }
   const token = String(input.token || "");
-  if (token.length < 32 || token.length > 4096 || /[\0\r\n]/.test(token)) {
+  if (token.length < 32 || token.length > 4096 || /\s/.test(token)) {
     throw new TypeError("Worker Host bearer token must contain 32–4096 characters on one line.");
   }
   const branch = String(input.branch || "").trim();
@@ -57,6 +57,8 @@ function createRemoteWorkerHostClient(options = {}) {
     } finally { clearTimeout(timer); }
   }
   return Object.freeze({
+    list: () => request("GET", "/jobs"),
+    health: () => request("GET", "/health"),
     submit: input => request("POST", "/jobs", input),
     get: id => request("GET", "/jobs/" + encodeURIComponent(id)),
     getPatch: id => request("GET", "/jobs/" + encodeURIComponent(id) + "/patch"),

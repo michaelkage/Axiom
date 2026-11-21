@@ -11,6 +11,7 @@ test("rejects insecure remote hosts and credential-bearing repository URLs",()=>
   assert.throws(()=>validateRemoteWorkerConfig({...valid,hostUrl:"http://worker.example.com"}),/HTTPS/i);
   assert.throws(()=>validateRemoteWorkerConfig({...valid,repositoryUrl:"https://user:pass@github.com/acme/project.git"}),/credentials/i);
   assert.throws(()=>validateRemoteWorkerConfig({...valid,token:"short"}),/32–4096/);
+  assert.throws(()=>validateRemoteWorkerConfig({...valid,token:"token with spaces and at least thirty-two characters"}),/32–4096/);
   assert.throws(()=>validateRemoteWorkerConfig({...valid,branch:"../main"}),/branch/i);
 });
 test("uses bearer auth for job lifecycle and patch retrieval without exposing the token",async()=>{
@@ -20,12 +21,16 @@ test("uses bearer auth for job lifecycle and patch retrieval without exposing th
     getToken:async()=>valid.token,
     fetch:async(url,options)=>{calls.push({url:String(url),options});return {ok:true,status:200,json:async()=>({id:"job-1",status:"succeeded",patch:"diff",bytes:4})};},
   });
+  await client.health();
+  await client.list();
   await client.submit({taskId:"task-1"});
   await client.get("job-1");
   await client.getPatch("job-1");
   await client.cancel("job-1");
-  assert.equal(calls.length,4);
+  assert.equal(calls.length,6);
+  assert.equal(calls[0].url,"https://worker.example.com/v1/health");
+  assert.equal(calls[1].url,"https://worker.example.com/v1/jobs");
   assert.ok(calls.every(call=>call.options.headers.authorization==="Bearer "+valid.token));
-  assert.equal(calls[2].url,"https://worker.example.com/v1/jobs/job-1/patch");
+  assert.equal(calls[3].url,"https://worker.example.com/v1/jobs/job-1/patch");
   assert.ok(!JSON.stringify(calls.map(call=>call.options.body)).includes(valid.token));
 });

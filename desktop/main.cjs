@@ -1086,6 +1086,14 @@ ipcMain.handle("axiom:remote-worker-config-save", (event, request) => {
   store.set("worker-host", "enabled", request.enabled === true ? "true" : "false");
   return readRemoteWorkerSettings();
 });
+ipcMain.handle("axiom:remote-worker-test", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().health();
+});
+ipcMain.handle("axiom:remote-worker-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().list();
+});
 ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return createRemoteWorkerHostClientForApp().submit(request);
@@ -1103,6 +1111,16 @@ ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
   await createRemoteWorkerHostClientForApp().cancel(id);
   return { requested: true };
 });
+
+function canonicalRepositoryIdentity(value) {
+  let candidate = String(value || "").trim();
+  const scp = candidate.match(/^git@([^:]+):(.+)$/i);
+  if (scp) candidate = "https://" + scp[1] + "/" + scp[2];
+  if (/^ssh:\/\/git@/i.test(candidate)) candidate = candidate.replace(/^ssh:\/\/git@/i, "https://");
+  const parsed = new URL(candidate);
+  return (parsed.hostname + parsed.pathname.replace(/\.git$/i, "").replace(/\/+$/, "")).toLowerCase();
+}
+
 ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a local project before importing remote worker changes.");
@@ -1112,6 +1130,14 @@ ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
   if (!/^diff --git /m.test(request.patch)) throw new Error("Remote worker returned a patch without Git file-change headers.");
   const taskId = String(request.taskId || "").trim();
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(taskId)) throw new TypeError("Remote task ID is invalid.");
+  const configuredRepository = currentSecureCredentialStore().get("worker-host", "repository-url");
+  if (!configuredRepository) throw new Error("Remote Worker Host repository settings are missing.");
+  const remotes = await execFileAsync("git", ["remote", "-v"], { cwd: selectedWorkspace, timeout: 15000, maxBuffer: 1024 * 1024, windowsHide: true });
+  const localRepositories = remotes.stdout.split(/\r?\n/).map(line => line.trim().split(/\s+/)[1]).filter(Boolean);
+  const expectedIdentity = canonicalRepositoryIdentity(configuredRepository);
+  if (!localRepositories.some(value => { try { return canonicalRepositoryIdentity(value) === expectedIdentity; } catch { return false; } })) {
+    throw new Error("Configured Worker Host repository does not match any Git remote in the currently open project.");
+  }
   const worktreePath = await createDetachedWorktree({
     workspaceRoot: selectedWorkspace,
     userDataPath: app.getPath("userData"),

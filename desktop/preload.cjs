@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   remoteWorker: Object.freeze({
     config: () => ipcRenderer.invoke("axiom:remote-worker-config"),
     save: request => ipcRenderer.invoke("axiom:remote-worker-config-save", request),
+    test: () => ipcRenderer.invoke("axiom:remote-worker-test"),
+    list: () => ipcRenderer.invoke("axiom:remote-worker-list"),
     submit: request => ipcRenderer.invoke("axiom:remote-worker-submit", request),
     get: id => ipcRenderer.invoke("axiom:remote-worker-get", id),
     getPatch: id => ipcRenderer.invoke("axiom:remote-worker-patch", id),

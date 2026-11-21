@@ -2573,3 +2573,13 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
 .axiom-remote-worker__saved{color:var(--vscode-testing-iconPassed);font-size:11px}
 .axiom-remote-worker button{padding:7px 11px;border:1px solid var(--vscode-panel-border);border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer}
 .axiom-remote-worker button:disabled{opacity:.5;cursor:not-allowed}.axiom-remote-worker p{margin:0;font-size:12px;color:var(--vscode-descriptionForeground)}
+
+.axiom-remote-worker__jobs{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+.axiom-remote-worker__jobs-heading,.axiom-remote-worker__jobs article>div,.axiom-remote-worker__job-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.axiom-remote-worker__jobs article{display:grid;gap:6px;padding:10px;border:1px solid var(--vscode-panel-border);border-radius:7px}
+.axiom-remote-worker__jobs article>div span{font-size:10px;text-transform:uppercase;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker__jobs article small{font-size:10px;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker__jobs article p{margin:0;font-size:11px;overflow-wrap:anywhere}
+.axiom-remote-worker__jobs details{font-size:11px}.axiom-remote-worker__jobs details p{font-family:var(--vscode-editor-font-family)}
+.axiom-remote-worker__error{color:var(--vscode-errorForeground)}
+.axiom-remote-worker__review{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}

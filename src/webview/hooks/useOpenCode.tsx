@@ -17,7 +17,7 @@ import { hasAxiomDesktopApi, hostBridge } from "../utils/hostBridge";
 import { loadRelevantWorkerProjectMemories, runSubAgentTasks as orchestrateSubAgentTasks } from "../services/workerTaskOrchestrator";
 import { createHostWorktreeRequester } from "../services/hostWorktreeAdapter";
 import { createOpenCodeWorkerExecutionProvider } from "../services/opencodeWorkerExecutionProvider";
-import { createRemoteWorkerExecutionProvider } from "../services/remoteWorkerExecutionProvider";
+import { createRemoteWorkerExecutionProvider, type RemoteWorkerHostTransport, type RemoteWorkerHostJob } from "../services/remoteWorkerExecutionProvider";
 import { createOpenCodeEventSubscriber, type RuntimeEventStatus } from "../services/opencodeEventTransport";
 import { DEFAULT_AXIOM_RUNTIME, discoverOmniRouteModels, planSubTasksWithOmniRoute, resolveOmniRouteModel, type AxiomSubTask } from "../../shared/axiomRuntime";
 
@@ -162,11 +162,11 @@ function createOpenCode() {
 
     const desktop = (window as Window & { axiomDesktop?: { remoteWorker?: {
       config: () => Promise<{ enabled: boolean; configured?: boolean; hostUrl?: string; repositoryUrl?: string; branch?: string }>;
-      submit: (request: Record<string, unknown>) => Promise<any>;
-      get: (id: string) => Promise<any>;
+      submit: RemoteWorkerHostTransport["submit"];
+      get: (id: string) => Promise<RemoteWorkerHostJob>;
       getPatch: (id: string) => Promise<{ patch: string; bytes: number }>;
       cancel: (id: string) => Promise<unknown>;
-      applyPatch: (request: Record<string, unknown>) => Promise<{ worktreePath: string }>;
+      applyPatch: (request: { jobId: string; taskId: string; title: string; patch: string }) => Promise<{ worktreePath: string }>;
     } } }).axiomDesktop;
     let remoteConfig: { enabled: boolean; repositoryUrl?: string; branch?: string } | null = null;
     try { remoteConfig = await desktop?.remoteWorker?.config() ?? null; } catch { remoteConfig = null; }
