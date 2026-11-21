@@ -1437,6 +1437,10 @@ ipcMain.handle("axiom:provider-credential-remove", (event, providerId) => {
   return currentProviderCredentialManager().remove(providerId);
 });
 
+ipcMain.handle("axiom:knowledge-index-scan", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().scanWorkspace();
+});
 ipcMain.handle("axiom:knowledge-index-read", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return currentProjectKnowledgeStore().readIndex();
