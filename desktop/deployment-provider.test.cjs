@@ -66,7 +66,7 @@ test("cloudflare Pages preview uses a non-production branch and account ID", asy
       projectName: "axiom", accountId: "account-123",
     });
     assert.equal(result.previewUrl, "https://axiom-preview.pages.dev");
-    assert.ok(invocation.args.includes("axiom-preview"));
+    assert.ok(invocation.args.some(value => /^axiom-preview-[a-z0-9]+$/.test(value)));
     assert.equal(invocation.options.env.CLOUDFLARE_ACCOUNT_ID, "account-123");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

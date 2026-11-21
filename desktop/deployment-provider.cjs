@@ -49,10 +49,7 @@ function deploymentCommand(provider, input) {
     };
   }
   const projectName = requiredText(input.projectName, "Cloudflare Pages project name", 128);
-  const branch = requiredText(input.branch || "axiom-preview", "Preview branch", 128);
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) || branch.includes("..")) {
-    throw new TypeError("Preview branch contains unsupported characters.");
-  }
+  const branch = "axiom-preview-" + Date.now().toString(36);
   return {
     executable: input.executables?.wrangler || "wrangler",
     args: ["pages", "deploy", input.output, "--project-name", projectName, "--branch", branch],
