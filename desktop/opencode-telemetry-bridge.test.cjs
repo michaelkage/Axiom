@@ -30,7 +30,7 @@ test("consumes OpenCode SSE events and records each completed message once", asy
   let requestCount = 0;
   const fetch = async (_url, options) => {
     requestCount++;
-    const payload = "data: " + JSON.stringify(completed) + "\\n\\n";
+    const payload = "data: " + JSON.stringify(completed) + String.fromCharCode(10, 10);
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(payload));
