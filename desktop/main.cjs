@@ -23,6 +23,7 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createProviderCredentialManager } = require("./provider-credentials.cjs");
 const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
+const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -63,6 +64,7 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+const workerOwnership = createWorkerOwnershipRegistry();
 const browserSessions = new Map();
 const remoteWorkspaceOperations = new Map();
 const remoteWorkspaceInstanceId = require("node:crypto").randomUUID();
@@ -676,6 +678,8 @@ async function applyWorktreeChanges(event, message) {
       if (await gitRoot(message.worktreePath) !== root) throw new Error("Task worktree belongs to a different Git repository.");
       if (!Array.isArray(message.paths) || message.paths.length > 100) throw new Error("Select between 1 and 100 files to integrate.");
       const requested = [...new Set(message.paths.map(normalizeWorkspaceRelativePath))];
+      const ownership = workerOwnership.validateChanges(message.taskId, requested);
+      if (!ownership.allowed) throw new Error("Worker attempted to integrate files outside its assigned ownership: " + ownership.violations.join(", "));
       if (!requested.length) throw new Error("Select at least one file to integrate.");
       const pathKeys = requested.map(value => process.platform === "win32" ? value.toLowerCase() : value);
       if (new Set(pathKeys).size !== pathKeys.length) throw new Error("The selection contains duplicate paths after normalization.");
@@ -792,6 +796,7 @@ async function applyWorktreeChanges(event, message) {
         }
       });
       appliedPaths.push(...committedPaths);
+      workerOwnership.release(message.taskId);
 
       sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: true, appliedPaths, remoteRevision: upstream?.sha ?? null });
       if (typeof message.worktreePath === "string") {
@@ -1509,6 +1514,8 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
   if (message.type === "create-agent-worktree") {
     try {
       validateWorkspace(message.workspaceRoot);
+      if (!Array.isArray(message.targetFiles) || message.targetFiles.length === 0) throw new Error("Worker tasks must declare explicit target-file ownership before a worktree can be created.");
+      workerOwnership.claim(message.taskId, message.targetFiles);
       const worktreePath = await createDetachedWorktree({
         workspaceRoot: message.workspaceRoot,
         userDataPath: app.getPath("userData"),
