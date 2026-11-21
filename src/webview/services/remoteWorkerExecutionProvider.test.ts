@@ -54,6 +54,31 @@ describe("remote worker execution provider", () => {
     await createRemoteWorkerExecutionProvider({ transport: host, applyPatch: async () => ({ worktreePath: "/tmp/local-review" }), repositoryUrl: "https://github.com/acme/repo.git", branch: "main", pollIntervalMs: 100 }).execute({ ...request(), onLog });
     expect(onLog).toHaveBeenCalledTimes(2);
   });
+
+  it("resumes the same persisted host job after transient polling failures", async () => {
+    const submit = vi.fn(async (_input: Parameters<RemoteWorkerHostTransport["submit"]>[0]) => job({ status: "running", logs: [] }));
+    const host = transport({
+      submit,
+      get: vi.fn()
+        .mockRejectedValueOnce(new Error("fetch failed: ECONNRESET"))
+        .mockRejectedValueOnce(new Error("fetch failed: ECONNRESET"))
+        .mockResolvedValue(job()),
+    });
+    const provider = createRemoteWorkerExecutionProvider({
+      transport: host,
+      applyPatch: async () => ({ worktreePath: "/tmp/local-review" }),
+      repositoryUrl: "https://github.com/acme/repo.git",
+      branch: "main",
+      pollIntervalMs: 100,
+      maxPollFailures: 2,
+    });
+    await expect(provider.execute(request())).rejects.toMatchObject({ name: "RemoteWorkerTransportError", remoteJobId: "remote-job-1" });
+    const recovered = await provider.execute(request());
+    expect(recovered.worktreePath).toBe("/tmp/local-review");
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[0][0].idempotencyKey).toBe(submit.mock.calls[1][0].idempotencyKey);
+  });
+
   it("waits for confirmed remote cancellation before rejecting", async () => {
     const controller = new AbortController();
     let polls = 0;

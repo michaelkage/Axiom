@@ -76,3 +76,19 @@ test("blocks remote patch transfer when secret-like files are changed",async t=>
   const response=await fetch(base+"/v1/jobs/"+job.id+"/patch",{headers});
   assert.equal(response.status,409);
 });
+
+
+test("lists durable remote jobs without returning stored prompts",async t=>{
+  const f=await fixture();
+  t.after(()=>f.host.stop());
+  const submitted=await f.request("/v1/jobs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload({prompt:"private job prompt"}))});
+  const job=await submitted.json();
+  for(let i=0;i<50&&f.host.getJob(job.id)?.status!=="succeeded";i++)await new Promise(r=>setTimeout(r,10));
+  const response=await f.request("/v1/jobs");
+  assert.equal(response.status,200);
+  const result=await response.json();
+  const listed=result.jobs.find(item=>item.id===job.id);
+  assert.ok(listed);
+  assert.equal("prompt" in listed,false);
+  assert.ok(listed.logs.length<=5);
+});

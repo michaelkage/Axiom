@@ -9,6 +9,7 @@ const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
 const { validateRemoteWorkerConfig, createRemoteWorkerHostClient } = require("./remote-worker-host-client.cjs");
+const { applyRemoteWorkerPatch } = require("./remote-patch-importer.cjs");
 const { validateBrowserNavigation } = require("./browser-url.cjs");
 const { normalizeBrowserAction, buildBrowserActionScript } = require("./browser-actions.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
@@ -1112,57 +1113,19 @@ ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
   return { requested: true };
 });
 
-function canonicalRepositoryIdentity(value) {
-  let candidate = String(value || "").trim();
-  const scp = candidate.match(/^git@([^:]+):(.+)$/i);
-  if (scp) candidate = "https://" + scp[1] + "/" + scp[2];
-  if (/^ssh:\/\/git@/i.test(candidate)) candidate = candidate.replace(/^ssh:\/\/git@/i, "https://");
-  const parsed = new URL(candidate);
-  return (parsed.hostname + parsed.pathname.replace(/\.git$/i, "").replace(/\/+$/, "")).toLowerCase();
-}
-
 ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a local project before importing remote worker changes.");
-  if (!request || typeof request.patch !== "string" || !request.patch.length || Buffer.byteLength(request.patch, "utf8") > 8 * 1024 * 1024) {
-    throw new TypeError("Remote worker patch must contain 1 byte to 8 MiB of diff data.");
-  }
-  if (!/^diff --git /m.test(request.patch)) throw new Error("Remote worker returned a patch without Git file-change headers.");
-  const taskId = String(request.taskId || "").trim();
-  if (!/^[A-Za-z0-9._-]{1,128}$/.test(taskId)) throw new TypeError("Remote task ID is invalid.");
-  const configuredRepository = currentSecureCredentialStore().get("worker-host", "repository-url");
-  if (!configuredRepository) throw new Error("Remote Worker Host repository settings are missing.");
-  const remotes = await execFileAsync("git", ["remote", "-v"], { cwd: selectedWorkspace, timeout: 15000, maxBuffer: 1024 * 1024, windowsHide: true });
-  const localRepositories = remotes.stdout.split(/\r?\n/).map(line => line.trim().split(/\s+/)[1]).filter(Boolean);
-  const expectedIdentity = canonicalRepositoryIdentity(configuredRepository);
-  if (!localRepositories.some(value => { try { return canonicalRepositoryIdentity(value) === expectedIdentity; } catch { return false; } })) {
-    throw new Error("Configured Worker Host repository does not match any Git remote in the currently open project.");
-  }
-  const worktreePath = await createDetachedWorktree({
+  const repositoryUrl = currentSecureCredentialStore().get("worker-host", "repository-url");
+  const result = await applyRemoteWorkerPatch({
     workspaceRoot: selectedWorkspace,
     userDataPath: app.getPath("userData"),
-    taskId: "remote-" + taskId,
+    taskId: request?.taskId,
+    repositoryUrl,
+    patch: request?.patch,
   });
-  const patchDirectory = path.join(app.getPath("userData"), "remote-worker-patches");
-  const patchFile = path.join(patchDirectory, require("node:crypto").randomUUID() + ".patch");
-  try {
-    await fs.promises.mkdir(patchDirectory, { recursive: true, mode: 0o700 });
-    await fs.promises.writeFile(patchFile, request.patch, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await execFileAsync("git", ["apply", "--check", "--binary", patchFile], {
-      cwd: worktreePath, timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
-    });
-    await execFileAsync("git", ["apply", "--binary", patchFile], {
-      cwd: worktreePath, timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
-    });
-    await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + taskId + ".");
-    return { worktreePath };
-  } catch (error) {
-    try { await execFileAsync("git", ["-C", selectedWorkspace, "worktree", "remove", "--force", worktreePath], { timeout: 30000, windowsHide: true }); } catch {}
-    try { await fs.promises.rm(worktreePath, { recursive: true, force: true }); } catch {}
-    throw new Error("Remote patch could not be applied safely to the current local revision: " + redactSecrets(error.message || error).slice(0, 1200));
-  } finally {
-    try { await fs.promises.unlink(patchFile); } catch {}
-  }
+  await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + String(request.taskId) + ".");
+  return result;
 });
 
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {

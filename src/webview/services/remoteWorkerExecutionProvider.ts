@@ -34,6 +34,7 @@ export interface RemoteWorkerExecutionProviderOptions {
   createIdempotencyKey?: (request: WorkerExecutionRequest) => string;
   maxExecutionMs?: number;
   cancellationTimeoutMs?: number;
+  maxPollFailures?: number;
   now?: () => number;
   applyPatch: (input: { jobId: string; taskId: string; title: string; patch: string }) => Promise<{ worktreePath: string }>;
 }
@@ -72,14 +73,21 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
     ? Math.min(options.maxExecutionMs!, 24 * 60 * 60 * 1000) : 60 * 60 * 1000;
   const cancellationTimeoutMs = Number.isFinite(options.cancellationTimeoutMs) && (options.cancellationTimeoutMs ?? 0) >= 100
     ? Math.min(options.cancellationTimeoutMs!, 5 * 60 * 1000) : 30_000;
+  const maxPollFailures = Number.isInteger(options.maxPollFailures) && (options.maxPollFailures ?? 0) > 0
+    ? Math.min(options.maxPollFailures!, 10) : 5;
   const now = options.now ?? Date.now;
+  const idempotencyKeys = new Map<string, string>();
   return {
     id: "remote",
     capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
     async execute(request: WorkerExecutionRequest): Promise<WorkerExecutionResult> {
       if (request.signal?.aborted) throw new Error("Remote worker cancelled before submission.");
-      const idempotencyKey = options.createIdempotencyKey?.(request)
-        ?? globalThis.crypto.randomUUID();
+      const identity = request.parentSessionId + ":" + request.task.id;
+      let idempotencyKey = options.createIdempotencyKey?.(request);
+      if (!idempotencyKey) {
+        idempotencyKey = idempotencyKeys.get(identity) ?? globalThis.crypto.randomUUID();
+        idempotencyKeys.set(identity, idempotencyKey);
+      }
       const job = await options.transport.submit({
         idempotencyKey,
         taskId: request.task.id,
@@ -98,6 +106,7 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
       let timedOut = false;
       const startedAt = now();
       let current = job;
+      let pollFailures = 0;
       while (!TERMINAL.has(current.status)) {
         for (const entry of current.logs || []) {
           if (typeof entry.id !== "string" || seenLogs.has(entry.id)) continue;
@@ -119,8 +128,18 @@ export function createRemoteWorkerExecutionProvider(options: RemoteWorkerExecuti
           });
         }
         await delay(pollIntervalMs);
-        try { current = await options.transport.get(job.id); } catch (error) {
-          if (!request.signal?.aborted) throw error;
+        try {
+          current = await options.transport.get(job.id);
+          pollFailures = 0;
+        } catch (error) {
+          if (request.signal?.aborted) continue;
+          pollFailures++;
+          if (pollFailures >= maxPollFailures) {
+            throw Object.assign(new Error("Remote Worker Host could not be reached after " + pollFailures + " polling attempts. The job remains saved on the host. " + String(error instanceof Error ? error.message : error).slice(0, 500)), {
+              name: "RemoteWorkerTransportError", sessionId: "remote:" + job.id, remoteJobId: job.id,
+            });
+          }
+          await delay(Math.min(pollIntervalMs * (2 ** (pollFailures - 1)), 10_000));
           continue;
         }
       }
