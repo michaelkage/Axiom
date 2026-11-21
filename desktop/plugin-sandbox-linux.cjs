@@ -5,12 +5,13 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const PLUGIN_MOUNT = "/opt/axiom-plugin";
+const WORKSPACE_MOUNT = "/workspace";
 
 function existingDirectory(value, label) {
   if (typeof value !== "string" || !path.isAbsolute(value)) throw new TypeError(label + " must be an absolute path.");
-  const resolved = path.resolve(value);
-  const stat = fs.statSync(resolved);
-  if (!stat.isDirectory()) throw new TypeError(label + " must be a directory.");
+  const resolved = fs.realpathSync(path.resolve(value));
+  if (!fs.statSync(resolved).isDirectory()) throw new TypeError(label + " must be a directory.");
   return resolved;
 }
 
@@ -24,33 +25,48 @@ function createLinuxBubblewrapAdapter(options = {}) {
     if (typeof request.executable !== "string" || !path.isAbsolute(request.executable)) throw new TypeError("Plugin executable must be an absolute path.");
     if (!Array.isArray(request.args) || request.args.some(arg => typeof arg !== "string" || arg.includes("\0"))) throw new TypeError("Plugin arguments are invalid.");
     const pluginDir = existingDirectory(request.pluginRoot, "Plugin root");
-    const cwd = path.resolve(request.cwd || pluginDir);
+    const cwd = request.cwd ? fs.realpathSync(path.resolve(request.cwd)) : pluginDir;
     if (cwd !== pluginDir && !cwd.startsWith(pluginDir + path.sep)) throw new Error("Plugin working directory escaped its installation root.");
     const workspace = request.workspaceRoot ? existingDirectory(request.workspaceRoot, "Workspace root") : null;
     const limits = request.limits || {};
     const capabilities = Array.isArray(limits.filesystem) ? limits.filesystem : [];
+    const hasProjectAccess = capabilities.includes("project.read") || capabilities.includes("project.write");
     const writable = capabilities.includes("project.write");
+    if (hasProjectAccess && !workspace) throw new Error("Project filesystem capability requires a workspace mount.");
+    if (!hasProjectAccess && workspace) throw new Error("Workspace mount supplied without a project filesystem capability.");
+    const relativeCwd = path.relative(pluginDir, cwd).split(path.sep).join("/");
+    const sandboxCwd = relativeCwd ? PLUGIN_MOUNT + "/" + relativeCwd : PLUGIN_MOUNT;
+    const mappedArgs = request.args.map(arg => {
+      if (path.isAbsolute(arg) && (arg === pluginDir || arg.startsWith(pluginDir + path.sep))) {
+        const relative = path.relative(pluginDir, arg).split(path.sep).join("/");
+        return relative ? PLUGIN_MOUNT + "/" + relative : PLUGIN_MOUNT;
+      }
+      return arg;
+    });
     const args = [
       "--die-with-parent", "--new-session", "--unshare-all",
       "--cap-drop", "ALL", "--ro-bind", "/", "/",
-      "--tmpfs", "/home", "--tmpfs", "/root", "--tmpfs", "/var",
-      "--tmpfs", "/run", "--tmpfs", "/tmp", "--tmpfs", "/mnt", "--tmpfs", "/media",
-      "--ro-bind", pluginDir, pluginDir,
+      "--tmpfs", "/home", "--tmpfs", "/root", "--tmpfs", "/run",
+      "--tmpfs", "/tmp", "--tmpfs", "/mnt", "--tmpfs", "/media",
+      "--dir", "/opt", "--dir", PLUGIN_MOUNT,
+      "--ro-bind", pluginDir, PLUGIN_MOUNT,
       "--proc", "/proc", "--dev", "/dev",
-      "--chdir", cwd,
+      "--chdir", sandboxCwd,
       "--clearenv", "--setenv", "PATH", DEFAULT_PATH,
       "--setenv", "HOME", "/tmp",
       "--setenv", "NODE_ENV", "production"
     ];
     if (limits.network === true) args.push("--share-net");
-    if (workspace) args.push(writable ? "--bind" : "--ro-bind", workspace, workspace);
+    if (workspace) {
+      args.push("--dir", WORKSPACE_MOUNT, writable ? "--bind" : "--ro-bind", workspace, WORKSPACE_MOUNT);
+    }
     for (const [key, value] of Object.entries(request.env || {})) {
       if (!/^[A-Z_][A-Z0-9_]{0,63}$/.test(key) || typeof value !== "string" || value.length > 4096 || value.includes("\0")) {
         throw new TypeError("Sandbox environment contains an invalid entry.");
       }
       args.push("--setenv", key, value);
     }
-    args.push("--", request.executable, ...request.args);
+    args.push("--", request.executable, ...mappedArgs);
     return args;
   }
 
@@ -121,4 +137,4 @@ function createPlatformPluginSandbox(options = {}) {
   throw new Error("No verified OS-level plugin sandbox is available for " + process.platform + "; plugin execution is disabled.");
 }
 
-module.exports = { createLinuxBubblewrapAdapter, createPlatformPluginSandbox };
+module.exports = { createLinuxBubblewrapAdapter, createPlatformPluginSandbox, PLUGIN_MOUNT, WORKSPACE_MOUNT };
