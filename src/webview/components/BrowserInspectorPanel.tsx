@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 
 interface BrowserSnapshot {
   url: string;
@@ -19,6 +19,7 @@ interface BrowserBridge {
     inspect(sessionId: string): Promise<BrowserSnapshot>;
     screenshot(sessionId: string): Promise<{ dataUrl: string }>;
     close(sessionId: string): Promise<void>;
+    onClosed(callback: (sessionId: string) => void): () => void;
   };
 }
 function api(): BrowserBridge | undefined {

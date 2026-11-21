@@ -56,7 +56,12 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     inspect: sessionId => ipcRenderer.invoke("axiom:browser-inspect", { sessionId }),
     act: (sessionId, action) => ipcRenderer.invoke("axiom:browser-act", { sessionId, action }),
     screenshot: sessionId => ipcRenderer.invoke("axiom:browser-screenshot", { sessionId }),
-    close: sessionId => ipcRenderer.invoke("axiom:browser-close", { sessionId })
+    close: sessionId => ipcRenderer.invoke("axiom:browser-close", { sessionId }),
+    onClosed(callback) {
+      const listener = (_event, sessionId) => callback(sessionId);
+      ipcRenderer.on("axiom:browser-closed", listener);
+      return () => ipcRenderer.removeListener("axiom:browser-closed", listener);
+    }
   }),
   deployment: Object.freeze({
     preview: request => ipcRenderer.invoke("axiom:deployment-preview", request)

@@ -933,6 +933,22 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
 
 
 
+
+async function loadBrowserPage(browserWindow, url) {
+  let timer;
+  try {
+    await Promise.race([
+      browserWindow.loadURL(url),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          if (!browserWindow.isDestroyed()) browserWindow.webContents.stop();
+          reject(new Error("Browser navigation timed out after 30 seconds."));
+        }, 30000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 function ownedBrowserSession(event, id) {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new TypeError("Invalid browser session ID.");
   const entry = browserSessions.get(id);
@@ -981,9 +997,14 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   browserWindow.webContents.on("render-process-gone", (_goneEvent, details) => {
     recordBrowserError(entry, "Page renderer exited: " + String(details.reason || "unknown"));
   });
-  browserWindow.on("closed", () => browserSessions.delete(sessionId));
+  browserWindow.on("closed", () => {
+    browserSessions.delete(sessionId);
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === entry.ownerId) {
+      mainWindow.webContents.send("axiom:browser-closed", sessionId);
+    }
+  });
   try {
-    await browserWindow.loadURL(url);
+    await loadBrowserPage(browserWindow, url);
     if (!browserWindow.isDestroyed()) browserWindow.show();
     await appendRuntimeLog("Browser intelligence opened " + new URL(url).origin + ".");
     return { sessionId, url: browserWindow.webContents.getURL(), title: browserWindow.webContents.getTitle() };
@@ -997,7 +1018,7 @@ ipcMain.handle("axiom:browser-navigate", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const entry = ownedBrowserSession(event, request?.sessionId);
   const url = validateBrowserNavigation(request.url);
-  await entry.window.loadURL(url);
+  await loadBrowserPage(entry.window, url);
   return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
 });
 ipcMain.handle("axiom:browser-inspect", async (event, request) => {

@@ -2558,3 +2558,7 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
 .axiom-browser__errors{display:grid;gap:5px;padding:9px;border:1px solid var(--vscode-inputValidation-errorBorder);border-radius:6px}.axiom-browser__errors p{margin:0;font:11px/1.5 var(--vscode-editor-font-family);overflow-wrap:anywhere}
 .axiom-browser details{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px}.axiom-browser summary{cursor:pointer;font-size:12px}.axiom-browser pre{max-height:280px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 var(--vscode-editor-font-family)}
 .axiom-browser .axiom-browser__analyze{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+
+.axiom-browser__action-form{display:grid;gap:8px;padding:10px;border:1px solid var(--vscode-panel-border);border-radius:7px}
+.axiom-browser__action-form label{display:grid;gap:4px;font-size:11px;color:var(--vscode-descriptionForeground)}
+.axiom-browser__action-form input,.axiom-browser__action-form select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
