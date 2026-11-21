@@ -20,6 +20,7 @@ const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
+const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -818,6 +819,10 @@ function currentWorkerStateStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
+function currentExecutionLedger() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createExecutionLedger(app.getPath("userData"), selectedWorkspace);
+}
 
 ipcMain.handle("axiom:secure-storage-get", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -1375,6 +1380,28 @@ ipcMain.handle("axiom:worker-state-record", async (event, task) => {
   const saved = await currentWorkerStateStore().record(task);
   sendHostMessage(event, { type: "worker-state-updated", task: saved });
   return saved;
+});
+ipcMain.handle("axiom:execution-ledger-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().list();
+});
+ipcMain.handle("axiom:execution-ledger-get", (event, objectiveId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().get(objectiveId);
+});
+ipcMain.handle("axiom:execution-ledger-create", (event, objective) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().create(objective);
+});
+ipcMain.handle("axiom:execution-ledger-commit", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid execution-ledger commit request.");
+  return currentExecutionLedger().commit(request.objectiveId, request.expectedRevision, request.objective, request.event);
+});
+ipcMain.handle("axiom:execution-ledger-remove", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid execution-ledger removal request.");
+  return currentExecutionLedger().remove(request.objectiveId, request.expectedRevision);
 });
 
 ipcMain.handle("axiom:project-context-save", async (event, context) => {
