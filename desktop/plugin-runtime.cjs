@@ -1,6 +1,7 @@
 "use strict";
 
 const path = require("node:path");
+const fs = require("node:fs");
 const crypto = require("node:crypto");
 
 const ID = /^[a-z0-9][a-z0-9._-]{1,63}$/;
@@ -29,9 +30,11 @@ function createPluginRuntime(options = {}) {
   if (!options.pluginRoot || typeof authorize !== "function" || typeof executeSandbox !== "function") throw new TypeError("Plugin runtime requires a plugin root, capability authorizer, and OS sandbox adapter.");
   async function run(manifestInput, request = {}) {
     const manifest = validatePluginManifest(manifestInput);
-    const pluginDirectory = path.resolve(pluginRoot, manifest.id);
-    const entry = path.resolve(pluginDirectory, manifest.entry);
-    if (!entry.startsWith(pluginDirectory + path.sep)) throw new Error("Plugin entry escaped its installation directory.");
+    const pluginDirectory = fs.realpathSync(path.resolve(pluginRoot, manifest.id));
+    const candidateEntry = path.resolve(pluginDirectory, manifest.entry);
+    if (!candidateEntry.startsWith(pluginDirectory + path.sep)) throw new Error("Plugin entry escaped its installation directory.");
+    const entry = fs.realpathSync(candidateEntry);
+    if (!entry.startsWith(pluginDirectory + path.sep) || !fs.statSync(entry).isFile()) throw new Error("Plugin entry escaped its installation directory or is not a file.");
     const granted = [];
     for (const capability of manifest.capabilities) {
       if (await authorize({ pluginId: manifest.id, capability, request }) !== true) throw new Error("Plugin capability denied: " + capability);
