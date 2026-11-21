@@ -963,6 +963,11 @@ ipcMain.handle("axiom:mcp-remove", (event, id) => {
   return result;
 });
 
+ipcMain.handle("axiom:telemetry-snapshot", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return executionTelemetry.snapshot();
+});
+
 ipcMain.handle("axiom:omniroute-status", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return omniRouteManager.status();
