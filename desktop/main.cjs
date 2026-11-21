@@ -577,6 +577,38 @@ async function inspectWorktree(event, message) {
   }
 }
 
+async function persistQualityGateArtifact(message, report) {
+  if (!selectedWorkspace || path.resolve(String(message.workspaceRoot || "")) !== path.resolve(selectedWorkspace)) return;
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const checks = Array.isArray(report.checks) ? report.checks.slice(0, 40).map(check => ({
+    name: redactSecrets(String(check.name || "Verification check")).slice(0, 160),
+    command: redactSecrets(String(check.command || "")).slice(0, 500),
+    state: String(check.state || "unverified").slice(0, 32),
+    exitCode: Number.isInteger(check.exitCode) ? check.exitCode : null,
+    output: redactSecrets(String(check.output || "")).slice(0, 64 * 1024)
+  })) : [];
+  const data = redactSecrets(JSON.stringify({
+    status: String(report.status || "Blocked").slice(0, 80),
+    ranProjectCheck: report.ranProjectCheck === true,
+    checks
+  })).slice(0, 512 * 1024);
+  await currentExecutionArtifactStore().put({
+    projectId,
+    taskId: typeof message.taskId === "string" ? message.taskId : null,
+    kind: "report",
+    name: "Quality gate " + String(message.taskId || message.requestId || "verification").slice(0, 120),
+    data,
+    metadata: {
+      producer: "quality-gate",
+      requestId: String(message.requestId || "").slice(0, 160),
+      status: String(report.status || "Blocked").slice(0, 80),
+      checkCount: checks.length,
+      passedCount: checks.filter(check => check.state === "passed").length,
+      capturedAt: Date.now()
+    }
+  });
+}
+
 async function runQualityGate(event, message) {
   const checks = [];
   const addCheck = async (name, command, args, cwd, timeout) => {
@@ -655,6 +687,8 @@ async function runQualityGate(event, message) {
       checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." })),
       files: Array.isArray(message.changedPaths) ? message.changedPaths : []
     });
+    try { await persistQualityGateArtifact(message, { status, checks, ranProjectCheck }); }
+    catch (artifactError) { await appendRuntimeLog("Could not persist quality-gate artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400)); }
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status, checks, ranProjectCheck });
     sendHostMessage(event, { type: "project-state-updated" });
   } catch (error) {
@@ -667,6 +701,8 @@ async function runQualityGate(event, message) {
       });
       sendHostMessage(event, { type: "project-state-updated" });
     } catch { /* A history write failure must not hide the verification error. */ }
+    try { await persistQualityGateArtifact(message, { status: "Blocked", checks }); }
+    catch (artifactError) { await appendRuntimeLog("Could not persist blocked quality-gate artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400)); }
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status: "Blocked", checks, error: error.message });
   }
 }
