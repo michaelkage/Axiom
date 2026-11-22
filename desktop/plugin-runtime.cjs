@@ -35,11 +35,9 @@ function createPluginRuntime(options = {}) {
     if (!candidateEntry.startsWith(pluginDirectory + path.sep)) throw new Error("Plugin entry escaped its installation directory.");
     const entry = fs.realpathSync(candidateEntry);
     if (!entry.startsWith(pluginDirectory + path.sep) || !fs.statSync(entry).isFile()) throw new Error("Plugin entry escaped its installation directory or is not a file.");
-    const granted = [];
-    for (const capability of manifest.capabilities) {
-      if (await authorize({ pluginId: manifest.id, capability, request }) !== true) throw new Error("Plugin capability denied: " + capability);
-      granted.push(capability);
-    }
+    const authorized = await authorize({ pluginId: manifest.id, capabilities: [...manifest.capabilities], request });
+    if (authorized !== true) throw new Error("Plugin execution or one or more requested capabilities were denied.");
+    const granted = [...manifest.capabilities];
     const needsWorkspace = granted.some(capability => capability === "project.read" || capability === "project.write");
     if (needsWorkspace && (typeof request.workspaceRoot !== "string" || !path.isAbsolute(request.workspaceRoot))) throw new Error("A project capability requires an absolute workspace root.");
     const args = Array.isArray(request.args) ? request.args : [];
