@@ -25,6 +25,7 @@ function evaluateFilesystemAccess({ workspaceRoot, relativePath, operation }) {
   let relative;
   try { relative = normalizeRelativePath(relativePath); }
   catch (error) { return { decision: "deny", reason: error.message }; }
+  if (operation === "write" && !relative) return { decision: "deny", reason: "A project file path is required for writes." };
   const root = path.resolve(workspaceRoot);
   const target = path.resolve(root, ...relative.split("/").filter(Boolean));
   if (target !== root && !target.startsWith(root + path.sep)) return { decision: "deny", reason: "Filesystem target escapes the selected workspace." };
