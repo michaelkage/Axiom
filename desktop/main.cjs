@@ -57,7 +57,7 @@ async function authorizeFilesystemOperation(operation, relativePath) {
     throw new Error("Security policy denied filesystem access: " + evaluation.reason);
   }
   if (evaluation.decision === "approval-required") {
-    audit.record({ action: "filesystem." + operation, decision: "approval-required", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+    audit.record({ action: "filesystem." + operation, decision: "approval-required", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
     try {
       await requirePrivilegedApproval({
         title: "Approve project file modification",
@@ -65,13 +65,13 @@ async function authorizeFilesystemOperation(operation, relativePath) {
         detail: "Path: " + String(relativePath || "(project root)") + "\nPolicy: " + evaluation.reason,
         approveLabel: "Modify file"
       });
-      audit.record({ action: "filesystem." + operation, decision: "allow", reason: "User approved the native filesystem confirmation.", projectId, resource: String(relativePath || "") });
+      audit.record({ action: "filesystem." + operation, decision: "allow", reason: "User approved the native filesystem confirmation.", projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
     } catch (error) {
-      audit.record({ action: "filesystem." + operation, decision: "deny", reason: "User denied or dismissed native filesystem confirmation.", projectId, resource: String(relativePath || "") });
+      audit.record({ action: "filesystem." + operation, decision: "deny", reason: "User denied or dismissed native filesystem confirmation.", projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
       throw error;
     }
   } else {
-    audit.record({ action: "filesystem." + operation, decision: "allow", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+    audit.record({ action: "filesystem." + operation, decision: "allow", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
   }
   return true;
 }
