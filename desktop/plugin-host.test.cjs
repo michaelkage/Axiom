@@ -35,14 +35,14 @@ test("lists only valid installed plugins and runs the trusted on-disk manifest",
   }
 });
 
-test("does not list or follow symlinked plugin installations", () => {
+test("does not list or follow symlinked plugin installations", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-plugin-host-"));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-plugin-outside-"));
   try {
     fs.symlinkSync(outside, path.join(root, "linked.plugin"), "dir");
     const host = createPluginHost({ root, authorize: async () => true, spawnSandbox: async () => ({ exitCode: 0 }) });
     assert.deepEqual(host.list(), []);
-    assert.throws(() => host.run("linked.plugin"), /ENOENT|invalid/i);
+    await assert.rejects(host.run("linked.plugin"), /ENOENT|invalid/i);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
