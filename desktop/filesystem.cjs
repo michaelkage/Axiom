@@ -74,8 +74,11 @@ async function readProjectFile(workspaceRoot, relativePath) {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error("Only regular files can be read.");
     if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
-    const content = await handle.readFile({ encoding: "utf8" });
-    return { path: target.segments.join("/"), content, size: stat.size };
+    const buffer = Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
+    const content = buffer.subarray(0, bytesRead).toString("utf8");
+    return { path: target.segments.join("/"), content, size: bytesRead };
   } catch (error) {
     if (error && error.code === "ELOOP") throw new Error("Symbolic links are not allowed in project file operations.");
     throw error;
