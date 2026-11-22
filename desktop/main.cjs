@@ -988,24 +988,6 @@ function currentExecutionArtifactStore() {
   return createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") });
 }
 
-ipcMain.handle("axiom:secure-storage-get", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().get(request.namespace, request.key);
-});
-
-ipcMain.handle("axiom:secure-storage-set", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string" || typeof request.value !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().set(request.namespace, request.key, request.value);
-});
-
-ipcMain.handle("axiom:secure-storage-remove", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().remove(request.namespace, request.key);
-});
-
 ipcMain.handle("axiom:mcp-diagnostics", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const status = mcpManager.getStatus();
