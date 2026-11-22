@@ -7,7 +7,7 @@ const fsConstants = require("node:fs").constants;
 const MAX_AUDIT_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIT_EVENTS = 4000;
 
-const BLOCKED = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
+const BLOCKED = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk", "id_ecdsa_sk"]);
 
 function normalizeRelativePath(value) {
   if (typeof value !== "string" || value.length > 4096 || value.includes("\0")) throw new TypeError("A workspace-relative path is required.");
@@ -15,7 +15,7 @@ function normalizeRelativePath(value) {
   if (normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized) || normalized.startsWith("//")) throw new Error("Absolute paths are denied by project security policy.");
   const segments = normalized.split("/").filter(Boolean);
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) throw new Error("Path traversal is denied by project security policy.");
-  if (segments.some(segment => BLOCKED.has(segment.toLowerCase()) || segment.toLowerCase().startsWith(".env."))) throw new Error("This path is denied by project security policy.");
+  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED.has(name) || name.startsWith(".env.") || /\\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) throw new Error("This path is denied by project security policy.");
   return segments.join("/");
 }
 
