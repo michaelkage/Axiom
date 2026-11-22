@@ -30,6 +30,7 @@ const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs")
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
+const { evaluateFilesystemAccess, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -41,6 +42,39 @@ let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+let securityAuditStore;
+function currentSecurityAuditStore() {
+  if (!securityAuditStore) securityAuditStore = createSecurityAuditStore({ userDataPath: app.getPath("userData") });
+  return securityAuditStore;
+}
+async function authorizeFilesystemOperation(operation, relativePath) {
+  const evaluation = evaluateFilesystemAccess({ workspaceRoot: selectedWorkspace, relativePath, operation });
+  const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
+  const audit = currentSecurityAuditStore();
+  if (evaluation.decision === "deny") {
+    audit.record({ action: "filesystem." + operation, decision: "deny", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+    await appendRuntimeLog("Security policy denied filesystem." + operation + ": " + evaluation.reason);
+    throw new Error("Security policy denied filesystem access: " + evaluation.reason);
+  }
+  if (evaluation.decision === "approval-required") {
+    audit.record({ action: "filesystem." + operation, decision: "approval-required", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+    try {
+      await requirePrivilegedApproval({
+        title: "Approve project file modification",
+        message: "Allow Axiom to modify a file in the selected project?",
+        detail: "Path: " + String(relativePath || "(project root)") + "\\nPolicy: " + evaluation.reason,
+        approveLabel: "Modify file"
+      });
+      audit.record({ action: "filesystem." + operation, decision: "allow", reason: "User approved the native filesystem confirmation.", projectId, resource: String(relativePath || "") });
+    } catch (error) {
+      audit.record({ action: "filesystem." + operation, decision: "deny", reason: "User denied or dismissed native filesystem confirmation.", projectId, resource: String(relativePath || "") });
+      throw error;
+    }
+  } else {
+    audit.record({ action: "filesystem." + operation, decision: "allow", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+  }
+  return true;
+}
 let pluginHost;
 function currentPluginHost() {
   if (!pluginHost) {
@@ -1631,18 +1665,21 @@ ipcMain.handle("axiom:terminal-cancel", async (event, requestId) => {
 ipcMain.handle("axiom:fs-list", async (event, relativePath = "") => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("read", relativePath);
   return listDirectory(selectedWorkspace, relativePath);
 });
 
 ipcMain.handle("axiom:fs-read", async (event, relativePath) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("read", relativePath);
   return readProjectFile(selectedWorkspace, relativePath);
 });
 
 ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("write", relativePath);
   return writeProjectFile(selectedWorkspace, relativePath, content);
 });
 
