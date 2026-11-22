@@ -1187,6 +1187,13 @@ function recordBrowserError(entry, value) {
 ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const url = validateBrowserNavigation(rawUrl);
+  const initialOrigin = new URL(url).origin;
+  await requirePrivilegedApproval({
+    title: "Approve browser network access",
+    message: "Allow the isolated Axiom browser to connect to this website?",
+    detail: "Origin: " + initialOrigin + "\\nThe browser session is isolated from your normal browser profile.",
+    approveLabel: "Open website"
+  });
   const sessionId = require("node:crypto").randomUUID();
   const browserWindow = new BrowserWindow({
     parent: mainWindow, width: 1280, height: 860, minWidth: 720, minHeight: 520,
@@ -1220,8 +1227,20 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   });
   browserWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   browserWindow.webContents.on("will-navigate", (navigationEvent, target) => {
-    try { validateBrowserNavigation(target); }
-    catch { navigationEvent.preventDefault(); recordBrowserError(entry, "Blocked navigation to a non-HTTP(S) URL."); }
+    navigationEvent.preventDefault();
+    let origin = "unknown origin";
+    try { origin = new URL(validateBrowserNavigation(target)).origin; } catch {}
+    recordBrowserError(entry, "Blocked page-initiated navigation to " + origin + "; use the approved Axiom navigation control.");
+  });
+  browserWindow.webContents.on("will-redirect", (navigationEvent, target) => {
+    let nextOrigin = "";
+    let currentOrigin = "";
+    try { nextOrigin = new URL(validateBrowserNavigation(target)).origin; } catch {}
+    try { currentOrigin = new URL(browserWindow.webContents.getURL()).origin; } catch {}
+    if (!nextOrigin || nextOrigin !== currentOrigin) {
+      navigationEvent.preventDefault();
+      recordBrowserError(entry, "Blocked cross-origin or unsafe browser redirect to " + (nextOrigin || "an invalid destination") + ".");
+    }
   });
   browserWindow.webContents.on("console-message", (_consoleEvent, detailsOrLevel, message, line, sourceId) => {
     const details = detailsOrLevel && typeof detailsOrLevel === "object"
@@ -1274,6 +1293,16 @@ ipcMain.handle("axiom:browser-navigate", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const entry = ownedBrowserSession(event, request?.sessionId);
   const url = validateBrowserNavigation(request.url);
+  const nextOrigin = new URL(url).origin;
+  const currentOrigin = (() => { try { return new URL(entry.window.webContents.getURL()).origin; } catch { return ""; } })();
+  if (nextOrigin !== currentOrigin) {
+    await requirePrivilegedApproval({
+      title: "Approve browser navigation",
+      message: "Allow the isolated browser session to connect to a different website?",
+      detail: "From: " + (currentOrigin || "about:blank") + "\\nTo: " + nextOrigin,
+      approveLabel: "Navigate"
+    });
+  }
   await loadBrowserPage(entry.window, url);
   return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
 });
