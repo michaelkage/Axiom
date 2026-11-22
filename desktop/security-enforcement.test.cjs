@@ -33,3 +33,21 @@ test("security audit records structured bounded events and ignores corrupt lines
     assert.equal(rows[0].decision, "approval-required");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("security audit history rotates at its configured size bound", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-security-rotation-"));
+  try {
+    const file = path.join(root, "security-audit.jsonl");
+    const row = JSON.stringify({
+      schemaVersion: 1, timestamp: new Date().toISOString(), action: "test",
+      decision: "allow", reason: "r".repeat(500), projectId: "p".repeat(128),
+      resource: "x".repeat(512), actor: "desktop-main"
+    });
+    fs.writeFileSync(file, Array.from({ length: 5000 }, () => row).join("\n") + "\n");
+    const audit = createSecurityAuditStore({ userDataPath: root });
+    audit.record({ action: "rotation.check", decision: "allow", reason: "new event" });
+    const events = audit.list(1000);
+    assert.equal(events.at(-1).action, "rotation.check");
+    assert.ok(fs.statSync(file).size < 7 * 1024 * 1024);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
