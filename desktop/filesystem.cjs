@@ -10,6 +10,11 @@ const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_DIRECTORY_SCAN = 2000;
 const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk", "id_ecdsa_sk"]);
 
+function isBlockedSegment(segment) {
+  const name = String(segment).toLowerCase();
+  return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\.(?:pem|key|p12|pfx|keystore)$/.test(name);
+}
+
 function normalizeRelativePath(relativePath = "") {
   if (typeof relativePath !== "string" || relativePath.length > 4096) {
     throw new TypeError("A relative project path is required.");
@@ -22,7 +27,7 @@ function normalizeRelativePath(relativePath = "") {
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) {
     throw new Error("Path traversal is not allowed.");
   }
-  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) {
+  if (segments.some(isBlockedSegment)) {
     throw new Error("This project path is excluded from desktop file access.");
   }
   return segments;
@@ -62,7 +67,7 @@ async function listDirectory(workspaceRoot, relativePath = "") {
     if (entries.length >= MAX_DIRECTORY_SCAN) break;
   }
   return entries
-    .filter(entry => !BLOCKED_SEGMENTS.has(entry.name.toLowerCase()) && !entry.isSymbolicLink())
+    .filter(entry => !isBlockedSegment(entry.name) && !entry.isSymbolicLink())
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
     .slice(0, MAX_DIRECTORY_ENTRIES)
     .map(entry => ({
