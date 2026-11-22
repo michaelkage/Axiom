@@ -45,10 +45,9 @@ let pluginHost;
 function currentPluginHost() {
   if (!pluginHost) {
     const root = path.join(app.getPath("userData"), PLUGIN_DIRECTORY);
-    const sandbox = createPlatformPluginSandbox();
     pluginHost = createPluginHost({
       root,
-      spawnSandbox: request => sandbox.run(request),
+      spawnSandbox: request => createPlatformPluginSandbox().run(request),
       authorize: async ({ pluginId, capabilities }) => requirePrivilegedApproval({
         title: "Approve plugin execution",
         message: "Allow this installed plugin to execute in Axiom's isolated runtime?",
