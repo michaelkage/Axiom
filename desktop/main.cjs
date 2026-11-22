@@ -1461,11 +1461,11 @@ ipcMain.handle("axiom:deployment-history", async event => {
 });
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  await requirePrivilegedApproval({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request?.provider || "unknown") + " | Project: " + String(selectedWorkspace || "none"), approveLabel: "Deploy preview" });
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
-  if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
+  if (!request || typeof request !== "object" || Array.isArray(request) || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
     throw new Error("Deployment requests must target the currently selected project.");
   }
+  await requirePrivilegedApproval({ title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request.provider || "unknown") + " | Project: " + selectedWorkspace, approveLabel: "Deploy preview" });
   const manager = createDeploymentManager({
     getCredential: provider => currentSecureCredentialStore().get("deployment", provider),
   });
@@ -1588,9 +1588,10 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
 
 ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  await requirePrivilegedApproval({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + String(request?.id || "unknown") + " | Commit message: " + String(request?.message || "Axiom update"), approveLabel: "Commit and push" });
-  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!request || typeof request.id !== "string" || typeof request.message !== "string" || !request.message.trim()) throw new TypeError("A remote workspace job ID and commit message are required.");
+  const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await requirePrivilegedApproval({ title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch + " | Commit message: " + request.message, approveLabel: "Commit and push" });
   return runRemoteWorkspaceOperation(job, "commit-push", async signal => {
     try {
       const result = await commitAndPushWorkspace(job, {
