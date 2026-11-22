@@ -51,3 +51,17 @@ test("security audit history rotates at its configured size bound", () => {
     assert.ok(fs.statSync(file).size < 7 * 1024 * 1024);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("security audit store refuses a symlinked audit destination", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-security-link-"));
+  const outside = path.join(root, "outside.jsonl");
+  const auditPath = path.join(root, "security-audit.jsonl");
+  try {
+    fs.writeFileSync(outside, "private");
+    fs.symlinkSync(outside, auditPath);
+    const audit = createSecurityAuditStore({ userDataPath: root });
+    assert.throws(() => audit.record({ action: "test", decision: "allow" }), /regular file/);
+    assert.equal(fs.readFileSync(outside, "utf8"), "private");
+    assert.throws(() => audit.list(), /regular file/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
