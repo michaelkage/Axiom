@@ -49,7 +49,7 @@ function createPluginRuntime(options = {}) {
       cwd: pluginDirectory,
       pluginRoot: pluginDirectory,
       workspaceRoot: needsWorkspace ? request.workspaceRoot : undefined,
-      env: { NODE_ENV: "production", AXIOM_PLUGIN_ID: manifest.id, AXIOM_PLUGIN_CAPABILITIES: granted.join(",") },
+      env: { NODE_ENV: "production", ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}), AXIOM_PLUGIN_ID: manifest.id, AXIOM_PLUGIN_CAPABILITIES: granted.join(",") },
       stdin: JSON.stringify({ protocol: 1, runId, args }),
       limits: { timeoutMs: manifest.resources.timeoutMs, memoryMb: manifest.resources.memoryMb, stdoutBytes: 256 * 1024, stderrBytes: 64 * 1024, network: granted.includes("network.request"), filesystem: granted.filter(value => value.startsWith("project.") || value === "artifact.write") },
       runId
