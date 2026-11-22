@@ -1661,12 +1661,12 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
 
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request?.command || "No command supplied", approveLabel: "Run command" });
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
-  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
-    throw new Error("A terminal request needs a request ID and command.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string" || !request.command.trim()) {
+    throw new Error("A terminal request needs a request ID and non-empty command.");
   }
+  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request.command, approveLabel: "Run command" });
   const startedAt = Date.now();
   const output = [];
   let outputBytes = 0;
