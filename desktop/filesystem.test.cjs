@@ -69,7 +69,7 @@ test("project listings omit environment, credential-store and private-key paths"
     await fs.writeFile(path.join(workspace, "certs", "signing.key"), "private key");
     await fs.writeFile(path.join(workspace, "README.md"), "safe");
     const entries = await listDirectory(workspace);
-    assert.deepEqual(entries.map(entry => entry.name), ["README.md", "certs"]);
+    assert.deepEqual(entries.map(entry => entry.name), ["certs", "README.md"]);
     assert.deepEqual(await listDirectory(workspace, "certs"), []);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 });
