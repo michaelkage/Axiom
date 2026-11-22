@@ -15,7 +15,7 @@ function normalizeRelativePath(value) {
   if (normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized) || normalized.startsWith("//")) throw new Error("Absolute paths are denied by project security policy.");
   const segments = normalized.split("/").filter(Boolean);
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) throw new Error("Path traversal is denied by project security policy.");
-  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED.has(name) || name.startsWith(".env.") || /\\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) throw new Error("This path is denied by project security policy.");
+  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED.has(name) || name.startsWith(".env.") || /\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) throw new Error("This path is denied by project security policy.");
   return segments.join("/");
 }
 
