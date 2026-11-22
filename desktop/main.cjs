@@ -1384,6 +1384,16 @@ ipcMain.handle("axiom:remote-worker-list", async event => {
 });
 ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before submitting work to a remote worker.");
+  if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A remote worker task instruction is required.");
+  const settings = readRemoteWorkerSettings();
+  if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before submitting tasks.");
+  await requirePrivilegedApproval({
+    title: "Approve remote worker submission",
+    message: "Send this task instruction to the configured remote Worker Host?",
+    detail: "Host: " + settings.hostUrl + "\\nRepository: " + settings.repositoryUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    approveLabel: "Send remote task"
+  });
   return createRemoteWorkerHostClientForApp().submit(request);
 });
 ipcMain.handle("axiom:remote-worker-get", async (event, id) => {
@@ -1396,7 +1406,16 @@ ipcMain.handle("axiom:remote-worker-patch", async (event, id) => {
 });
 ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  return createRemoteWorkerHostClientForApp().retry(request?.id, { idempotencyKey: request?.idempotencyKey, prompt: request?.prompt });
+  if (!request || typeof request.id !== "string" || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A retry requires a job ID and task instruction.");
+  const settings = readRemoteWorkerSettings();
+  if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before retrying tasks.");
+  await requirePrivilegedApproval({
+    title: "Approve remote worker retry",
+    message: "Resubmit this task instruction to the configured remote Worker Host?",
+    detail: "Job: " + request.id + "\\nHost: " + settings.hostUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    approveLabel: "Retry remote task"
+  });
+  return createRemoteWorkerHostClientForApp().retry(request.id, { idempotencyKey: request.idempotencyKey, prompt: request.prompt });
 });
 ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -1476,6 +1495,12 @@ ipcMain.handle("axiom:deployment-preview", async (event, request) => {
 ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const validated = validateRemoteWorkspaceRequest(request);
+  await requirePrivilegedApproval({
+    title: "Approve remote repository clone",
+    message: "Allow Axiom to connect to and clone this remote Git repository?",
+    detail: "Repository: " + validated.repositoryUrl + "\\nBranch: " + validated.branch + "\\nMode: " + validated.mode,
+    approveLabel: "Clone repository"
+  });
   const temporaryRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
   const id = require("node:crypto").randomUUID();
   const workspacePath = validated.mode === "persistent"
@@ -1524,6 +1549,12 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
       job.status !== "clone-interrupted" || job.interruptedOperation?.kind !== "clone") {
     throw new Error("Only an interrupted Axiom-owned temporary clone can be retried automatically. Persistent destinations are preserved for manual inspection.");
   }
+  await requirePrivilegedApproval({
+    title: "Approve remote clone retry",
+    message: "Retry connecting to and cloning the remote repository?",
+    detail: "Repository: " + job.repositoryUrl + "\\nBranch: " + job.branch,
+    approveLabel: "Retry clone"
+  });
   return runRemoteWorkspaceOperation(job, "clone", async signal => {
     job.status = "creating";
     job.error = null;
