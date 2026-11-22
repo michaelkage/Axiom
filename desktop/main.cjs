@@ -1391,7 +1391,7 @@ ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
   await requirePrivilegedApproval({
     title: "Approve remote worker submission",
     message: "Send this task instruction to the configured remote Worker Host?",
-    detail: "Host: " + settings.hostUrl + "\\nRepository: " + settings.repositoryUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    detail: "Host: " + settings.hostUrl + "\nRepository: " + settings.repositoryUrl + "\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
     approveLabel: "Send remote task"
   });
   return createRemoteWorkerHostClientForApp().submit(request);
@@ -1412,7 +1412,7 @@ ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
   await requirePrivilegedApproval({
     title: "Approve remote worker retry",
     message: "Resubmit this task instruction to the configured remote Worker Host?",
-    detail: "Job: " + request.id + "\\nHost: " + settings.hostUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    detail: "Job: " + request.id + "\nHost: " + settings.hostUrl + "\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
     approveLabel: "Retry remote task"
   });
   return createRemoteWorkerHostClientForApp().retry(request.id, { idempotencyKey: request.idempotencyKey, prompt: request.prompt });
@@ -1498,7 +1498,7 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   await requirePrivilegedApproval({
     title: "Approve remote repository clone",
     message: "Allow Axiom to connect to and clone this remote Git repository?",
-    detail: "Repository: " + validated.repositoryUrl + "\\nBranch: " + validated.branch + "\\nMode: " + validated.mode,
+    detail: "Repository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nMode: " + validated.mode,
     approveLabel: "Clone repository"
   });
   const temporaryRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
@@ -1552,7 +1552,7 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
   await requirePrivilegedApproval({
     title: "Approve remote clone retry",
     message: "Retry connecting to and cloning the remote repository?",
-    detail: "Repository: " + job.repositoryUrl + "\\nBranch: " + job.branch,
+    detail: "Repository: " + job.repositoryUrl + "\nBranch: " + job.branch,
     approveLabel: "Retry clone"
   });
   return runRemoteWorkspaceOperation(job, "clone", async signal => {
