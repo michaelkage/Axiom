@@ -81,7 +81,12 @@ async function readProjectFile(workspaceRoot, relativePath) {
     if (!stat.isFile()) throw new Error("Only regular files can be read.");
     if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
     const buffer = Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    let bytesRead = 0;
+    while (bytesRead < buffer.length) {
+      const result = await handle.read(buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+    }
     if (bytesRead > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
     const content = buffer.subarray(0, bytesRead).toString("utf8");
     return { path: target.segments.join("/"), content, size: bytesRead };
