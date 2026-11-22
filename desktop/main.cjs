@@ -52,7 +52,7 @@ async function authorizeFilesystemOperation(operation, relativePath) {
   const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
   const audit = currentSecurityAuditStore();
   if (evaluation.decision === "deny") {
-    audit.record({ action: "filesystem." + operation, decision: "deny", reason: evaluation.reason, projectId, resource: String(relativePath || "") });
+    audit.record({ action: "filesystem." + operation, decision: "deny", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
     await appendRuntimeLog("Security policy denied filesystem." + operation + ": " + evaluation.reason);
     throw new Error("Security policy denied filesystem access: " + evaluation.reason);
   }
@@ -947,7 +947,7 @@ async function requirePrivilegedApproval({ title, message, detail, approveLabel 
     noLink: true
   });
   const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
-  const auditAction = "privileged." + String(title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\\.|\\.$/g, "").slice(0, 72);
+  const auditAction = "privileged." + String(title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 72);
   currentSecurityAuditStore().record({
     action: auditAction,
     decision: result.response === 0 ? "allow" : "deny",
