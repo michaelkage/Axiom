@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const crypto = require("node:crypto");
 
 const ID = /^[a-z0-9][a-z0-9._-]{1,63}$/;
-const CAPABILITIES = new Set(["project.read", "project.write", "network.request", "shell.execute", "mcp.invoke", "artifact.write"]);
+const CAPABILITIES = new Set(["project.read", "project.write"]);
 const MAX_MANIFEST_BYTES = 32 * 1024;
 const MAX_ARGS = 64;
 
