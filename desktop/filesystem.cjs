@@ -1,6 +1,8 @@
 "use strict";
 
 const fs = require("node:fs/promises");
+const fsConstants = require("node:fs").constants;
+const crypto = require("node:crypto");
 const path = require("node:path");
 
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -66,30 +68,54 @@ async function listDirectory(workspaceRoot, relativePath = "") {
 
 async function readProjectFile(workspaceRoot, relativePath) {
   const target = await resolveSafePath(workspaceRoot, relativePath);
-  const stat = await fs.stat(target.path);
-  if (!stat.isFile()) throw new Error("Only regular files can be read.");
-  if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
-  return { path: target.segments.join("/"), content: await fs.readFile(target.path, "utf8"), size: stat.size };
+  let handle;
+  try {
+    handle = await fs.open(target.path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("Only regular files can be read.");
+    if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
+    const content = await handle.readFile({ encoding: "utf8" });
+    return { path: target.segments.join("/"), content, size: stat.size };
+  } catch (error) {
+    if (error && error.code === "ELOOP") throw new Error("Symbolic links are not allowed in project file operations.");
+    throw error;
+  } finally {
+    if (handle) await handle.close();
+  }
 }
 
 async function writeProjectFile(workspaceRoot, relativePath, content) {
   if (typeof content !== "string") throw new TypeError("File content must be text.");
-  if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop edit limit.");
+  const size = Buffer.byteLength(content, "utf8");
+  if (size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop edit limit.");
   const target = await resolveSafePath(workspaceRoot, relativePath, { allowMissingFinal: true });
+  if (!target.segments.length) throw new Error("A project file path is required.");
   const parent = path.dirname(target.path);
-  const parentStat = await fs.stat(parent);
-  if (!parentStat.isDirectory()) throw new Error("The destination parent is not a directory.");
+  const parentStat = await fs.lstat(parent);
+  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) throw new Error("The destination parent is not a safe directory.");
   let existing;
+  try { existing = await fs.lstat(target.path); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error("Only regular files can be edited.");
+  const temporary = path.join(parent, ".axiom-write-" + crypto.randomUUID() + ".tmp");
+  let handle;
   try {
-    existing = await fs.lstat(target.path);
+    handle = await fs.open(temporary, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW || 0), 0o600);
+    await handle.writeFile(content, { encoding: "utf8" });
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await fs.rename(temporary, target.path);
+    try {
+      const directory = await fs.open(parent, fsConstants.O_RDONLY);
+      try { await directory.sync(); } finally { await directory.close(); }
+    } catch { /* Directory fsync is not supported on every platform/filesystem. */ }
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (handle) await handle.close().catch(() => {});
+    await fs.unlink(temporary).catch(() => {});
+    throw error;
   }
-  if (existing && (!existing.isFile() || existing.isSymbolicLink())) {
-    throw new Error("Only regular files can be edited.");
-  }
-  await fs.writeFile(target.path, content, { encoding: "utf8", flag: "w" });
-  return { path: target.segments.join("/"), size: Buffer.byteLength(content, "utf8") };
+  return { path: target.segments.join("/"), size };
 }
 
 module.exports = { MAX_FILE_BYTES, MAX_DIRECTORY_ENTRIES, listDirectory, readProjectFile, writeProjectFile, normalizeRelativePath };
