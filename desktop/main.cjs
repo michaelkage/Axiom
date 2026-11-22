@@ -1121,21 +1121,47 @@ ipcMain.handle("axiom:omniroute-status", async event => {
 
 ipcMain.handle("axiom:omniroute-check", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!settings || typeof settings !== "object") throw new TypeError("Invalid OmniRoute connection settings.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute connection test",
+    message: "Allow Axiom to send a connection test to this model-routing endpoint?",
+    detail: "Endpoint: " + String(settings.baseUrl || "configured endpoint") + "\\nThe API key is excluded from this confirmation and audit record.",
+    approveLabel: "Test connection"
+  });
   return omniRouteManager.checkConnection(settings);
 });
 
 ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new TypeError("Invalid OmniRoute settings.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute configuration",
+    message: "Save this model-routing endpoint and its encrypted API credential?",
+    detail: "Endpoint: " + String(settings.baseUrl || "default local endpoint") + "\\nModel: " + String(settings.model || "auto") + "\\nThe API key is excluded from this confirmation and audit record.",
+    approveLabel: "Save routing settings"
+  });
   return omniRouteManager.save(settings);
 });
 
 ipcMain.handle("axiom:omniroute-install", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute installation",
+    message: "Allow Axiom to download and install the OmniRoute runtime?",
+    detail: "This operation installs a third-party command-line runtime on this device.",
+    approveLabel: "Install OmniRoute"
+  });
   return omniRouteManager.install();
 });
 
 ipcMain.handle("axiom:omniroute-start", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute process startup",
+    message: "Allow Axiom to start the configured local model-routing process?",
+    detail: "The process will run in the background until stopped or Axiom exits.",
+    approveLabel: "Start OmniRoute"
+  });
   return omniRouteManager.start();
 });
 
@@ -1149,6 +1175,12 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   const config = omniRouteManager.getConfig();
   const url = new URL(config.baseUrl);
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
+  await requirePrivilegedApproval({
+    title: "Approve external dashboard",
+    message: "Open the configured model-router dashboard in your default browser?",
+    detail: "URL: " + url.toString(),
+    approveLabel: "Open dashboard"
+  });
   await shell.openExternal(url.toString());
   return true;
 });
