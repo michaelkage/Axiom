@@ -22,7 +22,7 @@ function normalizeRelativePath(relativePath = "") {
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) {
     throw new Error("Path traversal is not allowed.");
   }
-  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) {
+  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) {
     throw new Error("This project path is excluded from desktop file access.");
   }
   return segments;
