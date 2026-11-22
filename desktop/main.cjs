@@ -1495,12 +1495,6 @@ ipcMain.handle("axiom:deployment-preview", async (event, request) => {
 ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const validated = validateRemoteWorkspaceRequest(request);
-  await requirePrivilegedApproval({
-    title: "Approve remote repository clone",
-    message: "Allow Axiom to connect to and clone this remote Git repository?",
-    detail: "Repository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nMode: " + validated.mode,
-    approveLabel: "Clone repository"
-  });
   const temporaryRoot = path.resolve(path.join(app.getPath("userData"), "remote-workspaces"));
   const id = require("node:crypto").randomUUID();
   const workspacePath = validated.mode === "persistent"
@@ -1509,6 +1503,12 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (validated.mode === "persistent" && (!request.persistentPath || workspacePath === path.parse(workspacePath).root)) {
     throw new Error("Persistent mode requires an explicit, non-root workspace path.");
   }
+  await requirePrivilegedApproval({
+    title: "Approve remote repository clone",
+    message: "Allow Axiom to connect to and clone this remote Git repository?",
+    detail: "Repository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nMode: " + validated.mode,
+    approveLabel: "Clone repository"
+  });
   const job = {
     id, ...validated, workspacePath,
     temporaryRoot: validated.mode === "persistent" ? null : temporaryRoot,
