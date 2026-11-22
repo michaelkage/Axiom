@@ -1125,7 +1125,7 @@ ipcMain.handle("axiom:omniroute-check", async (event, settings) => {
   await requirePrivilegedApproval({
     title: "Approve OmniRoute connection test",
     message: "Allow Axiom to send a connection test to this model-routing endpoint?",
-    detail: "Endpoint: " + String(settings.baseUrl || "configured endpoint") + "\\nThe API key is excluded from this confirmation and audit record.",
+    detail: "Endpoint: " + String(settings.baseUrl || "configured endpoint") + "\nThe API key is excluded from this confirmation and audit record.",
     approveLabel: "Test connection"
   });
   return omniRouteManager.checkConnection(settings);
@@ -1137,7 +1137,7 @@ ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
   await requirePrivilegedApproval({
     title: "Approve OmniRoute configuration",
     message: "Save this model-routing endpoint and its encrypted API credential?",
-    detail: "Endpoint: " + String(settings.baseUrl || "default local endpoint") + "\\nModel: " + String(settings.model || "auto") + "\\nThe API key is excluded from this confirmation and audit record.",
+    detail: "Endpoint: " + String(settings.baseUrl || "default local endpoint") + "\nModel: " + String(settings.model || "auto") + "\nThe API key is excluded from this confirmation and audit record.",
     approveLabel: "Save routing settings"
   });
   return omniRouteManager.save(settings);
