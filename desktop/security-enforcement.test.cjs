@@ -11,6 +11,7 @@ test("filesystem policy allows safe reads and requires approval for writes", () 
   const root = path.resolve(os.tmpdir(), "axiom-project");
   assert.equal(evaluateFilesystemAccess({ workspaceRoot: root, relativePath: "src/index.ts", operation: "read" }).decision, "allow");
   assert.equal(evaluateFilesystemAccess({ workspaceRoot: root, relativePath: "src/index.ts", operation: "write" }).decision, "approval-required");
+  assert.equal(evaluateFilesystemAccess({ workspaceRoot: root, relativePath: "", operation: "write" }).decision, "deny");
 });
 
 test("filesystem policy denies traversal, absolute paths, secrets and dependency trees", () => {
