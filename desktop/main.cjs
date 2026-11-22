@@ -29,6 +29,8 @@ const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
 const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
+const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
+const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
 const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, discardInterruptedCloneWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
@@ -39,6 +41,24 @@ let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+let pluginHost;
+function currentPluginHost() {
+  if (!pluginHost) {
+    const root = path.join(app.getPath("userData"), PLUGIN_DIRECTORY);
+    const sandbox = createPlatformPluginSandbox();
+    pluginHost = createPluginHost({
+      root,
+      spawnSandbox: request => sandbox.run(request),
+      authorize: async ({ pluginId, capabilities }) => requirePrivilegedApproval({
+        title: "Approve plugin execution",
+        message: "Allow this installed plugin to execute in Axiom's isolated runtime?",
+        detail: "Plugin: " + pluginId + "\nRequested capabilities: " + (capabilities.length ? capabilities.join(", ") : "none"),
+        approveLabel: "Run plugin"
+      })
+    });
+  }
+  return pluginHost;
+}
 const executionTelemetry = createExecutionTelemetry();
 let openCodeTelemetryBridge;
 let secureCredentialStore;
@@ -1016,6 +1036,23 @@ ipcMain.handle("axiom:mcp-remove", (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const result = mcpManager.remove(id);
   void appendRuntimeLog("Removed MCP integration configuration for " + id + "; restart required.");
+  return result;
+});
+
+ipcMain.handle("axiom:plugin-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentPluginHost().list();
+});
+
+ipcMain.handle("axiom:plugin-run", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before running a plugin.");
+  if (!request || typeof request.pluginId !== "string" || !Array.isArray(request.args || [])) throw new TypeError("Invalid plugin execution request.");
+  const result = await currentPluginHost().run(request.pluginId, {
+    workspaceRoot: selectedWorkspace,
+    args: request.args || []
+  });
+  await appendRuntimeLog("Plugin " + request.pluginId + " completed in the isolated runtime.");
   return result;
 });
 
