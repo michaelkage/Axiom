@@ -8,7 +8,7 @@ const path = require("node:path");
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_DIRECTORY_SCAN = 2000;
-const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
+const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk", "id_ecdsa_sk"]);
 
 function normalizeRelativePath(relativePath = "") {
   if (typeof relativePath !== "string" || relativePath.length > 4096) {
@@ -22,7 +22,7 @@ function normalizeRelativePath(relativePath = "") {
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) {
     throw new Error("Path traversal is not allowed.");
   }
-  if (segments.some(segment => BLOCKED_SEGMENTS.has(segment.toLowerCase()))) {
+  if (segments.some(segment => { const name = segment.toLowerCase(); return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\\.(?:pem|key|p12|pfx|keystore)$/.test(name); })) {
     throw new Error("This project path is excluded from desktop file access.");
   }
   return segments;
