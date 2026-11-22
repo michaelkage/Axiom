@@ -946,6 +946,15 @@ async function requirePrivilegedApproval({ title, message, detail, approveLabel 
     cancelId: 1,
     noLink: true
   });
+  const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
+  const auditAction = "privileged." + String(title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\\.|\\.$/g, "").slice(0, 72);
+  currentSecurityAuditStore().record({
+    action: auditAction,
+    decision: result.response === 0 ? "allow" : "deny",
+    reason: result.response === 0 ? "Explicit native main-process approval granted." : "Explicit native main-process approval denied or dismissed.",
+    projectId,
+    resource: redactSecrets(String(detail || "")).slice(0, 512)
+  });
   if (result.response !== 0) {
     await appendRuntimeLog("Privileged operation denied by the user: " + title + ".");
     throw new Error("Operation cancelled: explicit main-process approval was not granted.");
