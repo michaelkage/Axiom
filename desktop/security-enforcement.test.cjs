@@ -14,7 +14,7 @@ test("filesystem policy allows safe reads and requires approval for writes", () 
 });
 
 test("filesystem policy denies traversal, absolute paths, secrets and dependency trees", () => {
-  for (const value of ["../outside", "/etc/passwd", "C:\\Windows\\win.ini", ".env", ".env.production", "node_modules/pkg/a.js", ".git/config", "src/../../outside"]) {
+  for (const value of ["../outside", "/etc/passwd", "C:\\Windows\\win.ini", ".env", ".env.production", "node_modules/pkg/a.js", ".git/config", "src/../../outside", ".ssh/id_ed25519", ".aws/credentials", "certs/private.pem", "secrets/signing.key"]) {
     assert.throws(() => normalizeRelativePath(value));
   }
   assert.equal(evaluateFilesystemAccess({ workspaceRoot: "/tmp/project", relativePath: "../outside", operation: "read" }).decision, "deny");
