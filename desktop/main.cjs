@@ -978,6 +978,12 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
   if (typeof id !== "string") throw new Error("Invalid MCP integration ID.");
   const entry = mcpManager.getStatus().find(item => item.id === id);
   if (!entry || !entry.enabled) throw new Error("Enable this integration and restart Axiom before testing a worker tool call.");
+  await requirePrivilegedApproval({
+    title: "Approve MCP tool probe",
+    message: "Allow Axiom to create a model session and invoke a tool from this integration?",
+    detail: "Integration: " + entry.name + " (" + entry.id + ")\\nRisk: " + entry.riskLabel,
+    approveLabel: "Run tool probe"
+  });
   const taskId = "mcp-probe-" + require("node:crypto").randomUUID();
   const taskStore = currentWorkerStateStore();
   await taskStore.record({ taskId, title: "MCP tool verification: " + entry.name, status: "running", workerType: "mcp-diagnostic", integrationId: id, startedAt: Date.now() });
@@ -1023,11 +1029,21 @@ ipcMain.handle("axiom:mcp-save-secret", (event, request) => {
   return result;
 });
 
-ipcMain.handle("axiom:mcp-enable", (event, request) => {
+ipcMain.handle("axiom:mcp-enable", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!request || typeof request.id !== "string" || typeof request.enabled !== "boolean") throw new Error("Invalid MCP enable request.");
+  if (request.enabled) {
+    const integration = mcpManager.getStatus().find(item => item.id === request.id);
+    if (!integration) throw new Error("Unknown MCP integration.");
+    await requirePrivilegedApproval({
+      title: "Approve MCP integration",
+      message: "Allow this MCP integration to start with Axiom and expose its tools to the model runtime?",
+      detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\\nRisk: " + integration.riskLabel + "\\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
+      approveLabel: "Enable integration"
+    });
+  }
   const result = mcpManager.setEnabled(request.id, request.enabled);
-  void appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
+  await appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
   return result;
 });
 
