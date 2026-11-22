@@ -48,10 +48,10 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     fsImpl.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
     try {
       if (fsImpl.statSync(file).size >= MAX_AUDIT_BYTES) {
-        const retained = fsImpl.readFileSync(file, "utf8").split("\\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
+        const retained = fsImpl.readFileSync(file, "utf8").split("\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
         const temporary = file + "." + crypto.randomUUID() + ".tmp";
         try {
-          fsImpl.writeFileSync(temporary, retained.join("\\n") + (retained.length ? "\\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
+          fsImpl.writeFileSync(temporary, retained.join("\n") + (retained.length ? "\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
           fsImpl.renameSync(temporary, file);
         } catch (error) {
           try { fsImpl.unlinkSync(temporary); } catch {}
@@ -61,7 +61,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    fsImpl.appendFileSync(file, JSON.stringify(event) + "\\n", { encoding: "utf8", mode: 0o600 });
+    fsImpl.appendFileSync(file, JSON.stringify(event) + "\n", { encoding: "utf8", mode: 0o600 });
     return event;
   }
   function list(limit = 100) {
