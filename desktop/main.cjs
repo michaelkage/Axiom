@@ -62,7 +62,7 @@ async function authorizeFilesystemOperation(operation, relativePath) {
       await requirePrivilegedApproval({
         title: "Approve project file modification",
         message: "Allow Axiom to modify a file in the selected project?",
-        detail: "Path: " + String(relativePath || "(project root)") + "\\nPolicy: " + evaluation.reason,
+        detail: "Path: " + String(relativePath || "(project root)") + "\nPolicy: " + evaluation.reason,
         approveLabel: "Modify file"
       });
       audit.record({ action: "filesystem." + operation, decision: "allow", reason: "User approved the native filesystem confirmation.", projectId, resource: String(relativePath || "") });
@@ -1071,7 +1071,7 @@ ipcMain.handle("axiom:mcp-enable", async (event, request) => {
     await requirePrivilegedApproval({
       title: "Approve MCP integration",
       message: "Allow this MCP integration to start with Axiom and expose its tools to the model runtime?",
-      detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\\nRisk: " + integration.riskLabel + "\\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
+      detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\nRisk: " + integration.riskLabel + "\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
       approveLabel: "Enable integration"
     });
   }
@@ -1191,7 +1191,7 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   await requirePrivilegedApproval({
     title: "Approve browser network access",
     message: "Allow the isolated Axiom browser to connect to this website?",
-    detail: "Origin: " + initialOrigin + "\\nThe browser session is isolated from your normal browser profile.",
+    detail: "Origin: " + initialOrigin + "\nThe browser session is isolated from your normal browser profile.",
     approveLabel: "Open website"
   });
   const sessionId = require("node:crypto").randomUUID();
@@ -1299,7 +1299,7 @@ ipcMain.handle("axiom:browser-navigate", async (event, request) => {
     await requirePrivilegedApproval({
       title: "Approve browser navigation",
       message: "Allow the isolated browser session to connect to a different website?",
-      detail: "From: " + (currentOrigin || "about:blank") + "\\nTo: " + nextOrigin,
+      detail: "From: " + (currentOrigin || "about:blank") + "\nTo: " + nextOrigin,
       approveLabel: "Navigate"
     });
   }
@@ -1363,7 +1363,7 @@ ipcMain.handle("axiom:remote-worker-config-save", async (event, request) => {
   await requirePrivilegedApproval({
     title: "Approve remote worker credentials",
     message: "Save this remote worker host configuration and encrypted access token?",
-    detail: "Host: " + validated.hostUrl + "\\nRepository: " + validated.repositoryUrl + "\\nBranch: " + validated.branch + "\\nThe access token is excluded from this confirmation and audit record.",
+    detail: "Host: " + validated.hostUrl + "\nRepository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nThe access token is excluded from this confirmation and audit record.",
     approveLabel: "Save remote worker"
   });
   const store = currentSecureCredentialStore();
@@ -1775,7 +1775,7 @@ ipcMain.handle("axiom:provider-credential-save", async (event, request) => {
   await requirePrivilegedApproval({
     title: "Approve provider credential storage",
     message: "Store an encrypted provider credential for use by Axiom?",
-    detail: "Provider: " + request.providerId + "\\nThe credential value is intentionally excluded from this confirmation and audit record.",
+    detail: "Provider: " + request.providerId + "\nThe credential value is intentionally excluded from this confirmation and audit record.",
     approveLabel: "Store credential"
   });
   return currentProviderCredentialManager().save(request.providerId, request.secret);
