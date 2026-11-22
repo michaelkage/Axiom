@@ -1625,9 +1625,10 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
 
 ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  await requirePrivilegedApproval({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + String(request?.id || "unknown"), approveLabel: "Push commit" });
-  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!request || typeof request.id !== "string") throw new TypeError("A remote workspace job ID is required.");
+  const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await requirePrivilegedApproval({ title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch, approveLabel: "Push commit" });
   return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
     try {
       const result = await pushReconciledWorkspace(job, {
