@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES = 500;
+const MAX_DIRECTORY_SCAN = 2000;
 const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
 
 function normalizeRelativePath(relativePath = "") {
@@ -54,7 +55,12 @@ async function listDirectory(workspaceRoot, relativePath = "") {
   const target = await resolveSafePath(workspaceRoot, relativePath);
   const stat = await fs.stat(target.path);
   if (!stat.isDirectory()) throw new Error("The requested project path is not a directory.");
-  const entries = await fs.readdir(target.path, { withFileTypes: true });
+  const entries = [];
+  const directory = await fs.opendir(target.path);
+  for await (const entry of directory) {
+    entries.push(entry);
+    if (entries.length >= MAX_DIRECTORY_SCAN) break;
+  }
   return entries
     .filter(entry => !BLOCKED_SEGMENTS.has(entry.name.toLowerCase()) && !entry.isSymbolicLink())
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
@@ -121,4 +127,4 @@ async function writeProjectFile(workspaceRoot, relativePath, content) {
   return { path: target.segments.join("/"), size };
 }
 
-module.exports = { MAX_FILE_BYTES, MAX_DIRECTORY_ENTRIES, listDirectory, readProjectFile, writeProjectFile, normalizeRelativePath };
+module.exports = { MAX_FILE_BYTES, MAX_DIRECTORY_ENTRIES, MAX_DIRECTORY_SCAN, listDirectory, readProjectFile, writeProjectFile, normalizeRelativePath };
