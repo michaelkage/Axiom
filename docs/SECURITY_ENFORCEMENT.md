@@ -19,7 +19,7 @@ The file adapter retains its own path validation. IPC policy is an additional bo
 
 ## Credentials
 
-The generic renderer-accessible secure-storage get/set/remove bridge has been removed. Credentials are handled through provider-specific main-process APIs. Saving or removing GitHub/Supabase credentials, saving MCP credentials, and saving remote worker host credentials require native confirmation. Secret values are not included in approval text or audit resources.
+The generic renderer-accessible secure-storage get/set/remove bridge has been removed. Credentials are handled through provider-specific main-process APIs. Saving or removing GitHub/Supabase credentials, saving MCP credentials, and saving remote worker host credentials require native confirmation. OmniRoute endpoint/API-key changes, connection tests, runtime installation, process startup and external dashboard opening also require native confirmation. Secret values are not included in approval text or audit resources.
 
 ## Remote execution and repository access
 
