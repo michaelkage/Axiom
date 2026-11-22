@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const crypto = require("node:crypto");
+const fsConstants = require("node:fs").constants;
 
 const MAX_AUDIT_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIT_EVENTS = 4000;
@@ -47,7 +48,9 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     };
     fsImpl.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
     try {
-      if (fsImpl.statSync(file).size >= MAX_AUDIT_BYTES) {
+      const existing = fsImpl.lstatSync(file);
+      if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
+      if (existing.size >= MAX_AUDIT_BYTES) {
         const retained = fsImpl.readFileSync(file, "utf8").split("\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
         const temporary = file + "." + crypto.randomUUID() + ".tmp";
         try {
@@ -61,14 +64,19 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    fsImpl.appendFileSync(file, JSON.stringify(event) + "\n", { encoding: "utf8", mode: 0o600 });
+    const descriptor = fsImpl.openSync(file, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW || 0), 0o600);
+    try { fsImpl.writeSync(descriptor, JSON.stringify(event) + "\\n", null, "utf8"); }
+    finally { fsImpl.closeSync(descriptor); }
     return event;
   }
   function list(limit = 100) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new RangeError("Audit limit must be between 1 and 1000.");
     let raw;
-    try { raw = fsImpl.readFileSync(file, "utf8"); }
-    catch (error) { if (error.code === "ENOENT") return []; throw error; }
+    try {
+      const stat = fsImpl.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
+      raw = fsImpl.readFileSync(file, "utf8");
+    } catch (error) { if (error.code === "ENOENT") return []; throw error; }
     return raw.split("\n").filter(Boolean).slice(-limit).flatMap(line => {
       try {
         const item = JSON.parse(line);
