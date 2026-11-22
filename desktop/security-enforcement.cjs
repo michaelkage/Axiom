@@ -35,6 +35,11 @@ function evaluateFilesystemAccess({ workspaceRoot, relativePath, operation }) {
 function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") }) {
   if (typeof userDataPath !== "string" || !path.isAbsolute(userDataPath)) throw new TypeError("A user-data directory is required.");
   const file = path.join(userDataPath, "security-audit.jsonl");
+  function readAuditFile() {
+    const descriptor = fsImpl.openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+    try { return fsImpl.readFileSync(descriptor, "utf8"); }
+    finally { fsImpl.closeSync(descriptor); }
+  }
   function record(input) {
     const event = {
       schemaVersion: 1,
@@ -51,7 +56,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
       const existing = fsImpl.lstatSync(file);
       if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
       if (existing.size >= MAX_AUDIT_BYTES) {
-        const retained = fsImpl.readFileSync(file, "utf8").split("\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
+        const retained = readAuditFile().split("\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
         const temporary = file + "." + crypto.randomUUID() + ".tmp";
         try {
           fsImpl.writeFileSync(temporary, retained.join("\n") + (retained.length ? "\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -75,7 +80,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     try {
       const stat = fsImpl.lstatSync(file);
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
-      raw = fsImpl.readFileSync(file, "utf8");
+      raw = readAuditFile();
     } catch (error) { if (error.code === "ENOENT") return []; throw error; }
     return raw.split("\n").filter(Boolean).slice(-limit).flatMap(line => {
       try {
