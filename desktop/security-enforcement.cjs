@@ -65,7 +65,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
       if (error.code !== "ENOENT") throw error;
     }
     const descriptor = fsImpl.openSync(file, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW || 0), 0o600);
-    try { fsImpl.writeSync(descriptor, JSON.stringify(event) + "\\n", null, "utf8"); }
+    try { fsImpl.writeSync(descriptor, JSON.stringify(event) + "\n", null, "utf8"); }
     finally { fsImpl.closeSync(descriptor); }
     return event;
   }
