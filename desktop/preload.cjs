@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     set: (namespace, key, value) => ipcRenderer.invoke("axiom:secure-storage-set", { namespace, key, value }),
     remove: (namespace, key) => ipcRenderer.invoke("axiom:secure-storage-remove", { namespace, key })
   }),
+  plugins: Object.freeze({
+    list: () => ipcRenderer.invoke("axiom:plugin-list"),
+    run: request => ipcRenderer.invoke("axiom:plugin-run", request)
+  }),
   mcp: Object.freeze({
     status: () => ipcRenderer.invoke("axiom:mcp-status"),
     diagnostics: () => ipcRenderer.invoke("axiom:mcp-diagnostics"),
