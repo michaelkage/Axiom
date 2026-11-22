@@ -21,6 +21,10 @@ The file adapter retains its own path validation. IPC policy is an additional bo
 
 The generic renderer-accessible secure-storage get/set/remove bridge has been removed. Credentials are handled through provider-specific main-process APIs. Saving or removing GitHub/Supabase credentials, saving MCP credentials, and saving remote worker host credentials require native confirmation. Secret values are not included in approval text or audit resources.
 
+## Remote execution and repository access
+
+Submitting or retrying a remote worker task now requires native confirmation. The confirmation identifies the configured Worker Host and repository and displays a bounded, secret-redacted task instruction. Remote repository clone and interrupted-clone retry also require confirmation showing the repository and branch. Git push and recovered-commit push continue to require separate native approval. Remote worker credentials are stored through the main-process secure store and are never returned to the renderer.
+
 ## Browser network actions
 
 Opening an external browser origin and navigating to a different origin require native approval. Page-initiated top-level navigations and cross-origin redirects are blocked; navigation must be requested through Axiom's approved main-process control. The browser remains isolated from the normal browser profile, denies permissions and downloads, and records network/console diagnostics.
