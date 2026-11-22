@@ -1046,11 +1046,19 @@ ipcMain.handle("axiom:mcp-status", event => {
   return mcpManager.getStatus();
 });
 
-ipcMain.handle("axiom:mcp-save-secret", (event, request) => {
+ipcMain.handle("axiom:mcp-save-secret", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.id !== "string" || typeof request.secret !== "string") throw new Error("Invalid MCP credential request.");
+  if (!request || typeof request.id !== "string" || typeof request.secret !== "string" || !request.secret.trim()) throw new Error("Invalid MCP credential request.");
+  const integration = mcpManager.getStatus().find(item => item.id === request.id);
+  if (!integration) throw new Error("Unknown MCP integration.");
+  await requirePrivilegedApproval({
+    title: "Approve MCP credential storage",
+    message: "Store an encrypted credential for this MCP integration?",
+    detail: "Integration: " + integration.name + " (" + integration.id + ")\\nThe credential value is excluded from this confirmation and audit record.",
+    approveLabel: "Store credential"
+  });
   const result = mcpManager.saveSecret(request.id, request.secret);
-  void appendRuntimeLog("Saved secure MCP credential for " + request.id + "; restart required to load the integration.");
+  await appendRuntimeLog("Saved secure MCP credential for " + request.id + "; restart required to load the integration.");
   return result;
 });
 
@@ -1318,10 +1326,17 @@ ipcMain.handle("axiom:remote-worker-config", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return readRemoteWorkerSettings();
 });
-ipcMain.handle("axiom:remote-worker-config-save", (event, request) => {
+ipcMain.handle("axiom:remote-worker-config-save", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid remote worker configuration.");
   const savedToken = currentSecureCredentialStore().get("worker-host", "token");
-  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request?.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  await requirePrivilegedApproval({
+    title: "Approve remote worker credentials",
+    message: "Save this remote worker host configuration and encrypted access token?",
+    detail: "Host: " + validated.hostUrl + "\\nRepository: " + validated.repositoryUrl + "\\nBranch: " + validated.branch + "\\nThe access token is excluded from this confirmation and audit record.",
+    approveLabel: "Save remote worker"
+  });
   const store = currentSecureCredentialStore();
   store.set("worker-host", "host-url", validated.hostUrl);
   store.set("worker-host", "repository-url", validated.repositoryUrl);
@@ -1724,13 +1739,27 @@ ipcMain.handle("axiom:provider-credential-status", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return ["github", "supabase"].map(providerId => currentProviderCredentialManager().status(providerId));
 });
-ipcMain.handle("axiom:provider-credential-save", (event, request) => {
+ipcMain.handle("axiom:provider-credential-save", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid provider credential request.");
+  if (!["github", "supabase"].includes(request.providerId) || typeof request.secret !== "string" || !request.secret.trim()) throw new TypeError("Invalid provider credential request.");
+  await requirePrivilegedApproval({
+    title: "Approve provider credential storage",
+    message: "Store an encrypted provider credential for use by Axiom?",
+    detail: "Provider: " + request.providerId + "\\nThe credential value is intentionally excluded from this confirmation and audit record.",
+    approveLabel: "Store credential"
+  });
   return currentProviderCredentialManager().save(request.providerId, request.secret);
 });
-ipcMain.handle("axiom:provider-credential-remove", (event, providerId) => {
+ipcMain.handle("axiom:provider-credential-remove", async (event, providerId) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!["github", "supabase"].includes(providerId)) throw new TypeError("Unsupported provider credential.");
+  await requirePrivilegedApproval({
+    title: "Approve provider credential removal",
+    message: "Remove the encrypted provider credential from this device?",
+    detail: "Provider: " + providerId,
+    approveLabel: "Remove credential"
+  });
   return currentProviderCredentialManager().remove(providerId);
 });
 
