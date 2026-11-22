@@ -65,7 +65,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
       if (error.code !== "ENOENT") throw error;
     }
     const descriptor = fsImpl.openSync(file, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW || 0), 0o600);
-    try { fsImpl.writeSync(descriptor, JSON.stringify(event) + "\n", null, "utf8"); }
+    try { fsImpl.appendFileSync(descriptor, JSON.stringify(event) + "\n", { encoding: "utf8" }); }
     finally { fsImpl.closeSync(descriptor); }
     return event;
   }
@@ -80,7 +80,7 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
     return raw.split("\n").filter(Boolean).slice(-limit).flatMap(line => {
       try {
         const item = JSON.parse(line);
-        return item.schemaVersion === 1 && typeof item.timestamp === "string" ? [item] : [];
+        return item.schemaVersion === 1 && typeof item.timestamp === "string" && typeof item.action === "string" && ["allow", "deny", "approval-required"].includes(item.decision) && typeof item.reason === "string" ? [item] : [];
       } catch { return []; }
     });
   }
