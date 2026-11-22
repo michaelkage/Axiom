@@ -7,7 +7,7 @@ const path = require("node:path");
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES = 500;
-const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next"]);
+const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
 
 function normalizeRelativePath(relativePath = "") {
   if (typeof relativePath !== "string" || relativePath.length > 4096) {
