@@ -1114,6 +1114,11 @@ ipcMain.handle("axiom:plugin-run", async (event, request) => {
   return result;
 });
 
+ipcMain.handle("axiom:security-audit-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentSecurityAuditStore().list(200);
+});
+
 ipcMain.handle("axiom:telemetry-snapshot", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return executionTelemetry.snapshot();
