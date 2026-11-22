@@ -1,6 +1,10 @@
 "use strict";
 
 const path = require("node:path");
+const crypto = require("node:crypto");
+
+const MAX_AUDIT_BYTES = 5 * 1024 * 1024;
+const MAX_AUDIT_EVENTS = 4000;
 
 const BLOCKED = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
 
@@ -42,7 +46,22 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
       actor: "desktop-main"
     };
     fsImpl.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
-    fsImpl.appendFileSync(file, JSON.stringify(event) + "\n", { encoding: "utf8", mode: 0o600 });
+    try {
+      if (fsImpl.statSync(file).size >= MAX_AUDIT_BYTES) {
+        const retained = fsImpl.readFileSync(file, "utf8").split("\\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
+        const temporary = file + "." + crypto.randomUUID() + ".tmp";
+        try {
+          fsImpl.writeFileSync(temporary, retained.join("\\n") + (retained.length ? "\\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
+          fsImpl.renameSync(temporary, file);
+        } catch (error) {
+          try { fsImpl.unlinkSync(temporary); } catch {}
+          throw error;
+        }
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    fsImpl.appendFileSync(file, JSON.stringify(event) + "\\n", { encoding: "utf8", mode: 0o600 });
     return event;
   }
   function list(limit = 100) {
@@ -60,4 +79,4 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
   return Object.freeze({ record, list });
 }
 
-module.exports = { normalizeRelativePath, evaluateFilesystemAccess, createSecurityAuditStore };
+module.exports = { MAX_AUDIT_BYTES, MAX_AUDIT_EVENTS, normalizeRelativePath, evaluateFilesystemAccess, createSecurityAuditStore };
