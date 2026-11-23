@@ -489,6 +489,53 @@ function App() {
     setWorkflowPlan(null);
     const workerPersistenceByTask = new Map<string, Promise<void>>();
     const latestWorkerRecordByTask = new Map<string, TaskExecutionRecord>();
+    const workerOutputByAttempt = new Map<string, { lines: string[]; characters: number; truncated: boolean }>();
+    const persistedWorkerAttempts = new Set<string>();
+    const workerAttemptKey = (taskId: string, attempt: number) => taskId + ":" + attempt;
+    const captureWorkerOutput = (taskId: string, line: string, attempt: number) => {
+      const key = workerAttemptKey(taskId, attempt);
+      let capture = workerOutputByAttempt.get(key);
+      if (!capture) {
+        capture = { lines: [], characters: 0, truncated: false };
+        workerOutputByAttempt.set(key, capture);
+      }
+      const normalized = String(line ?? "").replace(/[\\r\\n]+/g, " ").slice(0, 8000);
+      const remaining = 512 * 1024 - capture.characters;
+      if (remaining <= 0) {
+        capture.truncated = true;
+        return;
+      }
+      const accepted = normalized.slice(0, remaining);
+      capture.lines.push(accepted);
+      capture.characters += accepted.length;
+      if (accepted.length < normalized.length) capture.truncated = true;
+    };
+    const persistWorkerOutput = (record: TaskExecutionRecord, attempt: number) => {
+      const key = workerAttemptKey(record.taskId, attempt);
+      if (persistedWorkerAttempts.has(key)) return;
+      persistedWorkerAttempts.add(key);
+      const capture = workerOutputByAttempt.get(key);
+      if (!capture || capture.lines.length === 0) return;
+      const projectArtifacts = desktopApi()?.artifacts;
+      if (!projectArtifacts?.put) return;
+      void projectArtifacts.put({
+        taskId: record.taskId,
+        kind: "log",
+        name: "Worker output " + record.taskId + " attempt " + attempt,
+        data: capture.lines.join("\\n"),
+        metadata: {
+          producer: "local-worker",
+          taskId: record.taskId,
+          attempt,
+          sessionId: record.sessionId ?? null,
+          worktreePath: record.worktreePath ?? null,
+          lineCount: capture.lines.length,
+          characters: capture.characters,
+          truncated: capture.truncated,
+          capturedAt: Date.now()
+        }
+      }).catch(error => logger.error("Could not persist worker output artifact", { taskId: record.taskId, attempt, error }));
+    };
     try {
       let parentSessionId = sync.currentSessionId();
       if (!parentSessionId) {
