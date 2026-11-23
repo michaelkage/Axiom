@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeRelativePath, evaluateFilesystemAccess, createSecurityAuditStore } = require("./security-enforcement.cjs");
+const { normalizeRelativePath, evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 
 test("filesystem policy allows safe reads and requires approval for writes", () => {
   const root = path.resolve(os.tmpdir(), "axiom-project");
@@ -65,4 +65,16 @@ test("security audit store refuses a symlinked audit destination", () => {
     assert.equal(fs.readFileSync(outside, "utf8"), "private");
     assert.throws(() => audit.list(), /regular file/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("filesystem authorization composes path and workspace policy with deny precedence", () => {
+  const allow = { decision: "allow", reason: "base" };
+  const denied = { decision: "deny", reason: "policy denied" };
+  const approval = { decision: "approval-required", reason: "approval required" };
+  assert.equal(combineFilesystemDecisions(allow, allow).decision, "allow");
+  assert.equal(combineFilesystemDecisions(approval, allow).decision, "approval-required");
+  assert.equal(combineFilesystemDecisions(allow, approval).decision, "approval-required");
+  assert.deepEqual(combineFilesystemDecisions(allow, denied), denied);
+  assert.equal(combineFilesystemDecisions(denied, allow).decision, "deny");
+  assert.equal(combineFilesystemDecisions(allow, null).decision, "deny");
 });
