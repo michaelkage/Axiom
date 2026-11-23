@@ -29,6 +29,16 @@ test("caps retained output and reports truncation without growing memory", () =>
   assert.equal(result.data, "[STDOUT] 123456[STDERR] ab");
 });
 
+test("bounds per-chunk bookkeeping when a process emits tiny writes", () => {
+  const capture = createRuntimeOutputCapture({ maxBytes: 100, maxChunks: 2 });
+  assert.equal(capture.append("stdout", "a"), 1);
+  assert.equal(capture.append("stdout", "b"), 1);
+  assert.equal(capture.append("stdout", "c"), 0);
+  assert.equal(capture.snapshot().bytes, 2);
+  assert.equal(capture.snapshot().truncated, true);
+  assert.throws(() => createRuntimeOutputCapture({ maxChunks: 0 }), /chunk limit/);
+});
+
 test("validates configured limits and stream names", () => {
   assert.throws(() => createRuntimeOutputCapture({ maxBytes: 0 }), /limit/);
   assert.throws(() => createRuntimeOutputCapture({ maxBytes: DEFAULT_MAX_BYTES + 1, }), /limit/);
