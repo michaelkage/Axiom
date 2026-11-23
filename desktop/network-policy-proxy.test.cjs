@@ -44,7 +44,7 @@ test("network proxy requires per-runtime proxy authentication", async () => {
 });
 
 test("network proxy gates CONNECT destinations through the supplied workspace authorizer", async () => {
-  const upstream = net.createServer(socket => socket.destroy());
+  const upstream = net.createServer(() => {});
   await new Promise(resolve => upstream.listen(0, "127.0.0.1", resolve));
   const upstreamPort = upstream.address().port;
   const seen = [];
