@@ -128,11 +128,13 @@ test("network proxy forwards authenticated HTTP through pinned DNS results", asy
 });
 
 function makeClientHello(hostname) {
-  const name = Buffer.from(hostname, "ascii");
-  const nameEntry = Buffer.concat([Buffer.from([0, (name.length >> 8) & 255, name.length & 255]), name]);
-  const nameList = Buffer.concat([Buffer.from([(nameEntry.length >> 8) & 255, nameEntry.length & 255]), nameEntry]);
-  const serverNameExtension = Buffer.concat([Buffer.from([0, 0, (nameList.length >> 8) & 255, nameList.length & 255]), nameList]);
-  const extensions = serverNameExtension;
+  let extensions = Buffer.alloc(0);
+  if (hostname) {
+    const name = Buffer.from(hostname, "ascii");
+    const nameEntry = Buffer.concat([Buffer.from([0, (name.length >> 8) & 255, name.length & 255]), name]);
+    const nameList = Buffer.concat([Buffer.from([(nameEntry.length >> 8) & 255, nameEntry.length & 255]), nameEntry]);
+    extensions = Buffer.concat([Buffer.from([0, 0, (nameList.length >> 8) & 255, nameList.length & 255]), nameList]);
+  }
   const body = Buffer.concat([
     Buffer.from([3, 3]),
     Buffer.alloc(32),
@@ -154,6 +156,7 @@ test("TLS ClientHello inspection extracts and validates SNI before a CONNECT tun
   const hello = makeClientHello("api.example.com");
   assert.deepEqual(extractTlsServerName(hello), { status: "complete", hostname: "api.example.com" });
   assert.equal(extractTlsServerName(hello.subarray(0, 8)).status, "need-more");
-  const noSni = Buffer.concat([hello.subarray(0, 5), Buffer.from([1, 0, 0, 38]), Buffer.alloc(38)]);
-  assert.equal(extractTlsServerName(noSni).status, "invalid");
+  const noSni = extractTlsServerName(makeClientHello());
+  assert.equal(noSni.status, "invalid");
+  assert.match(noSni.reason, /no server-name extension/);
 });
