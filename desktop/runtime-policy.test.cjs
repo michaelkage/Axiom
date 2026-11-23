@@ -62,7 +62,8 @@ test("runtime policy is applied after configured rules for built-in and custom a
   applyRuntimePermissionPolicy(config, policy);
   for (const id of ["build", "plan", "general", "explore", "title", "summary", "compaction", "custom"]) {
     const rules = config.agents[id].permissions;
-    assert.equal(rules.at(-1).effect, "deny");
+    assert.equal(rules.find(rule => rule.action === "shell" && rule.resource === "*").effect, "ask");
+    assert.equal(rules.find(rule => rule.action === "shell" && rule.resource === "git push *").effect, "deny");
     assert.equal(rules.some(rule => rule.action === "github_*" && rule.effect === "ask"), true);
   }
   assert.equal(config.permissions.at(-1).effect, "ask");
