@@ -28,6 +28,10 @@ test("runtime policy translates workspace decisions into OpenCode permission eff
   assert.equal(find("supabase_*").effect, "ask");
   assert.equal(find("opencode_list_mcp_resources").effect, "ask");
   assert.equal(find("read", "*.env").effect, "deny");
+  assert.equal(find("read", ".git/*").effect, "deny");
+  assert.equal(find("read", "node_modules/*").effect, "deny");
+  assert.equal(find("read", ".npmrc").effect, "deny");
+  assert.equal(find("read", "id_ed25519").effect, "deny");
   assert.equal(find("external_directory").effect, "deny");
 });
 
