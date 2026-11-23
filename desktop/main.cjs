@@ -1925,9 +1925,9 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   // Git is cloning. The operation lease and destination are durable first.
   void runRemoteWorkspaceOperation(job, "clone", async signal => {
     try {
-      const created = await createRemoteWorkspace(request, {
-        temporaryRoot, workspacePath, signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {}
-      });
+      const created = await withWorkspaceNetworkProxy(selectedWorkspace, env => createRemoteWorkspace(request, {
+        temporaryRoot, workspacePath, signal, env
+      }));
       Object.assign(job, created, { id, error: null, interruptedOperation: null });
       return { id, status: job.status };
     } catch (error) {
@@ -1964,10 +1964,10 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
     await persistRemoteWorkspaceJobs();
     try {
       await discardInterruptedCloneWorkspace(job);
-      const created = await createRemoteWorkspace({
+      const created = await withWorkspaceNetworkProxy(selectedWorkspace, env => createRemoteWorkspace({
         mode: job.mode, repositoryUrl: job.repositoryUrl,
         branch: job.branch, paths: job.paths
-      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
+      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal, env }));
       Object.assign(job, created, { id: job.id, error: null, interruptedOperation: null });
       return { id: job.id, status: job.status };
     } catch (error) {
@@ -1998,15 +1998,15 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   await enforceWorkspacePolicyApproval("git.push", { title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch + " | Commit message: " + request.message, approveLabel: "Commit and push", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "commit-push", async signal => {
     try {
-      const result = await commitAndPushWorkspace(job, {
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => commitAndPushWorkspace(job, {
         message: request.message,
         signal,
-        env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {},
+        env,
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
         }
-      });
+      }));
       return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
     } finally {
       // Preserve a local commit if the process fails after commit but before push confirmation.
@@ -2022,7 +2022,7 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   return runRemoteWorkspaceOperation(job, "reconcile", async signal => {
     try {
       await authorizeRuntimeNetwork(job.repositoryUrl, selectedWorkspace, { title: "Approve remote Git reconciliation", message: "Allow Axiom to inspect the remote repository state for this workspace?", detail: "Branch: " + job.branch, approveLabel: "Allow repository check" });
-      const result = await reconcileRemoteWorkspace(job, { signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => reconcileRemoteWorkspace(job, { signal, env }));
       job.interruptedOperation = null;
       return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
     } finally { await persistRemoteWorkspaceJobs(); }
@@ -2038,14 +2038,14 @@ ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) =
   await enforceWorkspacePolicyApproval("git.push", { title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch, approveLabel: "Push commit", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
     try {
-      const result = await pushReconciledWorkspace(job, {
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => pushReconciledWorkspace(job, {
         signal,
-        env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {},
+        env,
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
         }
-      });
+      }));
       return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
     } finally { await persistRemoteWorkspaceJobs(); }
   });
