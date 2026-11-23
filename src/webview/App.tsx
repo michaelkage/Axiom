@@ -520,11 +520,13 @@ function App() {
       if (!capture || capture.lines.length === 0) return;
       const projectArtifacts = desktopApi()?.artifacts;
       if (!projectArtifacts?.put) return;
+      const data = capture.lines.join("\n");
+      workerOutputByAttempt.delete(key);
       void projectArtifacts.put({
         taskId: record.taskId,
         kind: "log",
         name: "Worker output " + record.taskId + " attempt " + attempt,
-        data: capture.lines.join("\n"),
+        data,
         metadata: {
           producer: "local-worker",
           taskId: record.taskId,
