@@ -61,6 +61,7 @@ function extractTlsServerName(buffer) {
     offset += 4;
     const extensionEnd = offset + extensionLength;
     if (extensionEnd > extensionsEnd) return { status: "invalid", reason: "TLS extension length is invalid." };
+    if (extensionType === 0xfe0d) return { status: "invalid", reason: "Encrypted ClientHello is not supported by hostname policy enforcement." };
     if (extensionType === 0x0000) {
       if (offset + 2 > extensionEnd) return { status: "invalid", reason: "TLS server-name extension is truncated." };
       const listLength = body.readUInt16BE(offset);
