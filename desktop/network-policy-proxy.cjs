@@ -1,0 +1,179 @@
+"use strict";
+
+const http = require("node:http");
+const net = require("node:net");
+const crypto = require("node:crypto");
+
+const SOCKET_TIMEOUT_MS = 120000;
+const MAX_HEADER_BYTES = 16 * 1024;
+
+function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex") } = {}) {
+  if (typeof authorize !== "function") throw new TypeError("Network proxy requires a policy authorizer.");
+  if (host !== "127.0.0.1" || !Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError("Network proxy must bind to loopback and a valid port.");
+  if (typeof token !== "string" || token.length < 32) throw new TypeError("Network proxy requires a high-entropy authentication token.");
+
+  const sockets = new Set();
+  let server = null;
+  let proxyUrl = null;
+  let stopped = false;
+  const authValue = Buffer.from("axiom:" + token).toString("base64");
+
+  function authorizedProxyRequest(request) {
+    const header = request.headers["proxy-authorization"];
+    if (typeof header !== "string" || !header.startsWith("Basic ")) return false;
+    const supplied = Buffer.from(header.slice(6), "base64");
+    const expected = Buffer.from(authValue);
+    return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+  }
+
+  function writeError(socket, status, message) {
+    if (!socket.destroyed) {
+      socket.end("HTTP/1.1 " + status + "\r\nConnection: close\r\nContent-Length: " + Buffer.byteLength(message) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + message);
+    }
+  }
+
+  async function authorizeUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { throw new Error("Invalid proxy destination."); }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.hostname) {
+      throw new Error("Proxy destination must be a credential-free HTTP(S) URL.");
+    }
+    const result = await authorize({
+      url: parsed.toString(),
+      hostname: parsed.hostname.toLowerCase(),
+      port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
+      protocol: parsed.protocol
+    });
+    if (result !== true) throw new Error("Workspace network policy denied this destination.");
+    return parsed;
+  }
+
+  async function handleConnect(request, clientSocket, head) {
+    if (!authorizedProxyRequest(request)) {
+      writeError(clientSocket, "407 Proxy Authentication Required", "Axiom network proxy authentication failed.");
+      return;
+    }
+    let target;
+    try {
+      const parsed = new URL("http://" + request.url);
+      const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+      const targetPort = Number(parsed.port || 443);
+      if (!hostname || !Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) throw new Error();
+      target = { hostname, port: targetPort, url: "https://" + (hostname.includes(":") ? "[" + hostname + "]" : hostname) + ":" + targetPort + "/" };
+    } catch {
+      writeError(clientSocket, "400 Bad Request", "Invalid CONNECT destination.");
+      return;
+    }
+    try { await authorizeUrl(target.url); }
+    catch {
+      writeError(clientSocket, "403 Forbidden", "Outbound connection denied by Axiom workspace security policy.");
+      return;
+    }
+    const upstream = net.connect({ host: target.hostname, port: target.port });
+    sockets.add(upstream);
+    upstream.setTimeout(SOCKET_TIMEOUT_MS, () => upstream.destroy(new Error("Proxy upstream timed out.")));
+    upstream.once("error", () => {
+      if (!clientSocket.destroyed) writeError(clientSocket, "502 Bad Gateway", "Axiom could not connect to the approved destination.");
+      clientSocket.destroy();
+    });
+    upstream.once("connect", () => {
+      if (clientSocket.destroyed) { upstream.destroy(); return; }
+      clientSocket.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: Axiom\r\n\r\n");
+      if (head && head.length) upstream.write(head);
+      clientSocket.pipe(upstream);
+      upstream.pipe(clientSocket);
+    });
+    upstream.once("close", () => sockets.delete(upstream));
+  }
+
+  async function handleHttp(request, response) {
+    if (!authorizedProxyRequest(request)) {
+      response.writeHead(407, { "content-type": "text/plain", connection: "close" });
+      response.end("Axiom network proxy authentication failed.");
+      return;
+    }
+    let target;
+    try {
+      target = await authorizeUrl(request.url);
+      if (target.protocol !== "http:") throw new Error("HTTPS requests must use CONNECT.");
+    } catch {
+      response.writeHead(403, { "content-type": "text/plain", connection: "close" });
+      response.end("Outbound request denied by Axiom workspace security policy.");
+      return;
+    }
+    const headers = { ...request.headers };
+    delete headers["proxy-authorization"];
+    delete headers["proxy-connection"];
+    const upstream = http.request(target, {
+      method: request.method,
+      headers,
+      timeout: SOCKET_TIMEOUT_MS
+    }, upstreamResponse => {
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.statusMessage, upstreamResponse.headers);
+      upstreamResponse.pipe(response);
+    });
+    upstream.on("timeout", () => upstream.destroy(new Error("Proxy request timed out.")));
+    upstream.on("error", () => {
+      if (!response.headersSent) response.writeHead(502, { "content-type": "text/plain" });
+      response.end("Axiom could not complete the approved HTTP request.");
+    });
+    request.pipe(upstream);
+  }
+
+  async function start() {
+    if (server) return environment();
+    if (stopped) throw new Error("Axiom network proxy has already been stopped.");
+    server = http.createServer((request, response) => { void handleHttp(request, response); });
+    server.maxHeadersCount = 64;
+    server.maxConnections = 128;
+    server.headersTimeout = 15000;
+    server.requestTimeout = SOCKET_TIMEOUT_MS;
+    server.on("connection", socket => {
+      sockets.add(socket);
+      socket.setTimeout(SOCKET_TIMEOUT_MS, () => socket.destroy());
+      socket.once("close", () => sockets.delete(socket));
+    });
+    server.on("connect", (request, socket, head) => { void handleConnect(request, socket, head); });
+    server.on("clientError", (_error, socket) => writeError(socket, "400 Bad Request", "Malformed proxy request."));
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, host, resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Axiom network proxy did not bind to a TCP port.");
+    proxyUrl = "http://axiom:" + token + "@" + host + ":" + address.port;
+    return environment();
+  }
+
+  function environment() {
+    if (!proxyUrl) throw new Error("Axiom network proxy has not started.");
+    return {
+      HTTP_PROXY: proxyUrl,
+      HTTPS_PROXY: proxyUrl,
+      ALL_PROXY: proxyUrl,
+      http_proxy: proxyUrl,
+      https_proxy: proxyUrl,
+      all_proxy: proxyUrl,
+      NO_PROXY: "localhost,127.0.0.1,::1",
+      no_proxy: "localhost,127.0.0.1,::1",
+      NODE_USE_ENV_PROXY: "1"
+    };
+  }
+
+  async function stop() {
+    if (stopped) return;
+    stopped = true;
+    for (const socket of sockets) socket.destroy();
+    sockets.clear();
+    if (server) {
+      const current = server;
+      server = null;
+      await new Promise(resolve => current.close(() => resolve()));
+    }
+    proxyUrl = null;
+  }
+
+  return Object.freeze({ start, environment, stop, get running() { return !!server && !stopped; } });
+}
+
+module.exports = { createNetworkPolicyProxy, SOCKET_TIMEOUT_MS, MAX_HEADER_BYTES };
