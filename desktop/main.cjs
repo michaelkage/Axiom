@@ -50,7 +50,28 @@ function currentWorkspaceSecurityPolicyStore() {
   return workspaceSecurityPolicyStore;
 }
 function currentSecurityAuditStore() {
-  if (!securityAuditStore) securityAuditStore = createSecurityAuditStore({ userDataPath: app.getPath("userData") });
+  if (!securityAuditStore) {
+    const secureStore = currentSecureCredentialStore();
+    let integrityKey = secureStore.get("security", "audit-integrity-key");
+    if (!integrityKey) {
+      integrityKey = require("node:crypto").randomBytes(32).toString("hex");
+      secureStore.set("security", "audit-integrity-key", integrityKey);
+    }
+    if (!/^[a-f0-9]{64}$/i.test(integrityKey)) throw new Error("The protected security audit integrity key is invalid.");
+    const readAnchor = () => {
+      const value = secureStore.get("security", "audit-integrity-head");
+      if (!value) return null;
+      let parsed;
+      try { parsed = JSON.parse(value); } catch { throw new Error("The protected security audit head is corrupt."); }
+      return parsed;
+    };
+    securityAuditStore = createSecurityAuditStore({
+      userDataPath: app.getPath("userData"),
+      integrityKey,
+      getAnchor: readAnchor,
+      setAnchor: anchor => secureStore.set("security", "audit-integrity-head", JSON.stringify(anchor))
+    });
+  }
   return securityAuditStore;
 }
 async function authorizeFilesystemOperation(operation, relativePath) {
