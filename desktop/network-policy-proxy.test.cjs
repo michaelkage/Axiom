@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
-const { createNetworkPolicyProxy } = require("./network-policy-proxy.cjs");
+const { createNetworkPolicyProxy, isPublicAddress } = require("./network-policy-proxy.cjs");
 
 function readHeaders(socket) {
   return new Promise((resolve, reject) => {
@@ -49,6 +49,7 @@ test("network proxy gates CONNECT destinations through the supplied workspace au
   const upstreamPort = upstream.address().port;
   const seen = [];
   const proxy = createNetworkPolicyProxy({
+    allowPrivateAddresses: true,
     authorize: async request => {
       seen.push(request);
       return request.hostname === "127.0.0.1";
@@ -78,4 +79,13 @@ test("network proxy environment bypasses only explicit loopback destinations", a
     assert.equal(environment.NODE_USE_ENV_PROXY, "1");
     assert.match(environment.HTTPS_PROXY, /^http:\/\/axiom:[a-f0-9]{64}@127\.0\.0\.1:/);
   } finally { await proxy.stop(); }
+});
+
+test("network proxy rejects private, loopback, link-local and reserved DNS results by default", () => {
+  for (const address of ["127.0.0.1", "10.0.0.2", "172.16.0.1", "192.168.1.1", "169.254.1.1", "100.64.0.1", "224.0.0.1", "::1", "fc00::1", "fe80::1", "2001:db8::1"]) {
+    assert.equal(isPublicAddress(address), false, address);
+  }
+  for (const address of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888"]) {
+    assert.equal(isPublicAddress(address), true, address);
+  }
 });
