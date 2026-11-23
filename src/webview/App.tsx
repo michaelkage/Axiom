@@ -115,6 +115,8 @@ function App() {
     listFiles: (relativePath: string) => Promise<Array<{ name: string; path: string; kind: string }>>;
     readFile: (relativePath: string) => Promise<{ path: string; content: string; size: number }>;
     writeFile: (relativePath: string, content: string) => Promise<{ path: string; size: number }>;
+  }; artifacts?: {
+    put: (request: { taskId: string; kind: "log"; name: string; data: string; metadata: Record<string, unknown> }) => Promise<unknown>;
   } } }).axiomDesktop;
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
