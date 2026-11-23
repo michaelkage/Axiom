@@ -1439,6 +1439,8 @@ ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
 
 ipcMain.handle("axiom:omniroute-install", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork("https://registry.npmjs.org", networkWorkspace);
   await requirePrivilegedApproval({
     title: "Approve OmniRoute installation",
     message: "Allow Axiom to download and install the OmniRoute runtime?",
