@@ -101,10 +101,11 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
     return null;
   }
 
-  async function status() {
+  async function status({ skipEndpointProbe = false } = {}) {
     const config = readConfig();
-    let endpoint = { reachable: false, authenticated: false, models: [], message: "Not checked yet." };
+    let endpoint = { reachable: false, authenticated: false, models: [], message: skipEndpointProbe ? "Endpoint probe blocked by workspace network policy." : "Not checked yet." };
     try {
+      if (skipEndpointProbe) throw Object.assign(new Error("Endpoint probe blocked by workspace network policy."), { code: "AXIOM_NETWORK_POLICY_BLOCKED" });
       const response = await fetchImpl(config.baseUrl.replace(/\/+$/, "") + "/models", {
         headers: config.apiKey ? { Authorization: "Bearer " + config.apiKey } : {},
         signal: AbortSignal.timeout(2500)
