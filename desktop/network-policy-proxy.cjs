@@ -207,7 +207,8 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
         upstream.pipe(clientSocket);
       };
       clientSocket.on("data", onClientData);
-      clientSocket.once("close", () => upstream.destroy());
+      clientSocket.once("close", () => { clearTimeout(handshakeTimer); upstream.destroy(); });
+      if (clientHello.length) onClientData(Buffer.alloc(0));
     });
     upstream.once("close", () => sockets.delete(upstream));
   }
