@@ -1447,7 +1447,14 @@ ipcMain.handle("axiom:omniroute-install", async event => {
     detail: "This operation installs a third-party command-line runtime on this device.",
     approveLabel: "Install OmniRoute"
   });
-  return omniRouteManager.install();
+  let temporaryProxy = false;
+  if (!runtimeNetworkProxy) {
+    runtimeNetworkProxy = createNetworkPolicyProxy({ authorize: request => authorizeRuntimeNetwork(request.url, networkWorkspace) });
+    try { await runtimeNetworkProxy.start(); temporaryProxy = true; }
+    catch (error) { await stopRuntimeNetworkProxy(); throw error; }
+  }
+  try { return await omniRouteManager.install(); }
+  finally { if (temporaryProxy) await stopRuntimeNetworkProxy(); }
 });
 
 ipcMain.handle("axiom:omniroute-start", async event => {
