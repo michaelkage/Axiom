@@ -89,10 +89,14 @@ test("network policy requires HTTPS exact-host allowlisting and honors approved 
     f.store.update(f.workspace, policy, 0);
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com/api").decision, "allow");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://evil.example.com/").decision, "deny");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://unlisted.example.com/").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "http://docs.example.com/").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com.evil.test/").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://approved.example.com/", ["https://approved.example.com"]).decision, "allow");
     assert.throws(() => f.store.update(f.workspace, { ...policy, "network.allowedHosts": ["*.example.com"] }, 1), /exact hostnames/);
     assert.throws(() => f.store.update(f.workspace, { ...policy, "network.allowedHosts": ["127.0.0.1"] }, 1), /Loopback and IP literals/);
+    const second = f.store.update(f.workspace, { ...policy, "network.request": "approval-required" }, 1);
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://not-allowed.example/").decision, "approval-required");
+    assert.equal(second.revision, 2);
   } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
 });
