@@ -1011,12 +1011,32 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
   if (typeof id !== "string") throw new Error("Invalid MCP integration ID.");
   const entry = mcpManager.getStatus().find(item => item.id === id);
   if (!entry || !entry.enabled) throw new Error("Enable this integration and restart Axiom before testing a worker tool call.");
-  await requirePrivilegedApproval({
-    title: "Approve MCP tool probe",
-    message: "Allow Axiom to create a model session and invoke a tool from this integration?",
-    detail: "Integration: " + entry.name + " (" + entry.id + ")\\nRisk: " + entry.riskLabel,
-    approveLabel: "Run tool probe"
-  });
+  if (!selectedWorkspace) throw new Error("Open a project before probing an MCP tool.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const audit = currentSecurityAuditStore();
+  const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "mcp.invoke");
+  const resource = "integration:" + entry.id;
+  if (policy.decision === "deny") {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: policy.reason, projectId, resource });
+    throw new Error("Workspace security policy denied MCP tool invocation.");
+  }
+  if (policy.decision !== "approval-required") {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: "Invalid MCP policy decision; invocation fails closed.", projectId, resource });
+    throw new Error("Workspace security policy returned an invalid MCP decision.");
+  }
+  audit.record({ action: "mcp.invoke", decision: "approval-required", reason: policy.reason, projectId, resource });
+  try {
+    await requirePrivilegedApproval({
+      title: "Approve MCP tool probe",
+      message: "Allow Axiom to create a model session and invoke a tool from this integration?",
+      detail: "Integration: " + entry.name + " (" + entry.id + ")\\nRisk: " + entry.riskLabel,
+      approveLabel: "Run tool probe"
+    });
+    audit.record({ action: "mcp.invoke", decision: "allow", reason: "User approved MCP tool probe.", projectId, resource });
+  } catch (error) {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: "MCP tool probe approval was denied or dismissed.", projectId, resource });
+    throw error;
+  }
   const taskId = "mcp-probe-" + require("node:crypto").randomUUID();
   const taskStore = currentWorkerStateStore();
   await taskStore.record({ taskId, title: "MCP tool verification: " + entry.name, status: "running", workerType: "mcp-diagnostic", integrationId: id, startedAt: Date.now() });
@@ -1076,12 +1096,32 @@ ipcMain.handle("axiom:mcp-enable", async (event, request) => {
   if (request.enabled) {
     const integration = mcpManager.getStatus().find(item => item.id === request.id);
     if (!integration) throw new Error("Unknown MCP integration.");
-    await requirePrivilegedApproval({
-      title: "Approve MCP integration",
-      message: "Allow this MCP integration to start with Axiom and expose its tools to the model runtime?",
-      detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\nRisk: " + integration.riskLabel + "\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
-      approveLabel: "Enable integration"
-    });
+    if (!selectedWorkspace) throw new Error("Open a project before enabling an MCP integration.");
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+    const audit = currentSecurityAuditStore();
+    const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "mcp.invoke");
+    const resource = "integration:" + integration.id;
+    if (policy.decision === "deny") {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: policy.reason, projectId, resource });
+      throw new Error("Workspace security policy denied MCP integration activation.");
+    }
+    if (policy.decision !== "approval-required") {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: "Invalid MCP policy decision; activation fails closed.", projectId, resource });
+      throw new Error("Workspace security policy returned an invalid MCP decision.");
+    }
+    audit.record({ action: "mcp.invoke", decision: "approval-required", reason: policy.reason, projectId, resource });
+    try {
+      await requirePrivilegedApproval({
+        title: "Approve MCP integration",
+        message: "Allow this MCP integration to start with Axiom and expose its tools to the model runtime?",
+        detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\\nRisk: " + integration.riskLabel + "\\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
+        approveLabel: "Enable integration"
+      });
+      audit.record({ action: "mcp.invoke", decision: "allow", reason: "User approved MCP integration activation.", projectId, resource });
+    } catch (error) {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: "MCP integration approval was denied or dismissed.", projectId, resource });
+      throw error;
+    }
   }
   const result = mcpManager.setEnabled(request.id, request.enabled);
   await appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
