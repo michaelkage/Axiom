@@ -160,3 +160,33 @@ test("TLS ClientHello inspection extracts and validates SNI before a CONNECT tun
   assert.equal(noSni.status, "invalid");
   assert.match(noSni.reason, /no server-name extension/);
 });
+
+test("CONNECT tunnel rejects TLS SNI that differs from the authorized hostname", async () => {
+  const upstream = net.createServer(() => {});
+  await new Promise(resolve => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+  const blocked = [];
+  const proxy = createNetworkPolicyProxy({
+    allowPrivateAddresses: true,
+    authorize: async () => true,
+    onBlocked: event => { blocked.push(event); }
+  });
+  let client;
+  try {
+    const environment = await proxy.start();
+    const proxyUrl = new URL(environment.HTTPS_PROXY);
+    client = net.connect(Number(proxyUrl.port), proxyUrl.hostname);
+    await new Promise((resolve, reject) => { client.once("connect", resolve); client.once("error", reject); });
+    const auth = "Proxy-Authorization: Basic " + Buffer.from(decodeURIComponent(proxyUrl.username) + ":" + decodeURIComponent(proxyUrl.password)).toString("base64") + "\r\n";
+    client.write("CONNECT 127.0.0.1:" + upstreamPort + " HTTP/1.1\r\nHost: 127.0.0.1:" + upstreamPort + "\r\n" + auth + "Connection: keep-alive\r\n\r\n");
+    const headers = await readHeaders(client);
+    assert.match(headers, /^HTTP\/1\.1 200/);
+    client.write(makeClientHello("different.example"));
+    await new Promise(resolve => client.once("close", resolve));
+    assert.equal(blocked.some(event => /SNI does not match/.test(event.reason)), true);
+  } finally {
+    if (client && !client.destroyed) client.destroy();
+    await proxy.stop();
+    await new Promise(resolve => upstream.close(resolve));
+  }
+});
