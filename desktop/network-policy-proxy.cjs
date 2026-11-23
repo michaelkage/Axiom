@@ -16,13 +16,14 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
   let server = null;
   let proxyUrl = null;
   let stopped = false;
-  const authValue = Buffer.from("axiom:" + token).toString("base64");
+  const authCredential = Buffer.from("axiom:" + token);
+  const authValue = authCredential.toString("base64");
 
   function authorizedProxyRequest(request) {
     const header = request.headers["proxy-authorization"];
     if (typeof header !== "string" || !header.startsWith("Basic ")) return false;
     const supplied = Buffer.from(header.slice(6), "base64");
-    const expected = Buffer.from(authValue);
+    const expected = authCredential;
     return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
   }
 
@@ -70,10 +71,11 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
       return;
     }
     const upstream = net.connect({ host: target.hostname, port: target.port });
+    let established = false;
     sockets.add(upstream);
     upstream.setTimeout(SOCKET_TIMEOUT_MS, () => upstream.destroy(new Error("Proxy upstream timed out.")));
     upstream.once("error", () => {
-      if (!clientSocket.destroyed) writeError(clientSocket, "502 Bad Gateway", "Axiom could not connect to the approved destination.");
+      if (!clientSocket.destroyed && !established) writeError(clientSocket, "502 Bad Gateway", "Axiom could not connect to the approved destination.");
       clientSocket.destroy();
     });
     upstream.once("connect", () => {
@@ -123,7 +125,7 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
   async function start() {
     if (server) return environment();
     if (stopped) throw new Error("Axiom network proxy has already been stopped.");
-    server = http.createServer((request, response) => { void handleHttp(request, response); });
+    server = http.createServer({ maxHeaderSize: MAX_HEADER_BYTES }, (request, response) => { void handleHttp(request, response); });
     server.maxHeadersCount = 64;
     server.maxConnections = 128;
     server.headersTimeout = 15000;
