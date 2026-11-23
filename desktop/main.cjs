@@ -1205,6 +1205,14 @@ ipcMain.handle("axiom:mcp-enable", async (event, request) => {
     const audit = currentSecurityAuditStore();
     const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "mcp.invoke");
     const resource = "integration:" + integration.id;
+    if (integration.transport === "remote" && integration.endpoint) {
+      await enforceWorkspaceNetworkApproval(integration.endpoint, {
+        title: "Approve remote MCP network access",
+        message: "Allow this MCP integration to connect to its remote service?",
+        detail: "Integration: " + integration.name,
+        approveLabel: "Allow MCP connection"
+      });
+    }
     if (policy.decision === "deny") {
       audit.record({ action: "mcp.invoke", decision: "deny", reason: policy.reason, projectId, resource });
       throw new Error("Workspace security policy denied MCP integration activation.");
