@@ -31,6 +31,7 @@ const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, createSecurityAuditStore } = require("./security-enforcement.cjs");
+const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -43,12 +44,23 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let securityAuditStore;
+let workspaceSecurityPolicyStore;
+function currentWorkspaceSecurityPolicyStore() {
+  if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
+  return workspaceSecurityPolicyStore;
+}
 function currentSecurityAuditStore() {
   if (!securityAuditStore) securityAuditStore = createSecurityAuditStore({ userDataPath: app.getPath("userData") });
   return securityAuditStore;
 }
 async function authorizeFilesystemOperation(operation, relativePath) {
-  const evaluation = evaluateFilesystemAccess({ workspaceRoot: selectedWorkspace, relativePath, operation });
+  const baseEvaluation = evaluateFilesystemAccess({ workspaceRoot: selectedWorkspace, relativePath, operation });
+  const projectPolicy = selectedWorkspace ? currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "filesystem." + operation) : { decision: "deny", reason: "No trusted workspace is selected." };
+  const evaluation = baseEvaluation.decision === "deny" || projectPolicy.decision === "deny"
+    ? { decision: "deny", reason: baseEvaluation.decision === "deny" ? baseEvaluation.reason : projectPolicy.reason }
+    : baseEvaluation.decision === "approval-required" || projectPolicy.decision === "approval-required"
+      ? { decision: "approval-required", reason: projectPolicy.reason || baseEvaluation.reason }
+      : { decision: "allow", reason: projectPolicy.reason };
   const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
   const audit = currentSecurityAuditStore();
   if (evaluation.decision === "deny") {
@@ -1107,6 +1119,35 @@ ipcMain.handle("axiom:plugin-run", async (event, request) => {
 ipcMain.handle("axiom:security-audit-list", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return currentSecurityAuditStore().list(200);
+});
+
+ipcMain.handle("axiom:security-policy-read", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return currentWorkspaceSecurityPolicyStore().read(selectedWorkspace);
+});
+
+ipcMain.handle("axiom:security-policy-update", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("A security policy update is required.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const audit = currentSecurityAuditStore();
+  audit.record({ action: "security-policy.update", decision: "approval-required", reason: "Changing workspace security policy requires native confirmation.", projectId, resource: "workspace-policy" });
+  try {
+    await requirePrivilegedApproval({
+      title: "Change project security policy",
+      message: "Allow this change to the selected project's security policy?",
+      detail: "This policy controls filesystem reads and writes, shell execution, network requests, MCP calls, Git pushes, deployments and plugin execution. More restrictive decisions may block existing workflows.",
+      approveLabel: "Update policy"
+    });
+    const updated = currentWorkspaceSecurityPolicyStore().update(selectedWorkspace, request.policy, request.expectedRevision);
+    audit.record({ action: "security-policy.update", decision: "allow", reason: "User approved a versioned workspace security policy update.", projectId, resource: "revision:" + updated.revision });
+    return updated;
+  } catch (error) {
+    audit.record({ action: "security-policy.update", decision: "deny", reason: "Policy update was denied or rejected: " + String(error.message || error).slice(0, 300), projectId, resource: "workspace-policy" });
+    throw error;
+  }
 });
 
 ipcMain.handle("axiom:telemetry-snapshot", event => {
