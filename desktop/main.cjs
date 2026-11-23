@@ -1047,11 +1047,11 @@ function normalizeNetworkPolicyTarget(rawUrl) {
   if (typeof rawUrl !== "string" || rawUrl.length > 4096) throw new TypeError("A valid network destination is required.");
   if (/^git@[a-z0-9.-]+:/i.test(rawUrl)) {
     const host = rawUrl.slice(4).split(":")[0].toLowerCase();
-    return "https://" + host + "/";
+    return "https://" + host + ":22/";
   }
   let parsed;
   try { parsed = new URL(rawUrl); } catch { throw new Error("Network destination is invalid."); }
-  if (parsed.protocol === "ssh:") return "https://" + parsed.hostname + "/";
+  if (parsed.protocol === "ssh:") return "https://" + parsed.hostname + ":" + (parsed.port || "22") + "/";
   return parsed.toString();
 }
 
