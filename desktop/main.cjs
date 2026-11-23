@@ -314,6 +314,21 @@ async function runtimeConfigurationEnvironment() {
   }
   if (selectedWorkspace) {
     const policy = currentWorkspaceSecurityPolicyStore().read(selectedWorkspace).policy;
+    const configuredProvider = merged.provider && merged.provider.omniroute;
+    const routerBaseUrl = configuredProvider?.options?.baseURL;
+    if (typeof routerBaseUrl === "string") {
+      let routerUrl;
+      try { routerUrl = new URL(routerBaseUrl); } catch { throw new Error("OmniRoute provider endpoint is invalid; runtime startup was blocked."); }
+      const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(routerUrl.hostname.toLowerCase());
+      if (!isLoopback) {
+        await enforceWorkspaceNetworkApproval(routerBaseUrl, {
+          title: "Approve remote model router",
+          message: "Allow the Axiom runtime to send model requests to this external OmniRoute endpoint?",
+          detail: "External model-routing provider",
+          approveLabel: "Allow model connection"
+        });
+      }
+    }
     const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
     for (const [id, server] of Object.entries(configuredMcp)) {
       if (server && server.type === "remote" && typeof server.url === "string") {
