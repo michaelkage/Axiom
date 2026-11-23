@@ -142,6 +142,7 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     delete headers["proxy-connection"];
     const upstream = http.request(target, {
       method: request.method,
+      agent: false,
       headers,
       timeout: SOCKET_TIMEOUT_MS,
       lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family)
