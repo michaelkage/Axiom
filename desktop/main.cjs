@@ -323,14 +323,19 @@ async function runtimeConfigurationEnvironment(workspaceRoot) {
     let routerUrl;
     try { routerUrl = new URL(routerBaseUrl); } catch { throw new Error("OmniRoute provider endpoint is invalid; runtime startup was blocked."); }
     const isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(routerUrl.hostname.toLowerCase());
-    if (!isLoopback) await authorizeRuntimeNetwork(routerBaseUrl, workspaceRoot);
+    if (!isLoopback && !(await tryAuthorizeRuntimeNetwork(routerBaseUrl, workspaceRoot, "external OmniRoute endpoint"))) {
+      delete merged.provider.omniroute;
+      if (typeof merged.model === "string" && merged.model.startsWith("omniroute/")) delete merged.model;
+      if (Object.keys(merged.provider).length === 0) delete merged.provider;
+    }
   }
   const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
   for (const [id, server] of Object.entries(configuredMcp)) {
     if (server && server.type === "remote" && typeof server.url === "string") {
-      await authorizeRuntimeNetwork(server.url, workspaceRoot);
+      if (!(await tryAuthorizeRuntimeNetwork(server.url, workspaceRoot, "remote MCP server " + id))) delete configuredMcp[id];
     }
   }
+  if (merged.mcp && Object.keys(merged.mcp).length === 0) delete merged.mcp;
   applyRuntimePermissionPolicy(merged, policy);
   return { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) };
 }
@@ -1104,6 +1109,16 @@ async function stopRuntimeNetworkProxy() {
   runtimeNetworkProxy = null;
   runtimeNetworkApprovalCache.clear();
   if (proxy) await proxy.stop();
+}
+
+async function tryAuthorizeRuntimeNetwork(rawUrl, workspaceRoot, label) {
+  try {
+    await authorizeRuntimeNetwork(rawUrl, workspaceRoot);
+    return true;
+  } catch (error) {
+    await appendRuntimeLog("Blocked " + String(label || "runtime network endpoint") + ": " + redactSecrets(error?.message || error).slice(0, 400));
+    return false;
+  }
 }
 
 async function enforceWorkspacePolicyApproval(action, options) {
