@@ -30,61 +30,71 @@ function isPublicAddress(address) {
 
 function extractTlsServerName(buffer) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError("TLS handshake data must be a Buffer.");
+  const invalid = reason => ({ status: "invalid", reason });
   if (buffer.length < 5) return { status: "need-more" };
-  if (buffer[0] !== 0x16 || buffer[1] !== 0x03) return { status: "invalid", reason: "CONNECT tunnel did not begin with a TLS handshake." };
+  if (buffer[0] !== 0x16 || buffer[1] !== 0x03) return invalid("CONNECT tunnel did not begin with a TLS handshake.");
   const recordLength = buffer.readUInt16BE(3);
-  if (recordLength < 4 || recordLength > 65535) return { status: "invalid", reason: "TLS record length is invalid." };
+  if (recordLength < 4) return invalid("TLS record length is invalid.");
   if (buffer.length < 5 + recordLength) return { status: "need-more" };
   const record = buffer.subarray(5, 5 + recordLength);
-  if (record[0] !== 0x01) return { status: "invalid", reason: "TLS record does not contain a ClientHello." };
-  const handshakeLength = (record[1] << 16) | (record[2] << 8) | record[3];
-  if (handshakeLength < 38 || 4 + handshakeLength > record.length) return { status: "invalid", reason: "Fragmented or malformed TLS ClientHello is not accepted." };
-  const body = record.subarray(4, 4 + handshakeLength);
-  let offset = 2 + 32;
-  if (offset >= body.length) return { status: "invalid", reason: "TLS ClientHello is truncated." };
+  if (record[0] !== 0x01) return invalid("TLS record does not contain a ClientHello.");
+  const handshakeLength = record.readUIntBE(1, 3);
+  if (handshakeLength < 38 || handshakeLength !== record.length - 4) {
+    return invalid("Fragmented or malformed TLS ClientHello is not accepted.");
+  }
+  const body = record.subarray(4);
+  let offset = 34;
+  if (offset >= body.length) return invalid("TLS ClientHello is truncated.");
   const sessionLength = body[offset++];
+  if (offset + sessionLength + 2 > body.length) return invalid("TLS session or cipher-suite list is truncated.");
   offset += sessionLength;
-  if (offset + 2 > body.length) return { status: "invalid", reason: "TLS cipher suite list is truncated." };
   const cipherLength = body.readUInt16BE(offset);
-  offset += 2 + cipherLength;
-  if (offset >= body.length) return { status: "invalid", reason: "TLS compression list is truncated." };
+  offset += 2;
+  if (cipherLength < 2 || cipherLength % 2 !== 0 || offset + cipherLength + 1 > body.length) {
+    return invalid("TLS cipher-suite list is invalid.");
+  }
+  offset += cipherLength;
   const compressionLength = body[offset++];
+  if (compressionLength < 1 || offset + compressionLength + 2 > body.length) return invalid("TLS compression list is invalid.");
   offset += compressionLength;
-  if (offset + 2 > body.length) return { status: "invalid", reason: "TLS extension list is missing." };
   const extensionsLength = body.readUInt16BE(offset);
   offset += 2;
   const extensionsEnd = offset + extensionsLength;
-  if (extensionsEnd > body.length) return { status: "invalid", reason: "TLS extension list exceeds ClientHello bounds." };
-  while (offset + 4 <= extensionsEnd) {
+  if (extensionsEnd !== body.length) return invalid("TLS extension list does not match ClientHello bounds.");
+  while (offset < extensionsEnd) {
+    if (offset + 4 > extensionsEnd) return invalid("TLS extension header is truncated.");
     const extensionType = body.readUInt16BE(offset);
     const extensionLength = body.readUInt16BE(offset + 2);
     offset += 4;
     const extensionEnd = offset + extensionLength;
-    if (extensionEnd > extensionsEnd) return { status: "invalid", reason: "TLS extension length is invalid." };
-    if (extensionType === 0xfe0d) return { status: "invalid", reason: "Encrypted ClientHello is not supported by hostname policy enforcement." };
+    if (extensionEnd > extensionsEnd) return invalid("TLS extension length is invalid.");
+    if (extensionType === 0xfe0d) return invalid("Encrypted ClientHello is not supported by hostname policy enforcement.");
     if (extensionType === 0x0000) {
-      if (offset + 2 > extensionEnd) return { status: "invalid", reason: "TLS server-name extension is truncated." };
+      if (offset + 2 > extensionEnd) return invalid("TLS server-name extension is truncated.");
       const listLength = body.readUInt16BE(offset);
       let nameOffset = offset + 2;
       const listEnd = nameOffset + listLength;
-      if (listEnd > extensionEnd) return { status: "invalid", reason: "TLS server-name list is invalid." };
-      while (nameOffset + 3 <= listEnd) {
+      if (listEnd !== extensionEnd) return invalid("TLS server-name list is invalid.");
+      while (nameOffset < listEnd) {
+        if (nameOffset + 3 > listEnd) return invalid("TLS server-name entry is truncated.");
         const nameType = body[nameOffset++];
         const nameLength = body.readUInt16BE(nameOffset);
         nameOffset += 2;
-        if (nameOffset + nameLength > listEnd) return { status: "invalid", reason: "TLS server-name value is invalid." };
+        if (nameLength < 1 || nameOffset + nameLength > listEnd) return invalid("TLS server-name value is invalid.");
         const name = body.subarray(nameOffset, nameOffset + nameLength).toString("ascii").toLowerCase().replace(/\.$/, "");
         if (nameType === 0) {
-          if (!name || !/^[a-z0-9.-]+$/.test(name)) return { status: "invalid", reason: "TLS server name is not a valid DNS hostname." };
+          if (!name || name.length > 253 || !/^[a-z0-9.-]+$/.test(name) || name.split(".").some(label => !label || label.length > 63 || label.startsWith("-") || label.endsWith("-"))) {
+            return invalid("TLS server name is not a valid DNS hostname.");
+          }
           return { status: "complete", hostname: name };
         }
         nameOffset += nameLength;
       }
-      return { status: "invalid", reason: "TLS ClientHello did not include a DNS server name." };
+      return invalid("TLS ClientHello did not include a DNS server name.");
     }
     offset = extensionEnd;
   }
-  return { status: "invalid", reason: "TLS ClientHello has no server-name extension." };
+  return invalid("TLS ClientHello has no server-name extension.");
 }
 
 function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex"), resolveHost = dns.lookup, allowPrivateAddresses = false } = {}) {
