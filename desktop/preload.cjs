@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
   },
   security: Object.freeze({
     audit: () => ipcRenderer.invoke("axiom:security-audit-list"),
+    verifyAudit: () => ipcRenderer.invoke("axiom:security-audit-verify"),
     readPolicy: () => ipcRenderer.invoke("axiom:security-policy-read"),
     updatePolicy: request => ipcRenderer.invoke("axiom:security-policy-update", request)
   }),
