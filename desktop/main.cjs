@@ -2416,7 +2416,7 @@ async function stopRuntime() {
 
 app.whenReady().then(async () => {
   await restoreRemoteWorkspaceJobs();
-  omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage });
+  omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage, getNetworkEnvironment: () => runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
   mcpManager = createMcpManager({ userDataPath: app.getPath("userData"), safeStorage });
   const { Menu } = require("electron");
   const menu = Menu.buildFromTemplate([
