@@ -309,7 +309,7 @@ async function runtimeExecutable() {
 async function runtimeConfigurationEnvironment(workspaceRoot) {
   if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted runtime workspace is required.");
   const merged = {};
-  for (const manager of [omniRouteManager, mcpManager]) {
+  for (const manager of (selectedWorkspace ? [omniRouteManager, mcpManager] : [])) {
     const environment = manager ? manager.openCodeEnvironment({ workspaceRoot }) : {};
     if (environment.OPENCODE_CONFIG_CONTENT) {
       try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
