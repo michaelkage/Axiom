@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
 const http = require("node:http");
-const { createNetworkPolicyProxy, isPublicAddress } = require("./network-policy-proxy.cjs");
+const { createNetworkPolicyProxy, isPublicAddress, extractTlsServerName } = require("./network-policy-proxy.cjs");
 
 function readHeaders(socket) {
   return new Promise((resolve, reject) => {
@@ -125,4 +125,35 @@ test("network proxy forwards authenticated HTTP through pinned DNS results", asy
     await proxy.stop();
     await new Promise(resolve => upstream.close(resolve));
   }
+});
+
+function makeClientHello(hostname) {
+  const name = Buffer.from(hostname, "ascii");
+  const nameEntry = Buffer.concat([Buffer.from([0, (name.length >> 8) & 255, name.length & 255]), name]);
+  const nameList = Buffer.concat([Buffer.from([(nameEntry.length >> 8) & 255, nameEntry.length & 255]), nameEntry]);
+  const serverNameExtension = Buffer.concat([Buffer.from([0, 0, (nameList.length >> 8) & 255, nameList.length & 255]), nameList]);
+  const extensions = serverNameExtension;
+  const body = Buffer.concat([
+    Buffer.from([3, 3]),
+    Buffer.alloc(32),
+    Buffer.from([0]),
+    Buffer.from([0, 2, 0x13, 0x01]),
+    Buffer.from([1, 0]),
+    Buffer.from([(extensions.length >> 8) & 255, extensions.length & 255]),
+    extensions
+  ]);
+  const handshake = Buffer.alloc(4);
+  handshake[0] = 1;
+  handshake.writeUIntBE(body.length, 1, 3);
+  const message = Buffer.concat([handshake, body]);
+  const record = Buffer.from([0x16, 0x03, 0x01, (message.length >> 8) & 255, message.length & 255]);
+  return Buffer.concat([record, message]);
+}
+
+test("TLS ClientHello inspection extracts and validates SNI before a CONNECT tunnel opens", () => {
+  const hello = makeClientHello("api.example.com");
+  assert.deepEqual(extractTlsServerName(hello), { status: "complete", hostname: "api.example.com" });
+  assert.equal(extractTlsServerName(hello.subarray(0, 8)).status, "need-more");
+  const noSni = Buffer.concat([hello.subarray(0, 5), Buffer.from([1, 0, 0, 38]), Buffer.alloc(38)]);
+  assert.equal(extractTlsServerName(noSni).status, "invalid");
 });
