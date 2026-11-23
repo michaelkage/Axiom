@@ -33,17 +33,29 @@ The generic renderer-accessible secure-storage get/set/remove bridge has been re
 
 Submitting or retrying a remote worker task now requires native confirmation. The confirmation identifies the configured Worker Host and repository and displays a bounded, secret-redacted task instruction. Remote repository clone and interrupted-clone retry also require confirmation showing the repository and branch. Git push and recovered-commit push continue to require separate native approval. Remote worker credentials are stored through the main-process secure store and are never returned to the renderer.
 
-## Browser network actions
+## Outbound network and runtime tool enforcement
 
-Opening an external browser origin and navigating to a different origin require native approval. Page-initiated top-level navigations and cross-origin redirects are blocked; navigation must be requested through Axiom's approved main-process control. The browser remains isolated from the normal browser profile, denies permissions and downloads, and records network/console diagnostics.
+Workspace policy now includes an exact-host HTTPS allowlist (up to 100 hostnames). Wildcards, URL paths, IP literals and localhost entries are rejected. The user-facing Security and Permissions panel edits the allowlist and policy decisions; policy changes are revision-checked, require native confirmation and are audited.
 
-This is not a complete outbound network firewall. Third-party subresource requests made by an approved website are not yet governed by a per-host allowlist. Runtime, MCP and arbitrary shell network traffic still require broader centralized policy enforcement.
+The isolated browser installs a main-process `webRequest.onBeforeRequest` gate for HTTP(S), WebSocket and secure WebSocket requests. The explicitly approved top-level origin is allowed for that session; additional HTTPS subresource hosts must be on the workspace allowlist. Unlisted subresource requests are blocked and audited rather than opening an uncontrolled prompt for every image/script. Cross-origin top-level navigation still requires native approval; page-initiated navigation and cross-origin redirects remain blocked.
+
+OpenCode runtime configuration now receives ordered V2 `permissions` rules derived from the persisted workspace policy:
+- shell and subagent execution require approval (or are denied by policy);
+- file edits require approval and sensitive credential paths are denied;
+- webfetch/websearch follow the network policy, with exact allowlisted HTTPS hosts permitted for webfetch;
+- configured MCP tool actions and MCP resource access require approval or are denied;
+- Git push shell commands receive their own policy rule.
+Remote MCP endpoints and external OmniRoute endpoints are checked at runtime startup. Remote Worker Host calls and remote Git clone/push operations are checked against the network policy before native approval and execution.
+
+This is not an OS-wide outbound firewall. Model-provider traffic from providers configured outside Axiom's OmniRoute integration, arbitrary network traffic from an already approved shell command, and network traffic initiated internally by a local MCP server process are not intercepted at socket level. The browser and OpenCode tool permission controls are application-level gates, not a substitute for an OS firewall.
 
 ## Privileged operation audit
 
-Native approval decisions and filesystem policy decisions are written to `security-audit.jsonl` in Axiom user data. Events contain a timestamp, action, decision, bounded reason, project identifier, bounded/redacted resource and actor. The log is size-bounded and rotates to a bounded recent event window. The renderer can request the latest 200 events through `window.axiomDesktop.security.audit()`.
+Audit events are appended to `security-audit.jsonl` with monotonically increasing sequence numbers, previous-event hashes and HMAC-SHA256 event hashes. The HMAC key and current sequence/hash head are stored through Electron OS-backed encrypted storage and never exposed to the renderer. Each append is flushed before the protected head is advanced. Startup/list/append verification checks the entire retained chain and its protected head; event edits, insertions, reordering, middle deletion, tail truncation, missing files, malformed records and anchor mismatches fail closed.
 
-Audit persistence is fail-closed for privileged operations: if the decision cannot be recorded, the operation is not authorized.
+Legacy schema-v1 audit entries are migrated into the new chain and marked `legacyUnverified`; their pre-migration authenticity cannot be proven retroactively. The Security and Permissions panel displays the latest events and runs chain verification. The renderer can request recent events and verification status through the read-only preload security API.
+
+The active chain is bounded to 4000 events and 5 MiB. Automatic truncation/rotation is intentionally disabled because deleting chain history would weaken tamper evidence; when the cap is reached, further privileged operations fail closed until an explicit verified archive/retention workflow is implemented. Audit persistence and OS-protected anchor updates are fail-closed: if either fails, the privileged operation is not authorized.
 
 ## Remaining security work
 
@@ -53,4 +65,4 @@ Audit persistence is fail-closed for privileged operations: if the decision cann
 - Add tamper-evident audit chaining and retention controls.
 - Complete platform-specific filesystem race hardening and independent security review.
 
-The current implementation is a stronger desktop enforcement layer, not a claim that every Axiom execution path is already mediated or that the application has undergone an independent security audit.
+The current implementation provides application-level permission gates and an OS-key-protected audit chain for the documented paths. It is not an OS-wide network firewall, not every third-party process is socket-mediated, and no independent security audit is claimed.
