@@ -107,7 +107,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
         <label class="omniroute-setup__field">Additional outbound HTTPS host allowlist
           <textarea rows={4} value={hostsText()} onInput={event => setHostsText(event.currentTarget.value)} placeholder={"docs.example.com\napi.example.com"} />
         </label>
-        <small>Enter exact hostnames, one per line. Wildcards, IP literals, localhost and plain HTTP allowlist entries are rejected. The explicitly approved browser origin remains available to that browser session.</small>
+        <small>Enter exact hostnames, one per line. Wildcards, IP literals, localhost and plain HTTP allowlist entries are rejected. Host entries authorize HTTPS on port 443 only; nonstandard ports require the broader network decision. The explicitly approved browser origin remains available to that browser session.</small>
         <div class="workflow-plan__actions">
           <button type="button" class="workflow-plan__primary" disabled={busy() || !props.workspaceRoot} onClick={() => void save()}>{busy() ? "Saving…" : "Save policy (native approval required)"}</button>
           <button type="button" class="workflow-plan__secondary" disabled={busy() || loading()} onClick={() => void refresh()}>Refresh policy and audit</button>
