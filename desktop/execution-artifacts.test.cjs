@@ -18,6 +18,24 @@ test("stores project-scoped artifacts with content integrity and bounded metadat
     assert.equal((await store.list("project-a")).length, 0);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+test("serializes concurrent writes from independent store instances without losing index records", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-artifacts-concurrent-"));
+  try {
+    const stores = Array.from({ length: 12 }, () => createExecutionArtifactStore({ root }));
+    const records = await Promise.all(stores.map((store, index) => store.put({
+      projectId: "shared-project",
+      kind: "log",
+      name: "Concurrent " + index,
+      data: "output-" + index,
+      metadata: { index }
+    })));
+    const listed = await createExecutionArtifactStore({ root }).list("shared-project");
+    assert.equal(records.length, 12);
+    assert.equal(listed.length, 12);
+    assert.deepEqual(new Set(listed.map(record => record.id)), new Set(records.map(record => record.id)));
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test("does not expose artifacts across project boundaries", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-artifacts-"));
   try {
