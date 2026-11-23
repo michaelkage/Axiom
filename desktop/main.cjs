@@ -1005,6 +1005,50 @@ async function requirePrivilegedApproval({ title, message, detail, approveLabel 
   return true;
 }
 
+function normalizeNetworkPolicyTarget(rawUrl) {
+  if (typeof rawUrl !== "string" || rawUrl.length > 4096) throw new TypeError("A valid network destination is required.");
+  if (/^git@[a-z0-9.-]+:/i.test(rawUrl)) {
+    const host = rawUrl.slice(4).split(":")[0].toLowerCase();
+    return "https://" + host + "/";
+  }
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { throw new Error("Network destination is invalid."); }
+  if (parsed.protocol === "ssh:") return "https://" + parsed.hostname + "/";
+  return parsed.toString();
+}
+
+async function enforceWorkspaceNetworkApproval(rawUrl, options = {}) {
+  if (!selectedWorkspace) throw new Error("A selected project is required for outbound network access.");
+  const target = normalizeNetworkPolicyTarget(rawUrl);
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const origin = new URL(target).origin;
+  const audit = currentSecurityAuditStore();
+  const result = currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(selectedWorkspace, target, []);
+  const resource = redactSecrets(origin).slice(0, 512);
+  if (result.decision === "deny") {
+    audit.record({ action: "network.request", decision: "deny", reason: result.reason, projectId, resource });
+    throw new Error("Workspace security policy denied outbound network access to " + origin + ".");
+  }
+  if (result.decision === "approval-required") {
+    audit.record({ action: "network.request", decision: "approval-required", reason: result.reason, projectId, resource });
+    try {
+      await requirePrivilegedApproval({
+        title: options.title || "Approve outbound network access",
+        message: options.message || "Allow this project to connect to an external service?",
+        detail: (options.detail ? options.detail + "\\n" : "") + "Destination: " + origin,
+        approveLabel: options.approveLabel || "Allow connection"
+      });
+      audit.record({ action: "network.request", decision: "allow", reason: "User approved outbound network access.", projectId, resource });
+      return true;
+    } catch (error) {
+      audit.record({ action: "network.request", decision: "deny", reason: "Outbound network approval was denied or dismissed.", projectId, resource });
+      throw error;
+    }
+  }
+  audit.record({ action: "network.request", decision: "allow", reason: result.reason, projectId, resource });
+  return true;
+}
+
 async function enforceWorkspacePolicyApproval(action, options) {
   if (!selectedWorkspace) throw new Error("A selected project is required for this privileged operation.");
   const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
@@ -1590,6 +1634,7 @@ ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
   if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A remote worker task instruction is required.");
   const settings = readRemoteWorkerSettings();
   if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before submitting tasks.");
+  await enforceWorkspaceNetworkApproval(settings.hostUrl, { title: "Approve remote Worker Host connection", message: "Allow this project to send a task to its configured remote Worker Host?", detail: "Remote task submission", approveLabel: "Connect and send" });
   await enforceWorkspacePolicyApproval("shell.execute", {
     title: "Approve remote worker submission",
     message: "Send this task instruction to the configured remote Worker Host?",
@@ -1612,6 +1657,7 @@ ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
   if (!request || typeof request.id !== "string" || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A retry requires a job ID and task instruction.");
   const settings = readRemoteWorkerSettings();
   if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before retrying tasks.");
+  await enforceWorkspaceNetworkApproval(settings.hostUrl, { title: "Approve remote Worker Host connection", message: "Allow this project to retry a task through its configured remote Worker Host?", detail: "Remote task retry", approveLabel: "Connect and retry" });
   await enforceWorkspacePolicyApproval("shell.execute", {
     title: "Approve remote worker retry",
     message: "Resubmit this task instruction to the configured remote Worker Host?",
@@ -1707,6 +1753,7 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (validated.mode === "persistent" && (!request.persistentPath || workspacePath === path.parse(workspacePath).root)) {
     throw new Error("Persistent mode requires an explicit, non-root workspace path.");
   }
+  await enforceWorkspaceNetworkApproval(validated.repositoryUrl, { title: "Approve Git repository connection", message: "Allow Axiom to connect to this remote Git repository?", detail: "Repository clone: " + validated.branch, approveLabel: "Connect and clone" });
   await requirePrivilegedApproval({
     title: "Approve remote repository clone",
     message: "Allow Axiom to connect to and clone this remote Git repository?",
@@ -1753,6 +1800,7 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
       job.status !== "clone-interrupted" || job.interruptedOperation?.kind !== "clone") {
     throw new Error("Only an interrupted Axiom-owned temporary clone can be retried automatically. Persistent destinations are preserved for manual inspection.");
   }
+  await enforceWorkspaceNetworkApproval(job.repositoryUrl, { title: "Approve Git repository connection", message: "Allow Axiom to reconnect to this remote Git repository?", detail: "Repository clone retry: " + job.branch, approveLabel: "Connect and retry" });
   await requirePrivilegedApproval({
     title: "Approve remote clone retry",
     message: "Retry connecting to and cloning the remote repository?",
@@ -1795,6 +1843,7 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!request || typeof request.id !== "string" || typeof request.message !== "string" || !request.message.trim()) throw new TypeError("A remote workspace job ID and commit message are required.");
   const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await enforceWorkspaceNetworkApproval(job.repositoryUrl, { title: "Approve Git push network access", message: "Allow Axiom to connect to the remote Git repository to push this commit?", detail: "Branch: " + job.branch, approveLabel: "Allow Git connection" });
   await enforceWorkspacePolicyApproval("git.push", { title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch + " | Commit message: " + request.message, approveLabel: "Commit and push", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "commit-push", async signal => {
     try {
@@ -1832,6 +1881,7 @@ ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) =
   if (!request || typeof request.id !== "string") throw new TypeError("A remote workspace job ID is required.");
   const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await enforceWorkspaceNetworkApproval(job.repositoryUrl, { title: "Approve recovered Git push network access", message: "Allow Axiom to connect to the remote Git repository to push the recovered commit?", detail: "Branch: " + job.branch, approveLabel: "Allow Git connection" });
   await enforceWorkspacePolicyApproval("git.push", { title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch, approveLabel: "Push commit", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
     try {
