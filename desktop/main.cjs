@@ -32,6 +32,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
+const { buildRuntimePermissionRules } = require("./runtime-policy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -310,7 +311,18 @@ function runtimeConfigurationEnvironment() {
       catch { throw new Error("Axiom generated invalid local runtime configuration; startup was blocked."); }
     }
   }
-  return Object.keys(merged).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) } : {};
+  if (selectedWorkspace) {
+    const policy = currentWorkspaceSecurityPolicyStore().read(selectedWorkspace).policy;
+    const serverIds = Object.keys(merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {});
+    const enforcedRules = buildRuntimePermissionRules({ policy, mcpServerIds: serverIds });
+    merged.permissions = [
+      ...(Array.isArray(merged.permissions) ? merged.permissions : []),
+      ...enforcedRules
+    ];
+  } else {
+    throw new Error("A trusted workspace is required to construct the runtime security policy.");
+  }
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) };
 }
 
 function findFreePort() {
