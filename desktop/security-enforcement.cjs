@@ -19,6 +19,22 @@ function normalizeRelativePath(value) {
   return segments.join("/");
 }
 
+function combineFilesystemDecisions(baseEvaluation, policyEvaluation) {
+  const valid = value => value && ["allow", "approval-required", "deny"].includes(value.decision);
+  if (!valid(baseEvaluation) || !valid(policyEvaluation)) {
+    return { decision: "deny", reason: "A filesystem authorization layer returned an invalid decision." };
+  }
+  if (baseEvaluation.decision === "deny") return baseEvaluation;
+  if (policyEvaluation.decision === "deny") return policyEvaluation;
+  if (baseEvaluation.decision === "approval-required" || policyEvaluation.decision === "approval-required") {
+    return {
+      decision: "approval-required",
+      reason: policyEvaluation.decision === "approval-required" ? policyEvaluation.reason : baseEvaluation.reason
+    };
+  }
+  return { decision: "allow", reason: policyEvaluation.reason || baseEvaluation.reason };
+}
+
 function evaluateFilesystemAccess({ workspaceRoot, relativePath, operation }) {
   if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) return { decision: "deny", reason: "No trusted workspace is selected." };
   if (!["read", "write"].includes(operation)) return { decision: "deny", reason: "Unknown filesystem operation." };
@@ -93,4 +109,4 @@ function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") })
   return Object.freeze({ record, list });
 }
 
-module.exports = { MAX_AUDIT_BYTES, MAX_AUDIT_EVENTS, normalizeRelativePath, evaluateFilesystemAccess, createSecurityAuditStore };
+module.exports = { MAX_AUDIT_BYTES, MAX_AUDIT_EVENTS, normalizeRelativePath, evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore };
