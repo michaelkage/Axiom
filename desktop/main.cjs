@@ -23,6 +23,7 @@ const { createWorkerStateStore } = require("./worker-state.cjs");
 const { createExecutionLedger } = require("./execution-ledger.cjs");
 const { createProviderCredentialManager } = require("./provider-credentials.cjs");
 const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
+const { createRuntimeOutputCapture } = require("./runtime-output-capture.cjs");
 const { createExecutionTelemetry } = require("./execution-telemetry.cjs");
 const { createOpenCodeTelemetryBridge } = require("./opencode-telemetry-bridge.cjs");
 const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
@@ -422,13 +423,44 @@ async function startRuntime(workspace) {
     throw error;
   }
 
+  const runtimeCapture = createRuntimeOutputCapture();
+  const runtimeCaptureId = require("node:crypto").randomUUID();
+  let runtimeCapturePersisted = false;
+  const persistRuntimeOutput = async () => {
+    if (runtimeCapturePersisted) return;
+    runtimeCapturePersisted = true;
+    const captured = runtimeCapture.snapshot();
+    if (!captured.bytes) return;
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspace)).digest("hex").slice(0, 40);
+    try {
+      await createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") }).put({
+        projectId,
+        kind: "log",
+        name: "Runtime output " + runtimeCaptureId,
+        data: captured.data,
+        metadata: {
+          producer: "opencode-runtime",
+          runtimeSessionId: runtimeCaptureId,
+          workspace: path.basename(workspace),
+          bytes: captured.bytes,
+          stdoutBytes: captured.stdoutBytes,
+          stderrBytes: captured.stderrBytes,
+          truncated: captured.truncated,
+          capturedAt: Date.now()
+        }
+      });
+    } catch (error) {
+      await appendRuntimeLog("Could not persist runtime output artifact: " + redactSecrets(error?.message || error).slice(0, 400));
+    }
+  };
   let recentOutput = "";
   const collect = chunk => {
     recentOutput = (recentOutput + chunk.toString()).slice(-6000);
   };
-  runtimeProcess.stdout?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
-  runtimeProcess.stderr?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
+  runtimeProcess.stdout?.on("data", chunk => { runtimeCapture.append("stdout", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
+  runtimeProcess.stderr?.on("data", chunk => { runtimeCapture.append("stderr", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.on("error", error => {
+    void persistRuntimeOutput();
     void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
@@ -436,6 +468,7 @@ async function startRuntime(workspace) {
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
+    void persistRuntimeOutput();
     void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
     if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
