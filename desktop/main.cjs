@@ -460,7 +460,6 @@ async function startRuntime(workspace) {
   runtimeProcess.stdout?.on("data", chunk => { runtimeCapture.append("stdout", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.stderr?.on("data", chunk => { runtimeCapture.append("stderr", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.on("error", error => {
-    void persistRuntimeOutput();
     void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
@@ -468,7 +467,6 @@ async function startRuntime(workspace) {
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
-    void persistRuntimeOutput();
     void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
     if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
@@ -490,6 +488,8 @@ async function startRuntime(workspace) {
       }).catch(error => { void appendRuntimeLog(`Runtime-exit dialog failed: ${error.message}`); });
     }
   });
+
+  runtimeProcess.once("close", () => { void persistRuntimeOutput(); });
 
   const url = "http://127.0.0.1:" + port;
   try {
