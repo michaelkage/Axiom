@@ -21,6 +21,7 @@ import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
 import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
 import { McpIntegrationsPanel } from "./components/McpIntegrationsPanel";
 import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
+import { SecurityPolicyPanel } from "./components/SecurityPolicyPanel";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -1765,6 +1766,7 @@ function App() {
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
+        <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
         <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {
@@ -1912,6 +1914,7 @@ function App() {
         </Show>
         <VerificationPanel results={verificationResults()} />
         <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
+        <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkspaceRecoveryPanel />
         
         <Show when={standalonePermissions().length > 0}>
