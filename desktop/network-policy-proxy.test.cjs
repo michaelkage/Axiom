@@ -60,6 +60,7 @@ test("network proxy gates CONNECT destinations through the supplied workspace au
     const environment = await proxy.start();
     const allowed = await connectProxy(environment.HTTPS_PROXY, "127.0.0.1:" + upstreamPort);
     assert.match(allowed, /^HTTP\/1\.1 200/);
+    assert.match(allowed, /\r\nProxy-Agent: Axiom\r\n/);
     assert.equal(seen[0].hostname, "127.0.0.1");
     assert.equal(seen[0].port, upstreamPort);
     const denied = await connectProxy(environment.HTTPS_PROXY, "example.invalid:443");
@@ -159,6 +160,17 @@ test("TLS ClientHello inspection extracts and validates SNI before a CONNECT tun
   const noSni = extractTlsServerName(makeClientHello());
   assert.equal(noSni.status, "invalid");
   assert.match(noSni.reason, /no server-name extension/);
+});
+
+test("TLS ClientHello parser rejects malformed length fields without throwing", () => {
+  const valid = makeClientHello("api.example.com");
+  for (let length = 0; length < valid.length; length += 1) {
+    const result = extractTlsServerName(valid.subarray(0, length));
+    assert.ok(result.status === "need-more" || result.status === "invalid");
+  }
+  const malformed = Buffer.from(valid);
+  malformed[5 + 4 + 34] = 255;
+  assert.equal(extractTlsServerName(malformed).status, "invalid");
 });
 
 test("CONNECT tunnel rejects TLS SNI that differs from the authorized hostname", async () => {
