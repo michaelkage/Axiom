@@ -303,7 +303,7 @@ async function runtimeExecutable() {
   throw new Error("Axiom's bundled runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
 
-function runtimeConfigurationEnvironment() {
+async function runtimeConfigurationEnvironment() {
   const merged = {};
   for (const manager of [omniRouteManager, mcpManager]) {
     const environment = manager ? manager.openCodeEnvironment({ workspaceRoot: selectedWorkspace }) : {};
@@ -314,7 +314,18 @@ function runtimeConfigurationEnvironment() {
   }
   if (selectedWorkspace) {
     const policy = currentWorkspaceSecurityPolicyStore().read(selectedWorkspace).policy;
-    const serverIds = Object.keys(merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {});
+    const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
+    for (const [id, server] of Object.entries(configuredMcp)) {
+      if (server && server.type === "remote" && typeof server.url === "string") {
+        await enforceWorkspaceNetworkApproval(server.url, {
+          title: "Approve remote MCP runtime connection",
+          message: "Allow the Axiom runtime to connect to this configured remote MCP server?",
+          detail: "MCP integration: " + id,
+          approveLabel: "Allow MCP connection"
+        });
+      }
+    }
+    const serverIds = Object.keys(configuredMcp);
     const enforcedRules = buildRuntimePermissionRules({ policy, mcpServerIds: serverIds });
     merged.permissions = [
       ...(Array.isArray(merged.permissions) ? merged.permissions : []),
@@ -378,6 +389,7 @@ async function startRuntime(workspace) {
   const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
   const runtimeEnvironment = createRuntimeEnvironment(process.env, app.getPath("userData"));
   await appendRuntimeLog(`Runtime data isolation: APPDATA=${runtimeEnvironment.APPDATA}; XDG_DATA_HOME=${runtimeEnvironment.XDG_DATA_HOME}`);
+  const runtimeConfiguration = await runtimeConfigurationEnvironment();
   runtimeProcess = spawn(executable, args, {
     cwd: workspace,
     windowsHide: true,
@@ -385,7 +397,7 @@ async function startRuntime(workspace) {
     // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
     shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...runtimeEnvironment, ...runtimeConfigurationEnvironment() }
+    env: { ...runtimeEnvironment, ...runtimeConfiguration }
   });
 
   let recentOutput = "";
