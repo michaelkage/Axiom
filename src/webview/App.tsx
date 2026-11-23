@@ -499,7 +499,7 @@ function App() {
         capture = { lines: [], characters: 0, truncated: false };
         workerOutputByAttempt.set(key, capture);
       }
-      const normalized = String(line ?? "").replace(/[\\r\\n]+/g, " ").slice(0, 8000);
+      const normalized = String(line ?? "").replace(/[\r\n]+/g, " ").slice(0, 8000);
       const remaining = 512 * 1024 - capture.characters;
       if (remaining <= 0) {
         capture.truncated = true;
@@ -522,7 +522,7 @@ function App() {
         taskId: record.taskId,
         kind: "log",
         name: "Worker output " + record.taskId + " attempt " + attempt,
-        data: capture.lines.join("\\n"),
+        data: capture.lines.join("\n"),
         metadata: {
           producer: "local-worker",
           taskId: record.taskId,
