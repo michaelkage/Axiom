@@ -88,6 +88,7 @@ test("network policy requires HTTPS exact-host allowlisting and honors approved 
     const policy = { ...DEFAULT_POLICY, "network.allowedHosts": ["docs.example.com"] };
     f.store.update(f.workspace, policy, 0);
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com/api").decision, "allow");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com:8443/api").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://evil.example.com/").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://unlisted.example.com/").decision, "deny");
     assert.equal(f.store.evaluateNetworkRequest(f.workspace, "http://docs.example.com/").decision, "deny");
