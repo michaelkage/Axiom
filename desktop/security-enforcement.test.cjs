@@ -84,7 +84,7 @@ test("security audit store refuses a symlinked audit destination", () => {
     const audit = auditFixture(root);
     assert.throws(() => audit.record({ action: "test", decision: "allow" }), /unsafe or oversized/);
     assert.equal(fs.readFileSync(outside, "utf8"), "private");
-    assert.throws(() => audit.list(), /regular file/);
+    assert.throws(() => audit.list(), /unsafe or oversized/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
