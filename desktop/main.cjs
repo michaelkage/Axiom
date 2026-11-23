@@ -1894,7 +1894,7 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   void runRemoteWorkspaceOperation(job, "clone", async signal => {
     try {
       const created = await createRemoteWorkspace(request, {
-        temporaryRoot, workspacePath, signal
+        temporaryRoot, workspacePath, signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {}
       });
       Object.assign(job, created, { id, error: null, interruptedOperation: null });
       return { id, status: job.status };
@@ -1935,7 +1935,7 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
       const created = await createRemoteWorkspace({
         mode: job.mode, repositoryUrl: job.repositoryUrl,
         branch: job.branch, paths: job.paths
-      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal });
+      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
       Object.assign(job, created, { id: job.id, error: null, interruptedOperation: null });
       return { id: job.id, status: job.status };
     } catch (error) {
@@ -1969,6 +1969,7 @@ ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
       const result = await commitAndPushWorkspace(job, {
         message: request.message,
         signal,
+        env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {},
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
@@ -1988,7 +1989,8 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   if (!job) throw new Error("Remote workspace job not found in this session.");
   return runRemoteWorkspaceOperation(job, "reconcile", async signal => {
     try {
-      const result = await reconcileRemoteWorkspace(job, { signal });
+      await enforceWorkspaceNetworkApproval(job.repositoryUrl, { title: "Approve remote Git reconciliation", message: "Allow Axiom to inspect the remote repository state for this workspace?", detail: "Branch: " + job.branch, approveLabel: "Allow repository check" });
+      const result = await reconcileRemoteWorkspace(job, { signal, env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
       job.interruptedOperation = null;
       return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
     } finally { await persistRemoteWorkspaceJobs(); }
@@ -2006,6 +2008,7 @@ ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) =
     try {
       const result = await pushReconciledWorkspace(job, {
         signal,
+        env: runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {},
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
