@@ -28,8 +28,8 @@ function isPublicAddress(address) {
   return false;
 }
 
-function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex"), resolveHost = dns.lookup, allowPrivateAddresses = false } = {}) {
-  if (typeof authorize !== "function") throw new TypeError("Network proxy requires a policy authorizer.");
+function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex"), resolveHost = dns.lookup, allowPrivateAddresses = false } = {}) {
+  if (typeof authorize !== "function" || typeof onBlocked !== "function") throw new TypeError("Network proxy requires policy authorization and audit callbacks.");
   if (typeof resolveHost !== "function" || typeof allowPrivateAddresses !== "boolean") throw new TypeError("Invalid proxy DNS policy.");
   if (host !== "127.0.0.1" || !Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError("Network proxy must bind to loopback and a valid port.");
   if (typeof token !== "string" || token.length < 32) throw new TypeError("Network proxy requires a high-entropy authentication token.");
@@ -79,6 +79,11 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     return parsed;
   }
 
+  async function reportBlocked(url, error) {
+    try { await onBlocked({ url, reason: String(error?.message || error || "Network request denied.").slice(0, 400) }); }
+    catch { /* A failed audit callback never permits the blocked connection. */ }
+  }
+
   async function handleConnect(request, clientSocket, head) {
     if (!authorizedProxyRequest(request)) {
       writeError(clientSocket, "407 Proxy Authentication Required", "Axiom network proxy authentication failed.");
@@ -97,7 +102,8 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     }
     let resolved;
     try { await authorizeUrl(target.url); resolved = await resolvePublicHost(target.hostname); }
-    catch {
+    catch (error) {
+      await reportBlocked(target.url, error);
       writeError(clientSocket, "403 Forbidden", "Outbound connection denied by Axiom workspace security policy.");
       return;
     }
@@ -132,7 +138,8 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
       target = await authorizeUrl(request.url);
       if (target.protocol !== "http:") throw new Error("HTTPS requests must use CONNECT.");
       resolved = await resolvePublicHost(target.hostname);
-    } catch {
+    } catch (error) {
+      await reportBlocked(request.url, error);
       response.writeHead(403, { "content-type": "text/plain", connection: "close" });
       response.end("Outbound request denied by Axiom workspace security policy.");
       return;
