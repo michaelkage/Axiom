@@ -32,7 +32,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
-const { buildRuntimePermissionRules } = require("./runtime-policy.cjs");
+const { applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -340,12 +340,7 @@ async function runtimeConfigurationEnvironment() {
         });
       }
     }
-    const serverIds = Object.keys(configuredMcp);
-    const enforcedRules = buildRuntimePermissionRules({ policy, mcpServerIds: serverIds });
-    merged.permissions = [
-      ...(Array.isArray(merged.permissions) ? merged.permissions : []),
-      ...enforcedRules
-    ];
+    applyRuntimePermissionPolicy(merged, policy);
   } else {
     throw new Error("A trusted workspace is required to construct the runtime security policy.");
   }
