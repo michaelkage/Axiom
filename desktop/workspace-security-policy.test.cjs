@@ -81,3 +81,18 @@ test("policy files cannot be symlinks and policy records cannot be replayed acro
     assert.equal(f.store.read(other).workspaceRoot, path.resolve(other));
   } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
 });
+
+test("network policy requires HTTPS exact-host allowlisting and honors approved browser origins", () => {
+  const f = fixture();
+  try {
+    const policy = { ...DEFAULT_POLICY, "network.allowedHosts": ["docs.example.com"] };
+    f.store.update(f.workspace, policy, 0);
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com/api").decision, "allow");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://evil.example.com/").decision, "deny");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "http://docs.example.com/").decision, "deny");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://docs.example.com.evil.test/").decision, "deny");
+    assert.equal(f.store.evaluateNetworkRequest(f.workspace, "https://approved.example.com/", ["https://approved.example.com"]).decision, "allow");
+    assert.throws(() => f.store.update(f.workspace, { ...policy, "network.allowedHosts": ["*.example.com"] }, 1), /exact hostnames/);
+    assert.throws(() => f.store.update(f.workspace, { ...policy, "network.allowedHosts": ["127.0.0.1"] }, 1), /Loopback and IP literals/);
+  } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
