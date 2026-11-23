@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
+const http = require("node:http");
 const { createNetworkPolicyProxy, isPublicAddress } = require("./network-policy-proxy.cjs");
 
 function readHeaders(socket) {
@@ -87,5 +88,41 @@ test("network proxy rejects private, loopback, link-local and reserved DNS resul
   }
   for (const address of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888"]) {
     assert.equal(isPublicAddress(address), true, address);
+  }
+});
+
+test("network proxy forwards authenticated HTTP through pinned DNS results", async () => {
+  const upstream = http.createServer((_request, response) => response.end("policy-proxy-ok"));
+  await new Promise(resolve => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+  const proxy = createNetworkPolicyProxy({
+    allowPrivateAddresses: true,
+    resolveHost: async () => [{ address: "127.0.0.1", family: 4 }],
+    authorize: async request => request.hostname === "example.invalid" && request.protocol === "http:"
+  });
+  try {
+    const environment = await proxy.start();
+    const proxyUrl = new URL(environment.HTTP_PROXY);
+    const authorization = "Basic " + Buffer.from(decodeURIComponent(proxyUrl.username) + ":" + decodeURIComponent(proxyUrl.password)).toString("base64");
+    const response = await new Promise((resolve, reject) => {
+      const request = http.request({
+        hostname: "127.0.0.1",
+        port: Number(proxyUrl.port),
+        path: "http://example.invalid:" + upstreamPort + "/resource",
+        method: "GET",
+        headers: { Host: "example.invalid:" + upstreamPort, "Proxy-Authorization": authorization }
+      }, result => {
+        let body = "";
+        result.setEncoding("utf8");
+        result.on("data", chunk => { body += chunk; });
+        result.on("end", () => resolve({ status: result.statusCode, body }));
+      });
+      request.once("error", reject);
+      request.end();
+    });
+    assert.deepEqual(response, { status: 200, body: "policy-proxy-ok" });
+  } finally {
+    await proxy.stop();
+    await new Promise(resolve => upstream.close(resolve));
   }
 });
