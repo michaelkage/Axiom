@@ -1006,8 +1006,7 @@ function trustedRenderer(event) {
 }
 
 async function requirePrivilegedApproval({ title, message, detail, approveLabel = "Approve" }) {
-  if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Axiom cannot request approval because its main window is unavailable.");
-  const result = await dialog.showMessageBox(mainWindow, {
+  const options = {
     type: "warning",
     title,
     message,
@@ -1016,7 +1015,10 @@ async function requirePrivilegedApproval({ title, message, detail, approveLabel 
     defaultId: 1,
     cancelId: 1,
     noLink: true
-  });
+  };
+  const result = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showMessageBox(mainWindow, options)
+    : await dialog.showMessageBox(options);
   const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
   const auditAction = "privileged." + String(title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 72);
   currentSecurityAuditStore().record({
