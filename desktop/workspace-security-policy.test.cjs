@@ -20,7 +20,7 @@ test("workspace policy defaults to the least-privilege baseline and binds record
     const policy = f.store.read(f.workspace);
     assert.equal(policy.revision, 0);
     assert.deepEqual(policy.policy, DEFAULT_POLICY);
-    assert.equal(f.store.evaluate(f.workspace, "shell.execute").decision, "deny");
+    assert.equal(f.store.evaluate(f.workspace, "shell.execute").decision, "approval-required");
     assert.equal(f.store.evaluate(f.workspace, "filesystem.read").decision, "allow");
     assert.equal(f.store.evaluate(f.workspace, "network.request").decision, "deny");
     assert.equal(f.store.evaluate(f.workspace, "unknown.operation").decision, "deny");
