@@ -130,15 +130,45 @@ function createSecurityAuditStore({ userDataPath, integrityKey, getAnchor = () =
       }
       throw error;
     }
-    const verified = parseAndVerify(raw);
-    const anchor = getAnchor();
-    if (anchor) {
-      if (!anchor || !Number.isSafeInteger(anchor.sequence) || typeof anchor.hash !== "string" ||
-          anchor.sequence !== verified.sequence || anchor.hash !== verified.hash) {
-        throw new Error("Security audit head does not match its OS-protected integrity anchor.");
+    let anchor = getAnchor();
+    if (!anchor) {
+      const legacyLines = raw.split("\\n").filter(Boolean);
+      if (legacyLines.length) {
+        let previousHash = genesis;
+        const migrated = legacyLines.map((line, index) => {
+          let legacy;
+          try { legacy = JSON.parse(line); } catch { throw new Error("Legacy security audit contains malformed data; migration refused."); }
+          if (!legacy || legacy.schemaVersion !== 1 || typeof legacy.timestamp !== "string" ||
+              typeof legacy.action !== "string" || !["allow", "deny", "approval-required"].includes(legacy.decision) ||
+              typeof legacy.reason !== "string") throw new Error("Legacy security audit contains an invalid event; migration refused.");
+          const event = {
+            schemaVersion: 2, sequence: index + 1, timestamp: legacy.timestamp,
+            action: legacy.action.slice(0, 80), decision: legacy.decision,
+            reason: legacy.reason.slice(0, 500),
+            projectId: typeof legacy.projectId === "string" ? legacy.projectId.slice(0, 128) : null,
+            resource: typeof legacy.resource === "string" ? legacy.resource.slice(0, 512) : null,
+            actor: typeof legacy.actor === "string" ? legacy.actor.slice(0, 80) : "desktop-main",
+            previousHash, legacyUnverified: true
+          };
+          event.hash = digest(event);
+          previousHash = event.hash;
+          return event;
+        });
+        const migratedRaw = migrated.map(event => JSON.stringify(event)).join("\\n") + "\\n";
+        if (Buffer.byteLength(migratedRaw, "utf8") > MAX_AUDIT_BYTES || migrated.length > MAX_AUDIT_EVENTS) {
+          throw new Error("Legacy security audit exceeds migration limits; privileged operations are blocked.");
+        }
+        atomicWrite(migratedRaw);
+        anchor = { sequence: migrated.length, hash: previousHash };
+        setAnchor(anchor);
+        return { events: migrated, sequence: migrated.length, hash: previousHash };
       }
-    } else if (verified.sequence > 0) {
-      throw new Error("Security audit exists without its protected integrity anchor.");
+      return { events: [], sequence: 0, hash: genesis };
+    }
+    const verified = parseAndVerify(raw);
+    if (!Number.isSafeInteger(anchor.sequence) || typeof anchor.hash !== "string" ||
+        anchor.sequence !== verified.sequence || anchor.hash !== verified.hash) {
+      throw new Error("Security audit head does not match its OS-protected integrity anchor.");
     }
     return verified;
   }
@@ -160,6 +190,12 @@ function createSecurityAuditStore({ userDataPath, integrityKey, getAnchor = () =
       legacyUnverified: false
     };
     event.hash = digest(event);
+    const serialized = JSON.stringify(event) + "\\n";
+    let existingBytes = 0;
+    try { existingBytes = fsImpl.statSync(file).size; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (existingBytes + Buffer.byteLength(serialized, "utf8") > MAX_AUDIT_BYTES) {
+      throw new Error("Security audit size limit reached; export or archive the audit before further privileged operations.");
+    }
     const descriptor = fsImpl.openSync(file, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW || 0), 0o600);
     try {
       fsImpl.appendFileSync(descriptor, JSON.stringify(event) + "\n", { encoding: "utf8" });
