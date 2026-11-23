@@ -116,7 +116,7 @@ function App() {
     readFile: (relativePath: string) => Promise<{ path: string; content: string; size: number }>;
     writeFile: (relativePath: string, content: string) => Promise<{ path: string; size: number }>;
   }; artifacts?: {
-    put: (request: { taskId: string; kind: "log"; name: string; data: string; metadata: Record<string, unknown> }) => Promise<unknown>;
+    put: (request: { taskId?: string; kind: "log" | "report"; name: string; data: string; metadata: Record<string, unknown> }) => Promise<unknown>;
   } } }).axiomDesktop;
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
@@ -801,6 +801,36 @@ function App() {
             // Replacement work is intentionally independent because sibling worktrees are isolated.
             dependsOn: task.dependsOn.map(id => "replan-" + (replanRound + 1) + "-" + replanned.tasks.findIndex(candidate => candidate.id === id) + "-" + id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48)),
           }));
+          const artifactBridge = desktopApi()?.artifacts;
+          if (artifactBridge?.put) {
+            try {
+              await artifactBridge.put({
+                kind: "report",
+                name: "Autonomous repair replan " + (replanRound + 1),
+                data: JSON.stringify({
+                  round: replanRound + 1,
+                  decision: { action: decision.action, reason: decision.reason, affectedTaskIds: [...affectedIds] },
+                  failedTasks: diagnostics,
+                  successfulTasks,
+                  acceptedReplacementTasks: replacementTasks.map(task => ({
+                    id: task.id, title: task.title, scope: task.scope,
+                    targetFiles: task.targetFiles, dependsOn: task.dependsOn,
+                    acceptanceCriteria: task.acceptanceCriteria
+                  })),
+                  capturedAt: Date.now()
+                }, null, 2),
+                metadata: {
+                  producer: "autonomous-repair-controller",
+                  round: replanRound + 1,
+                  failedTaskCount: failedTasks.length,
+                  replacementTaskCount: replacementTasks.length,
+                  capturedAt: Date.now()
+                }
+              });
+            } catch (artifactError) {
+              logger.error("Could not persist autonomous repair trace", { round: replanRound + 1, error: artifactError });
+            }
+          }
           // Preserve historical attempts when removing failed tasks from the active graph;
           // otherwise each replan would reset the global safety budget.
           retiredAttemptCount += failedTasks.reduce((sum, task) => sum + (attemptsByTask.get(task.id) ?? 0), 0);
