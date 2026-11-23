@@ -1350,11 +1350,38 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   const browserProjectId = selectedWorkspace
     ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40)
     : null;
-  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [], projectId: browserProjectId, openedAt: Date.now(), initialUrl: url };
+  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [], projectId: browserProjectId, openedAt: Date.now(), initialUrl: url, approvedOrigins: new Set([initialOrigin]) };
   browserSessions.set(sessionId, entry);
   const pageSession = browserWindow.webContents.session;
   pageSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   pageSession.on("will-download", (_downloadEvent, item) => item.cancel());
+  pageSession.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }, (details, callback) => {
+    let decision;
+    try {
+      decision = selectedWorkspace
+        ? currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(selectedWorkspace, details.url, [...entry.approvedOrigins])
+        : { decision: "deny", reason: "No trusted workspace is selected." };
+    } catch (error) {
+      decision = { decision: "deny", reason: "Network policy evaluation failed: " + String(error.message || error).slice(0, 200) };
+    }
+    if (decision.decision === "allow") {
+      callback({ cancel: false });
+      return;
+    }
+    try {
+      currentSecurityAuditStore().record({
+        action: "network.request",
+        decision: "deny",
+        reason: decision.reason,
+        projectId: entry.projectId,
+        resource: (() => { try { return new URL(details.url).origin; } catch { return "invalid-origin"; } })()
+      });
+    } catch (error) {
+      void appendRuntimeLog("Network denial audit failed closed: " + String(error.message || error).slice(0, 200));
+    }
+    recordBrowserError(entry, "Blocked outbound request: " + (() => { try { return new URL(details.url).origin; } catch { return "invalid destination"; } })() + ". " + decision.reason);
+    callback({ cancel: true });
+  });
   pageSession.webRequest.onErrorOccurred({ urls: ["http://*/*", "https://*/*"] }, (_details) => {
     let origin = "unknown origin";
     try { origin = new URL(_details.url).origin; } catch {}
@@ -1445,6 +1472,7 @@ ipcMain.handle("axiom:browser-navigate", async (event, request) => {
       approveLabel: "Navigate"
     });
   }
+  if (nextOrigin !== currentOrigin) entry.approvedOrigins.add(nextOrigin);
   await loadBrowserPage(entry.window, url);
   return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
 });
