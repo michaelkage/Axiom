@@ -30,7 +30,7 @@ const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs")
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
-const { evaluateFilesystemAccess, createSecurityAuditStore } = require("./security-enforcement.cjs");
+const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
@@ -56,11 +56,7 @@ function currentSecurityAuditStore() {
 async function authorizeFilesystemOperation(operation, relativePath) {
   const baseEvaluation = evaluateFilesystemAccess({ workspaceRoot: selectedWorkspace, relativePath, operation });
   const projectPolicy = selectedWorkspace ? currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "filesystem." + operation) : { decision: "deny", reason: "No trusted workspace is selected." };
-  const evaluation = baseEvaluation.decision === "deny" || projectPolicy.decision === "deny"
-    ? { decision: "deny", reason: baseEvaluation.decision === "deny" ? baseEvaluation.reason : projectPolicy.reason }
-    : baseEvaluation.decision === "approval-required" || projectPolicy.decision === "approval-required"
-      ? { decision: "approval-required", reason: projectPolicy.reason || baseEvaluation.reason }
-      : { decision: "allow", reason: projectPolicy.reason };
+  const evaluation = combineFilesystemDecisions(baseEvaluation, projectPolicy);
   const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
   const audit = currentSecurityAuditStore();
   if (evaluation.decision === "deny") {
