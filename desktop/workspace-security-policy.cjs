@@ -193,7 +193,7 @@ function createWorkspaceSecurityPolicyStore({ userDataPath, fsImpl = fs }) {
     catch (error) { return { decision: "deny", reason: "Workspace network policy could not be loaded safely: " + String(error.message || error).slice(0, 240) }; }
     const approvedOrigin = target.protocol === "wss:" ? "https://" + target.host : target.origin;
     if (approvedOrigins.includes(approvedOrigin)) return { decision: "allow", reason: "Destination origin was explicitly approved for this browser session." };
-    if ((target.protocol === "https:" || target.protocol === "wss:") && record.policy["network.allowedHosts"].includes(target.hostname)) {
+    if ((target.protocol === "https:" || target.protocol === "wss:") && (!target.port || target.port === "443") && record.policy["network.allowedHosts"].includes(target.hostname)) {
       return { decision: "allow", reason: "Destination hostname is explicitly allowlisted by the workspace policy." };
     }
     const decision = record.policy["network.request"];
