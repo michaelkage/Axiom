@@ -2,13 +2,35 @@
 
 const http = require("node:http");
 const net = require("node:net");
+const dns = require("node:dns").promises;
 const crypto = require("node:crypto");
 
 const SOCKET_TIMEOUT_MS = 120000;
 const MAX_HEADER_BYTES = 16 * 1024;
 
-function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex") } = {}) {
+function isPublicAddress(address) {
+  const family = net.isIP(address);
+  if (family === 4) {
+    const parts = address.split(".").map(Number);
+    const [a, b, c] = parts;
+    if (a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) ||
+        (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && (b === 168 || (b === 0 && c === 0) || (b === 0 && c === 2) || (b === 88 && c === 99))) ||
+        (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+        (a === 203 && b === 0 && c === 113)) return false;
+    return true;
+  }
+  if (family === 6) {
+    const normalized = address.toLowerCase();
+    if (normalized.startsWith("::ffff:")) return isPublicAddress(normalized.slice(7));
+    return /^2[0-9a-f]{3}:/.test(normalized) && !normalized.startsWith("2001:db8:");
+  }
+  return false;
+}
+
+function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex"), resolveHost = dns.lookup, allowPrivateAddresses = false } = {}) {
   if (typeof authorize !== "function") throw new TypeError("Network proxy requires a policy authorizer.");
+  if (typeof resolveHost !== "function" || typeof allowPrivateAddresses !== "boolean") throw new TypeError("Invalid proxy DNS policy.");
   if (host !== "127.0.0.1" || !Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError("Network proxy must bind to loopback and a valid port.");
   if (typeof token !== "string" || token.length < 32) throw new TypeError("Network proxy requires a high-entropy authentication token.");
 
@@ -31,6 +53,15 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     if (!socket.destroyed) {
       socket.end("HTTP/1.1 " + status + "\r\nConnection: close\r\nContent-Length: " + Buffer.byteLength(message) + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + message);
     }
+  }
+
+  async function resolvePublicHost(hostname) {
+    const addresses = await resolveHost(hostname, { all: true, verbatim: true });
+    if (!Array.isArray(addresses) || addresses.length === 0) throw new Error("Network destination did not resolve.");
+    if (!allowPrivateAddresses && addresses.some(item => !isPublicAddress(item.address))) {
+      throw new Error("Network destination resolves to a private, reserved or non-global address.");
+    }
+    return addresses[0];
   }
 
   async function authorizeUrl(url) {
@@ -65,12 +96,13 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
       writeError(clientSocket, "400 Bad Request", "Invalid CONNECT destination.");
       return;
     }
-    try { await authorizeUrl(target.url); }
+    let resolved;
+    try { await authorizeUrl(target.url); resolved = await resolvePublicHost(target.hostname); }
     catch {
       writeError(clientSocket, "403 Forbidden", "Outbound connection denied by Axiom workspace security policy.");
       return;
     }
-    const upstream = net.connect({ host: target.hostname, port: target.port });
+    const upstream = net.connect({ host: resolved.address, family: resolved.family, port: target.port });
     let established = false;
     sockets.add(upstream);
     upstream.setTimeout(SOCKET_TIMEOUT_MS, () => upstream.destroy(new Error("Proxy upstream timed out.")));
@@ -98,6 +130,7 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     try {
       target = await authorizeUrl(request.url);
       if (target.protocol !== "http:") throw new Error("HTTPS requests must use CONNECT.");
+      var resolved = await resolvePublicHost(target.hostname);
     } catch {
       response.writeHead(403, { "content-type": "text/plain", connection: "close" });
       response.end("Outbound request denied by Axiom workspace security policy.");
@@ -109,9 +142,10 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     const upstream = http.request(target, {
       method: request.method,
       headers,
-      timeout: SOCKET_TIMEOUT_MS
+      timeout: SOCKET_TIMEOUT_MS,
+      lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family)
     }, upstreamResponse => {
-      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.statusMessage, upstreamResponse.headers);
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
       upstreamResponse.pipe(response);
     });
     upstream.on("timeout", () => upstream.destroy(new Error("Proxy request timed out.")));
@@ -178,4 +212,4 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
   return Object.freeze({ start, environment, stop, get running() { return !!server && !stopped; } });
 }
 
-module.exports = { createNetworkPolicyProxy, SOCKET_TIMEOUT_MS, MAX_HEADER_BYTES };
+module.exports = { createNetworkPolicyProxy, isPublicAddress, SOCKET_TIMEOUT_MS, MAX_HEADER_BYTES };
