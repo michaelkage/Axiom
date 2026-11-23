@@ -191,13 +191,14 @@ function createWorkspaceSecurityPolicyStore({ userDataPath, fsImpl = fs }) {
     let record;
     try { record = read(workspaceRoot); }
     catch (error) { return { decision: "deny", reason: "Workspace network policy could not be loaded safely: " + String(error.message || error).slice(0, 240) }; }
-    if (approvedOrigins.includes(target.origin)) return { decision: "allow", reason: "Destination origin was explicitly approved for this browser session." };
+    const approvedOrigin = target.protocol === "wss:" ? "https://" + target.host : target.origin;
+    if (approvedOrigins.includes(approvedOrigin)) return { decision: "allow", reason: "Destination origin was explicitly approved for this browser session." };
     if ((target.protocol === "https:" || target.protocol === "wss:") && record.policy["network.allowedHosts"].includes(target.hostname)) {
       return { decision: "allow", reason: "Destination hostname is explicitly allowlisted by the workspace policy." };
     }
     const decision = record.policy["network.request"];
     return {
-      decision: decision === "allow" ? "allow" : "deny",
+      decision,
       reason: decision === "allow" ? "Workspace policy allows outbound network requests." :
         decision === "approval-required" ? "Destination is not approved or allowlisted; browser subresource requests cannot open native prompts." :
           "Outbound network request denied by workspace policy."
