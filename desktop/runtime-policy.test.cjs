@@ -39,3 +39,14 @@ test("unknown and malformed policy decisions fail closed", () => {
   assert.equal(rules.some(rule => rule.action === "bad_id_*"), false);
   assert.equal(rules.find(rule => rule.action === "github_*").effect, "deny");
 });
+
+test("runtime policy allows only exact HTTPS webfetch hosts when network is otherwise denied", () => {
+  const rules = buildRuntimePermissionRules({
+    policy: { ...policy, "network.allowedHosts": ["docs.example.com"] },
+    mcpServerIds: []
+  });
+  const hostRule = rules.find(rule => rule.action === "webfetch" && rule.resource === "https://docs.example.com/*");
+  assert.equal(hostRule.effect, "allow");
+  assert.equal(rules.find(rule => rule.action === "webfetch" && rule.resource === "*").effect, "deny");
+  assert.equal(rules.find(rule => rule.action === "websearch").effect, "deny");
+});
