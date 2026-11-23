@@ -1114,9 +1114,15 @@ async function authorizeRuntimeNetwork(rawUrl, workspaceRoot, options = {}) {
       detail: "Runtime egress",
       approveLabel: "Allow host"
     }, workspaceRoot);
-    if (epoch !== runtimeNetworkEpoch) throw new Error("Runtime stopped while network approval was pending.");
+    if (epoch !== runtimeNetworkEpoch) {
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Runtime stopped while network approval was pending.", projectId, resource: target.origin });
+      throw new Error("Runtime stopped while network approval was pending.");
+    }
     const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
-    if (updated.revision !== record.revision) throw new Error("Workspace network policy changed while approval was pending; retry the connection.");
+    if (updated.revision !== record.revision) {
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Workspace network policy changed while approval was pending.", projectId, resource: target.origin });
+      throw new Error("Workspace network policy changed while approval was pending; retry the connection.");
+    }
     runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
     return true;
   })();
