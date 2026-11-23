@@ -9,7 +9,7 @@ const POLICY_ACTIONS = Object.freeze({
   "filesystem.read": Object.freeze(["allow", "deny"]),
   "filesystem.write": Object.freeze(["approval-required", "deny"]),
   "shell.execute": Object.freeze(["approval-required", "deny"]),
-  "network.request": Object.freeze(["approval-required", "deny"]),
+  "network.request": Object.freeze(["allow", "approval-required", "deny"]),
   "mcp.invoke": Object.freeze(["approval-required", "deny"]),
   "git.push": Object.freeze(["approval-required", "deny"]),
   "deployment.publish": Object.freeze(["approval-required", "deny"]),
@@ -20,6 +20,7 @@ const DEFAULT_POLICY = Object.freeze({
   "filesystem.write": "approval-required",
   "shell.execute": "approval-required",
   "network.request": "deny",
+  "network.allowedHosts": [],
   "mcp.invoke": "approval-required",
   "git.push": "approval-required",
   "deployment.publish": "approval-required",
@@ -39,14 +40,30 @@ function workspaceIdentity(workspaceRoot) {
 function validatePolicy(policy) {
   if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new TypeError("Security policy must be an object.");
   const keys = Object.keys(policy);
-  if (keys.length !== Object.keys(POLICY_ACTIONS).length || keys.some(key => !Object.prototype.hasOwnProperty.call(POLICY_ACTIONS, key))) {
-    throw new Error("Security policy must define every supported action exactly once.");
+  const required = Object.keys(POLICY_ACTIONS);
+  if (required.some(key => !Object.prototype.hasOwnProperty.call(policy, key)) ||
+      keys.some(key => !required.includes(key) && key !== "network.allowedHosts")) {
+    throw new Error("Security policy must define every supported action and only supported settings.");
   }
   const normalized = {};
   for (const [action, allowed] of Object.entries(POLICY_ACTIONS)) {
     if (!allowed.includes(policy[action])) throw new Error("Unsupported decision for security action: " + action);
     normalized[action] = policy[action];
   }
+  const hosts = policy["network.allowedHosts"] === undefined ? [] : policy["network.allowedHosts"];
+  if (!Array.isArray(hosts) || hosts.length > 100) throw new TypeError("Network allowlist must contain at most 100 exact hostnames.");
+  normalized["network.allowedHosts"] = [...new Set(hosts.map(value => {
+    if (typeof value !== "string" || value.length > 253 || value !== value.trim() || value.includes("*") || value.includes("/") || value.includes("@")) {
+      throw new TypeError("Network allowlist entries must be exact hostnames without wildcards or URL paths.");
+    }
+    const hostname = value.toLowerCase().replace(/\.$/, "");
+    if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost") || require("node:net").isIP(hostname)) {
+      throw new TypeError("Loopback and IP literals cannot be added to the network allowlist.");
+    }
+    const parsed = new URL("https://" + hostname);
+    if (parsed.hostname !== hostname || parsed.origin !== "https://" + hostname) throw new TypeError("Invalid network allowlist hostname.");
+    return hostname;
+  }))].sort();
   return normalized;
 }
 
@@ -164,7 +181,30 @@ function createWorkspaceSecurityPolicyStore({ userDataPath, fsImpl = fs }) {
     };
   }
 
-  return Object.freeze({ read, update, evaluate });
+  function evaluateNetworkRequest(workspaceRoot, requestUrl, approvedOrigins = []) {
+    if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) return { decision: "deny", reason: "No trusted workspace is selected." };
+    let target;
+    try {
+      target = new URL(requestUrl);
+      if (!["https:", "http:"].includes(target.protocol) || target.username || target.password) throw new Error();
+    } catch { return { decision: "deny", reason: "Network destination is not a valid credential-free HTTP(S) URL." }; }
+    let record;
+    try { record = read(workspaceRoot); }
+    catch (error) { return { decision: "deny", reason: "Workspace network policy could not be loaded safely: " + String(error.message || error).slice(0, 240) }; }
+    if (approvedOrigins.includes(target.origin)) return { decision: "allow", reason: "Destination origin was explicitly approved for this browser session." };
+    if (target.protocol === "https:" && record.policy["network.allowedHosts"].includes(target.hostname)) {
+      return { decision: "allow", reason: "Destination hostname is explicitly allowlisted by the workspace policy." };
+    }
+    const decision = record.policy["network.request"];
+    return {
+      decision: decision === "allow" ? "allow" : "deny",
+      reason: decision === "allow" ? "Workspace policy allows outbound network requests." :
+        decision === "approval-required" ? "Destination is not approved or allowlisted; browser subresource requests cannot open native prompts." :
+          "Outbound network request denied by workspace policy."
+    };
+  }
+
+  return Object.freeze({ read, update, evaluate, evaluateNetworkRequest });
 }
 
 module.exports = {
