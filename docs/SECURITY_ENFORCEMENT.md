@@ -45,9 +45,9 @@ OpenCode runtime configuration now receives ordered V2 `permissions` rules deriv
 - webfetch/websearch follow the network policy, with exact allowlisted HTTPS hosts permitted for webfetch;
 - configured MCP tool actions and MCP resource access require approval or are denied;
 - Git push shell commands receive their own policy rule.
-Remote MCP endpoints and external OmniRoute endpoints are checked at runtime startup. Remote Worker Host calls and remote Git clone/push operations are checked against the network policy before native approval and execution.
+Remote MCP endpoints and external OmniRoute endpoints are checked at runtime startup. Remote Worker Host calls and remote Git clone/push operations are checked against the network policy before native approval and execution. The OpenCode runtime receives an authenticated loopback HTTP CONNECT/forward proxy through `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NODE_USE_ENV_PROXY`; each destination is checked against the current workspace policy, native approval is cached only for the current policy revision, and proxy credentials are never exposed through preload APIs. The proxy is stopped with the runtime and is inherited by managed child processes that honor the standard proxy environment.
 
-This is not an OS-wide outbound firewall. Model-provider traffic from providers configured outside Axiom's OmniRoute integration, arbitrary network traffic from an already approved shell command, and network traffic initiated internally by a local MCP server process are not intercepted at socket level. The browser and OpenCode tool permission controls are application-level gates, not a substitute for an OS firewall.
+This is not an OS-wide outbound firewall. Clients that ignore standard proxy environment variables, raw socket traffic, UDP/QUIC, and commands or local MCP servers that deliberately clear proxy variables or connect directly can bypass the proxy. The proxy does not inspect encrypted request paths after CONNECT. It improves mediation for compliant HTTP(S) clients, but is not a substitute for an OS firewall or per-process network sandbox.
 
 ## Privileged operation audit
 
@@ -59,7 +59,7 @@ The active chain is bounded to 4000 events and 5 MiB. Automatic truncation/rotat
 
 ## Remaining security work
 
-- Add socket-level egress enforcement for arbitrary shell traffic, local MCP server processes and model providers configured outside Axiom's OmniRoute integration.
+- Add OS-level egress enforcement for raw sockets, UDP/QUIC and processes that bypass the authenticated runtime proxy.
 - Add an explicit verified audit archive/export and retention workflow before the bounded chain reaches its hard stop.
 - Extend policy checks to any future Git, deployment, plugin and credential execution paths not routed through the desktop main process.
 - Complete platform-specific filesystem race hardening and independent security review.
