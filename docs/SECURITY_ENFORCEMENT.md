@@ -17,6 +17,14 @@ The desktop file IPC routes use `desktop/security-enforcement.cjs` before reachi
 
 The file adapter retains its own path validation. IPC policy is an additional boundary, not a replacement for filesystem checks.
 
+## Persisted workspace policy
+
+Each selected workspace has a versioned policy record under Axiom user data, keyed by a SHA-256 identity derived from the canonical workspace path. The record includes its schema version, workspace identity, monotonically increasing revision and update timestamp. Policy writes use an exclusive temporary file, file flush, atomic rename and directory flush where supported. A revision supplied by the caller is checked before a write so stale settings cannot silently overwrite a newer policy.
+
+The initial policy is least-privilege for operations not yet connected to the evaluator: shell execution, outbound network requests and MCP invocation are denied; Git push, deployment publishing and plugin execution require approval. Safe project reads are allowed and project file writes require approval. Privileged actions cannot be changed to unconditional allow by this policy schema. Policy changes themselves require native main-process confirmation and are recorded in the security audit.
+
+The filesystem IPC authorization path now combines its existing path/symlink checks with the persisted workspace policy. Either layer can deny access; a corrupt, oversized, symlinked or workspace-mismatched policy fails closed. The preload exposes read/update methods only through main-process IPC. The policy evaluator is intentionally not yet wired to all shell, MCP, runtime network, Git, deployment and plugin execution producers; those producers remain governed only by their existing individual controls until each integration is implemented and tested.
+
 ## Credentials
 
 The generic renderer-accessible secure-storage get/set/remove bridge has been removed. Credentials are handled through provider-specific main-process APIs. Saving or removing GitHub/Supabase credentials, saving MCP credentials, and saving remote worker host credentials require native confirmation. OmniRoute endpoint/API-key changes, connection tests, runtime installation, process startup and external dashboard opening also require native confirmation. Secret values are not included in approval text or audit resources.
@@ -41,7 +49,7 @@ Audit persistence is fail-closed for privileged operations: if the decision cann
 
 - Apply a single project policy evaluator to all worker process creation, MCP tool calls, network clients, deployment provider calls, Git operations and credential consumers.
 - Enforce outbound host allowlists for runtime and browser subresource traffic.
-- Add a policy editor and project-scoped policy persistence with versioning.
+- Add a user-facing policy editor; versioned project-scoped persistence and filesystem IPC enforcement are now present.
 - Add tamper-evident audit chaining and retention controls.
 - Complete platform-specific filesystem race hardening and independent security review.
 
