@@ -64,7 +64,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
   createEffect(() => { props.workspaceRoot; void refresh(); });
 
   function setDecision(key: keyof Omit<WorkspacePolicy, "network.allowedHosts">, value: string) {
-    setPolicy(current => current ? { ...current, [key]: value as WorkspacePolicy[typeof key] } : current);
+    setPolicy(current => current ? ({ ...current, [key]: value as WorkspacePolicy[typeof key] } as WorkspacePolicy) : current);
   }
 
   async function save() {
