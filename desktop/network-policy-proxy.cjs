@@ -160,10 +160,12 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
     }
     let target;
     try {
+      if (typeof request.url !== "string" || !request.url || /[\s/?#@]/.test(request.url.split("]")[1] || "")) throw new Error();
       const parsed = new URL("http://" + request.url);
       const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
       const targetPort = Number(parsed.port || 443);
-      if (!hostname || !Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) throw new Error();
+      if (!hostname || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash ||
+          !Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) throw new Error();
       target = { hostname, port: targetPort, url: "https://" + (hostname.includes(":") ? "[" + hostname + "]" : hostname) + ":" + targetPort + "/" };
     } catch {
       writeError(clientSocket, "400 Bad Request", "Invalid CONNECT destination.");
