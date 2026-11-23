@@ -48,6 +48,7 @@ let mcpManager;
 let securityAuditStore;
 let workspaceSecurityPolicyStore;
 let runtimeNetworkProxy;
+let runtimeNetworkProxyWorkspace = null;
 const runtimeNetworkApprovalCache = new Map();
 const runtimeNetworkApprovalPending = new Map();
 let runtimeNetworkEpoch = 0;
@@ -395,15 +396,8 @@ async function startRuntime(workspace) {
   const runtimeEnvironment = createRuntimeEnvironment(process.env, app.getPath("userData"));
   await appendRuntimeLog(`Runtime data isolation: APPDATA=${runtimeEnvironment.APPDATA}; XDG_DATA_HOME=${runtimeEnvironment.XDG_DATA_HOME}`);
   await stopRuntimeNetworkProxy();
-  runtimeNetworkProxy = createNetworkPolicyProxy({
-    authorize: request => authorizeRuntimeNetwork(request.url, workspace),
-    onBlocked: ({ url, reason }) => {
-      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspace)).digest("hex").slice(0, 40);
-      let resource = "invalid-origin";
-      try { resource = new URL(url).origin; } catch {}
-      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Runtime proxy blocked destination: " + reason, projectId, resource: redactSecrets(resource) });
-    }
-  });
+  runtimeNetworkProxy = createWorkspaceNetworkProxy(workspace);
+  runtimeNetworkProxyWorkspace = path.resolve(workspace);
   let proxyEnvironment;
   let runtimeConfiguration;
   try {
@@ -1131,9 +1125,41 @@ async function authorizeRuntimeNetwork(rawUrl, workspaceRoot, options = {}) {
   finally { if (runtimeNetworkApprovalPending.get(cacheKey) === operation) runtimeNetworkApprovalPending.delete(cacheKey); }
 }
 
+function createWorkspaceNetworkProxy(workspaceRoot) {
+  return createNetworkPolicyProxy({
+    authorize: request => authorizeRuntimeNetwork(request.url, workspaceRoot),
+    onBlocked: ({ url, reason }) => {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
+      let resource = "invalid-origin";
+      try { resource = new URL(url).origin; } catch {}
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Runtime proxy blocked destination: " + reason, projectId, resource: redactSecrets(resource) });
+    }
+  });
+}
+
+async function withWorkspaceNetworkProxy(workspaceRoot, operation) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot) || typeof operation !== "function") {
+    throw new TypeError("A trusted workspace and network operation are required.");
+  }
+  let temporary = false;
+  if (runtimeNetworkProxy) {
+    if (path.resolve(runtimeNetworkProxyWorkspace || "") !== path.resolve(workspaceRoot)) {
+      throw new Error("The active runtime proxy belongs to another workspace; restart the runtime before network operations.");
+    }
+  } else {
+    runtimeNetworkProxy = createWorkspaceNetworkProxy(workspaceRoot);
+    runtimeNetworkProxyWorkspace = path.resolve(workspaceRoot);
+    try { await runtimeNetworkProxy.start(); temporary = true; }
+    catch (error) { await stopRuntimeNetworkProxy(); throw error; }
+  }
+  try { return await operation(runtimeNetworkProxy.environment()); }
+  finally { if (temporary) await stopRuntimeNetworkProxy(); }
+}
+
 async function stopRuntimeNetworkProxy() {
   const proxy = runtimeNetworkProxy;
   runtimeNetworkProxy = null;
+  runtimeNetworkProxyWorkspace = null;
   runtimeNetworkEpoch += 1;
   runtimeNetworkApprovalCache.clear();
   runtimeNetworkApprovalPending.clear();
@@ -1460,22 +1486,7 @@ ipcMain.handle("axiom:omniroute-install", async event => {
     detail: "This operation installs a third-party command-line runtime on this device.",
     approveLabel: "Install OmniRoute"
   });
-  let temporaryProxy = false;
-  if (!runtimeNetworkProxy) {
-    runtimeNetworkProxy = createNetworkPolicyProxy({
-      authorize: request => authorizeRuntimeNetwork(request.url, networkWorkspace),
-      onBlocked: ({ url, reason }) => {
-        const projectId = require("node:crypto").createHash("sha256").update(path.resolve(networkWorkspace)).digest("hex").slice(0, 40);
-        let resource = "invalid-origin";
-        try { resource = new URL(url).origin; } catch {}
-        currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Installer proxy blocked destination: " + reason, projectId, resource: redactSecrets(resource) });
-      }
-    });
-    try { await runtimeNetworkProxy.start(); temporaryProxy = true; }
-    catch (error) { await stopRuntimeNetworkProxy(); throw error; }
-  }
-  try { return await omniRouteManager.install(); }
-  finally { if (temporaryProxy) await stopRuntimeNetworkProxy(); }
+  return withWorkspaceNetworkProxy(networkWorkspace, () => omniRouteManager.install());
 });
 
 ipcMain.handle("axiom:omniroute-start", async event => {
