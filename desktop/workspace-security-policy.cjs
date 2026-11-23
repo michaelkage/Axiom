@@ -186,13 +186,13 @@ function createWorkspaceSecurityPolicyStore({ userDataPath, fsImpl = fs }) {
     let target;
     try {
       target = new URL(requestUrl);
-      if (!["https:", "http:"].includes(target.protocol) || target.username || target.password) throw new Error();
+      if (!["https:", "http:", "wss:"].includes(target.protocol) || target.username || target.password) throw new Error();
     } catch { return { decision: "deny", reason: "Network destination is not a valid credential-free HTTP(S) URL." }; }
     let record;
     try { record = read(workspaceRoot); }
     catch (error) { return { decision: "deny", reason: "Workspace network policy could not be loaded safely: " + String(error.message || error).slice(0, 240) }; }
     if (approvedOrigins.includes(target.origin)) return { decision: "allow", reason: "Destination origin was explicitly approved for this browser session." };
-    if (target.protocol === "https:" && record.policy["network.allowedHosts"].includes(target.hostname)) {
+    if ((target.protocol === "https:" || target.protocol === "wss:") && record.policy["network.allowedHosts"].includes(target.hostname)) {
       return { decision: "allow", reason: "Destination hostname is explicitly allowlisted by the workspace policy." };
     }
     const decision = record.policy["network.request"];
