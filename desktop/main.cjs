@@ -33,6 +33,7 @@ const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
 const { applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
+const { createNetworkPolicyProxy } = require("./network-policy-proxy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
@@ -46,6 +47,8 @@ let omniRouteManager;
 let mcpManager;
 let securityAuditStore;
 let workspaceSecurityPolicyStore;
+let runtimeNetworkProxy;
+const runtimeNetworkApprovalCache = new Map();
 function currentWorkspaceSecurityPolicyStore() {
   if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
   return workspaceSecurityPolicyStore;
@@ -303,47 +306,32 @@ async function runtimeExecutable() {
   throw new Error("Axiom's bundled runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
 
-async function runtimeConfigurationEnvironment() {
+async function runtimeConfigurationEnvironment(workspaceRoot) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted runtime workspace is required.");
   const merged = {};
   for (const manager of [omniRouteManager, mcpManager]) {
-    const environment = manager ? manager.openCodeEnvironment({ workspaceRoot: selectedWorkspace }) : {};
+    const environment = manager ? manager.openCodeEnvironment({ workspaceRoot }) : {};
     if (environment.OPENCODE_CONFIG_CONTENT) {
       try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
       catch { throw new Error("Axiom generated invalid local runtime configuration; startup was blocked."); }
     }
   }
-  if (selectedWorkspace) {
-    const policy = currentWorkspaceSecurityPolicyStore().read(selectedWorkspace).policy;
-    const configuredProvider = merged.provider && merged.provider.omniroute;
-    const routerBaseUrl = configuredProvider?.options?.baseURL;
-    if (typeof routerBaseUrl === "string") {
-      let routerUrl;
-      try { routerUrl = new URL(routerBaseUrl); } catch { throw new Error("OmniRoute provider endpoint is invalid; runtime startup was blocked."); }
-      const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(routerUrl.hostname.toLowerCase());
-      if (!isLoopback) {
-        await enforceWorkspaceNetworkApproval(routerBaseUrl, {
-          title: "Approve remote model router",
-          message: "Allow the Axiom runtime to send model requests to this external OmniRoute endpoint?",
-          detail: "External model-routing provider",
-          approveLabel: "Allow model connection"
-        });
-      }
-    }
-    const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
-    for (const [id, server] of Object.entries(configuredMcp)) {
-      if (server && server.type === "remote" && typeof server.url === "string") {
-        await enforceWorkspaceNetworkApproval(server.url, {
-          title: "Approve remote MCP runtime connection",
-          message: "Allow the Axiom runtime to connect to this configured remote MCP server?",
-          detail: "MCP integration: " + id,
-          approveLabel: "Allow MCP connection"
-        });
-      }
-    }
-    applyRuntimePermissionPolicy(merged, policy);
-  } else {
-    throw new Error("A trusted workspace is required to construct the runtime security policy.");
+  const policy = currentWorkspaceSecurityPolicyStore().read(workspaceRoot).policy;
+  const configuredProvider = merged.provider && merged.provider.omniroute;
+  const routerBaseUrl = configuredProvider?.options?.baseURL;
+  if (typeof routerBaseUrl === "string") {
+    let routerUrl;
+    try { routerUrl = new URL(routerBaseUrl); } catch { throw new Error("OmniRoute provider endpoint is invalid; runtime startup was blocked."); }
+    const isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(routerUrl.hostname.toLowerCase());
+    if (!isLoopback) await authorizeRuntimeNetwork(routerBaseUrl, workspaceRoot);
   }
+  const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
+  for (const [id, server] of Object.entries(configuredMcp)) {
+    if (server && server.type === "remote" && typeof server.url === "string") {
+      await authorizeRuntimeNetwork(server.url, workspaceRoot);
+    }
+  }
+  applyRuntimePermissionPolicy(merged, policy);
   return { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) };
 }
 
@@ -399,7 +387,19 @@ async function startRuntime(workspace) {
   const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
   const runtimeEnvironment = createRuntimeEnvironment(process.env, app.getPath("userData"));
   await appendRuntimeLog(`Runtime data isolation: APPDATA=${runtimeEnvironment.APPDATA}; XDG_DATA_HOME=${runtimeEnvironment.XDG_DATA_HOME}`);
-  const runtimeConfiguration = await runtimeConfigurationEnvironment();
+  await stopRuntimeNetworkProxy();
+  runtimeNetworkProxy = createNetworkPolicyProxy({
+    authorize: request => authorizeRuntimeNetwork(request.url, workspace)
+  });
+  let proxyEnvironment;
+  let runtimeConfiguration;
+  try {
+    proxyEnvironment = await runtimeNetworkProxy.start();
+    runtimeConfiguration = await runtimeConfigurationEnvironment(workspace);
+  } catch (error) {
+    await stopRuntimeNetworkProxy();
+    throw error;
+  }
   runtimeProcess = spawn(executable, args, {
     cwd: workspace,
     windowsHide: true,
@@ -407,7 +407,7 @@ async function startRuntime(workspace) {
     // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
     shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...runtimeEnvironment, ...runtimeConfiguration }
+    env: { ...runtimeEnvironment, ...runtimeConfiguration, ...proxyEnvironment }
   });
 
   let recentOutput = "";
@@ -417,12 +417,14 @@ async function startRuntime(workspace) {
   runtimeProcess.stdout?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.stderr?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.on("error", error => {
+    void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
       void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nRestart Axiom after reviewing the log.`, buttons: ["OK"] });
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
+    void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
     if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
       void dialog.showMessageBox(mainWindow, {
@@ -1039,13 +1041,13 @@ function normalizeNetworkPolicyTarget(rawUrl) {
   return parsed.toString();
 }
 
-async function enforceWorkspaceNetworkApproval(rawUrl, options = {}) {
-  if (!selectedWorkspace) throw new Error("A selected project is required for outbound network access.");
+async function enforceWorkspaceNetworkApproval(rawUrl, options = {}, workspaceRoot = selectedWorkspace) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted workspace is required for outbound network access.");
   const target = normalizeNetworkPolicyTarget(rawUrl);
-  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
   const origin = new URL(target).origin;
   const audit = currentSecurityAuditStore();
-  const result = currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(selectedWorkspace, target, []);
+  const result = currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(workspaceRoot, target, []);
   const resource = redactSecrets(origin).slice(0, 512);
   if (result.decision === "deny") {
     audit.record({ action: "network.request", decision: "deny", reason: result.reason, projectId, resource });
@@ -1069,6 +1071,32 @@ async function enforceWorkspaceNetworkApproval(rawUrl, options = {}) {
   }
   audit.record({ action: "network.request", decision: "allow", reason: result.reason, projectId, resource });
   return true;
+}
+
+async function authorizeRuntimeNetwork(rawUrl, workspaceRoot) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted runtime workspace is required.");
+  const target = new URL(normalizeNetworkPolicyTarget(rawUrl));
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
+  const record = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+  const port = target.port || (target.protocol === "https:" ? "443" : "80");
+  const cacheKey = projectId + ":" + target.hostname.toLowerCase() + ":" + port;
+  if (runtimeNetworkApprovalCache.get(cacheKey) === record.revision) return true;
+  await enforceWorkspaceNetworkApproval(target.toString(), {
+    title: "Approve runtime outbound connection",
+    message: "Allow the Axiom runtime or one of its managed tools to connect to this external host?",
+    detail: "Runtime egress",
+    approveLabel: "Allow host"
+  }, workspaceRoot);
+  const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+  runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
+  return true;
+}
+
+async function stopRuntimeNetworkProxy() {
+  const proxy = runtimeNetworkProxy;
+  runtimeNetworkProxy = null;
+  runtimeNetworkApprovalCache.clear();
+  if (proxy) await proxy.stop();
 }
 
 async function enforceWorkspacePolicyApproval(action, options) {
@@ -1317,6 +1345,7 @@ ipcMain.handle("axiom:security-policy-update", async (event, request) => {
       approveLabel: "Update policy"
     });
     const updated = currentWorkspaceSecurityPolicyStore().update(selectedWorkspace, request.policy, request.expectedRevision);
+    runtimeNetworkApprovalCache.clear();
     audit.record({ action: "security-policy.update", decision: "allow", reason: "User approved a versioned workspace security policy update.", projectId, resource: "revision:" + updated.revision });
     return updated;
   } catch (error) {
@@ -2284,6 +2313,7 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
 async function stopRuntime() {
   stoppingRuntime = true;
   if (openCodeTelemetryBridge) await openCodeTelemetryBridge.stop();
+  await stopRuntimeNetworkProxy();
   const child = runtimeProcess;
   runtimeProcess = null;
   if (!child || child.exitCode !== null || child.signalCode !== null) {
