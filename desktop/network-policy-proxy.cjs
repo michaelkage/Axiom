@@ -177,7 +177,7 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
     upstream.once("connect", () => {
       if (clientSocket.destroyed) { upstream.destroy(); return; }
       established = true;
-      clientSocket.write("HTTP/1.1 200 Connection Established\\r\\nProxy-Agent: Axiom\\r\\n\\r\\n");
+      clientSocket.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: Axiom\r\n\r\n");
       let clientHello = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
       const handshakeTimer = setTimeout(() => {
         void reportBlocked(target.url, new Error("TLS ClientHello timed out."));
@@ -196,7 +196,7 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
         const parsed = extractTlsServerName(clientHello);
         if (parsed.status === "need-more") return;
         clearTimeout(handshakeTimer);
-        if (parsed.status !== "complete" || parsed.hostname !== target.hostname.toLowerCase().replace(/\\.$/, "")) {
+        if (parsed.status !== "complete" || parsed.hostname !== target.hostname.toLowerCase().replace(/\.$/, "")) {
           void reportBlocked(target.url, new Error(parsed.reason || "TLS SNI does not match the authorized CONNECT hostname."));
           clientSocket.destroy();
           upstream.destroy();
