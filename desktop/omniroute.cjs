@@ -30,7 +30,7 @@ function secureStorageAvailable(safeStorage) {
   } catch { return false; }
 }
 
-function createOmniRouteManager({ userDataPath, safeStorage, platform = process.platform, spawnProcess = spawn, fetchImpl = fetch }) {
+function createOmniRouteManager({ userDataPath, safeStorage, platform = process.platform, spawnProcess = spawn, fetchImpl = fetch, getNetworkEnvironment = () => ({}) }) {
   const configPath = path.join(userDataPath, "omniroute-settings.json");
   let ownedProcess = null;
   let installProcess = null;
@@ -187,8 +187,10 @@ function createOmniRouteManager({ userDataPath, safeStorage, platform = process.
   async function install() {
     if (installProcess) throw new Error("OmniRoute installation is already running.");
     const command = platform === "win32" ? "npm.cmd" : "npm";
+    const networkEnvironment = getNetworkEnvironment() || {};
     const child = spawnProcess(command, ["install", "--global", "omniroute"], {
-      windowsHide: true, shell: platform === "win32", stdio: ["ignore", "pipe", "pipe"]
+      windowsHide: true, shell: platform === "win32", stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...networkEnvironment }
     });
     installProcess = child;
     runtimeLog = "Installing OmniRoute with npm install --global omniroute…";
