@@ -10,7 +10,9 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     ipcRenderer.send("axiom:webview-message", message);
   },
   security: Object.freeze({
-    audit: () => ipcRenderer.invoke("axiom:security-audit-list")
+    audit: () => ipcRenderer.invoke("axiom:security-audit-list"),
+    readPolicy: () => ipcRenderer.invoke("axiom:security-policy-read"),
+    updatePolicy: request => ipcRenderer.invoke("axiom:security-policy-update", request)
   }),
   plugins: Object.freeze({
     list: () => ipcRenderer.invoke("axiom:plugin-list"),
