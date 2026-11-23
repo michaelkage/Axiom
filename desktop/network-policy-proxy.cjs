@@ -140,6 +140,8 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     const headers = { ...request.headers };
     delete headers["proxy-authorization"];
     delete headers["proxy-connection"];
+    headers.host = target.host;
+    headers.connection = "close";
     const upstream = http.request(target, {
       method: request.method,
       agent: false,
