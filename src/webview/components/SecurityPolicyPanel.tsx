@@ -61,7 +61,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
       setAuditStatus("Verification unavailable");
     } finally { setLoading(false); }
   }
-  createEffect(() => { props.workspaceRoot; void refresh(); });
+  createEffect(() => { if (props.workspaceRoot) void refresh(); else void refresh(); });
 
   function setDecision(key: keyof Omit<WorkspacePolicy, "network.allowedHosts">, value: string) {
     setPolicy(current => current ? ({ ...current, [key]: value as WorkspacePolicy[typeof key] } as WorkspacePolicy) : current);
