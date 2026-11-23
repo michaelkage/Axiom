@@ -1099,7 +1099,7 @@ async function authorizeRuntimeNetwork(rawUrl, workspaceRoot, options = {}) {
   const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
   const record = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
   const port = target.port || (target.protocol === "https:" ? "443" : "80");
-  const cacheKey = projectId + ":" + target.hostname.toLowerCase() + ":" + port;
+  const cacheKey = projectId + ":" + record.revision + ":" + target.hostname.toLowerCase() + ":" + port;
   if (runtimeNetworkApprovalCache.get(cacheKey) === record.revision) return true;
   const pending = runtimeNetworkApprovalPending.get(cacheKey);
   if (pending) return pending;
@@ -1116,6 +1116,7 @@ async function authorizeRuntimeNetwork(rawUrl, workspaceRoot, options = {}) {
     }, workspaceRoot);
     if (epoch !== runtimeNetworkEpoch) throw new Error("Runtime stopped while network approval was pending.");
     const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+    if (updated.revision !== record.revision) throw new Error("Workspace network policy changed while approval was pending; retry the connection.");
     runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
     return true;
   })();
