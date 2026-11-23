@@ -56,4 +56,28 @@ function buildRuntimePermissionRules({ policy, mcpServerIds = [] } = {}) {
   return rules;
 }
 
-module.exports = { buildRuntimePermissionRules, effectFor };
+function applyRuntimePermissionPolicy(config, policy) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new TypeError("OpenCode runtime configuration must be an object.");
+  const serverIds = Object.keys(config.mcp && typeof config.mcp === "object" ? config.mcp : {});
+  const enforcedRules = buildRuntimePermissionRules({ policy, mcpServerIds: serverIds });
+  config.permissions = [
+    ...(Array.isArray(config.permissions) ? config.permissions : []),
+    ...enforcedRules
+  ];
+  const configuredAgents = config.agents && typeof config.agents === "object" && !Array.isArray(config.agents) ? config.agents : {};
+  const agentIds = new Set([...Object.keys(configuredAgents), "build", "plan", "general", "explore", "title", "summary", "compaction"]);
+  config.agents = { ...configuredAgents };
+  for (const id of agentIds) {
+    const current = config.agents[id] && typeof config.agents[id] === "object" ? config.agents[id] : {};
+    config.agents[id] = {
+      ...current,
+      permissions: [
+        ...(Array.isArray(current.permissions) ? current.permissions : []),
+        ...enforcedRules
+      ]
+    };
+  }
+  return config;
+}
+
+module.exports = { buildRuntimePermissionRules, effectFor, applyRuntimePermissionPolicy };
