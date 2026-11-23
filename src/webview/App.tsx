@@ -533,6 +533,10 @@ function App() {
           const project = desktopApi()?.project;
           latestWorkerRecordByTask.set(record.taskId, mergedRecord);
           if (project) enqueueWorkerPersistence(record.taskId);
+          const completedAttempt = originatingAttempt ?? attemptsByTask.get(record.taskId) ?? record.attempt ?? 1;
+          if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status)) {
+            persistWorkerOutput(record, completedAttempt);
+          }
           if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
             const summary = record.status === "succeeded"
               ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
@@ -574,6 +578,8 @@ function App() {
         },
         onLog: (taskId: string, line: string, originatingAttempt?: number) => {
           if (!isCurrentTaskAttempt(taskId, originatingAttempt, attemptsByTask)) return;
+          const attempt = originatingAttempt ?? attemptsByTask.get(taskId) ?? 1;
+          captureWorkerOutput(taskId, line, attempt);
           const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
