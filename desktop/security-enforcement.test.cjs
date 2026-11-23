@@ -99,3 +99,20 @@ test("filesystem authorization composes path and workspace policy with deny prec
   assert.equal(combineFilesystemDecisions(denied, allow).decision, "deny");
   assert.equal(combineFilesystemDecisions(allow, null).decision, "deny");
 });
+
+test("legacy audit records are migrated and explicitly marked unverified", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-security-legacy-"));
+  try {
+    const file = path.join(root, "security-audit.jsonl");
+    fs.writeFileSync(file, JSON.stringify({
+      schemaVersion: 1, timestamp: new Date().toISOString(), action: "legacy.action",
+      decision: "allow", reason: "legacy record", projectId: null, resource: null, actor: "desktop-main"
+    }) + "\n");
+    const audit = auditFixture(root);
+    const events = audit.list();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].legacyUnverified, true);
+    assert.equal(events[0].sequence, 1);
+    assert.equal(audit.verify(), 1);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
