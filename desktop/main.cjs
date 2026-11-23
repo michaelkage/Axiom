@@ -400,15 +400,20 @@ async function startRuntime(workspace) {
     await stopRuntimeNetworkProxy();
     throw error;
   }
-  runtimeProcess = spawn(executable, args, {
-    cwd: workspace,
-    windowsHide: true,
-    // Native .exe paths must bypass cmd.exe. In particular, shell:true splits
-    // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
-    shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...runtimeEnvironment, ...runtimeConfiguration, ...proxyEnvironment }
-  });
+  try {
+    runtimeProcess = spawn(executable, args, {
+      cwd: workspace,
+      windowsHide: true,
+      // Native .exe paths must bypass cmd.exe. In particular, shell:true splits
+      // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
+      shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...runtimeEnvironment, ...runtimeConfiguration, ...proxyEnvironment }
+    });
+  } catch (error) {
+    await stopRuntimeNetworkProxy();
+    throw error;
+  }
 
   let recentOutput = "";
   const collect = chunk => {
