@@ -36,6 +36,12 @@ function buildRuntimePermissionRules({ policy, mcpServerIds = [] } = {}) {
     { action: "opencode_read_mcp_resource", resource: "*", effect: effectFor(policy, "mcp.invoke") }
   ];
   const ids = [...new Set(mcpServerIds)].filter(id => typeof id === "string" && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id));
+  const allowedHosts = Array.isArray(policy && policy["network.allowedHosts"]) ? policy["network.allowedHosts"] : [];
+  for (const hostname of [...new Set(allowedHosts)]) {
+    if (typeof hostname === "string" && /^[a-z0-9.-]{1,253}$/i.test(hostname) && !hostname.startsWith(".") && !hostname.includes("..")) {
+      rules.push({ action: "webfetch", resource: "https://" + hostname + "/*", effect: "allow" });
+    }
+  }
   for (const id of ids) {
     const action = id.replace(/[^a-zA-Z0-9_-]/g, "_") + "_*";
     rules.push({ action, resource: "*", effect: effectFor(policy, "mcp.invoke") });
