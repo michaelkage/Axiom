@@ -116,7 +116,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
     </Show>
     <div class="workflow-plan__parallel" aria-label="Security audit integrity">
       <div class="workflow-plan__eyebrow">TAMPER-EVIDENT AUDIT <span>{auditStatus()}</span></div>
-      <p>Audit events are HMAC chained and the latest sequence/hash is anchored in OS-encrypted credential storage. Altered events, missing tails, missing logs or anchor mismatches block privileged operations.</p>
+      <p>Audit events are HMAC chained and the latest sequence/hash is anchored in OS-encrypted credential storage. Altered events, missing tails, missing logs or anchor mismatches block privileged operations. The active log is capped at 4000 events / 5 MiB and stops privileged actions when full; verified archive/export controls are not implemented yet.</p>
       <Show when={events().some(event => event.legacyUnverified)}><p role="status">Some historical events were migrated from the previous unchained log and cannot be authenticated retroactively.</p></Show>
       <For each={events()}>{event => <article class="workflow-plan__parallel">
         <strong>#{event.sequence} · {event.action} · {event.decision}</strong>
