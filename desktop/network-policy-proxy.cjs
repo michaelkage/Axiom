@@ -28,6 +28,64 @@ function isPublicAddress(address) {
   return false;
 }
 
+function extractTlsServerName(buffer) {
+  if (!Buffer.isBuffer(buffer)) throw new TypeError("TLS handshake data must be a Buffer.");
+  if (buffer.length < 5) return { status: "need-more" };
+  if (buffer[0] !== 0x16 || buffer[1] !== 0x03) return { status: "invalid", reason: "CONNECT tunnel did not begin with a TLS handshake." };
+  const recordLength = buffer.readUInt16BE(3);
+  if (recordLength < 4 || recordLength > 65535) return { status: "invalid", reason: "TLS record length is invalid." };
+  if (buffer.length < 5 + recordLength) return { status: "need-more" };
+  const record = buffer.subarray(5, 5 + recordLength);
+  if (record[0] !== 0x01) return { status: "invalid", reason: "TLS record does not contain a ClientHello." };
+  const handshakeLength = (record[1] << 16) | (record[2] << 8) | record[3];
+  if (handshakeLength < 38 || 4 + handshakeLength > record.length) return { status: "invalid", reason: "Fragmented or malformed TLS ClientHello is not accepted." };
+  const body = record.subarray(4, 4 + handshakeLength);
+  let offset = 2 + 32;
+  if (offset >= body.length) return { status: "invalid", reason: "TLS ClientHello is truncated." };
+  const sessionLength = body[offset++];
+  offset += sessionLength;
+  if (offset + 2 > body.length) return { status: "invalid", reason: "TLS cipher suite list is truncated." };
+  const cipherLength = body.readUInt16BE(offset);
+  offset += 2 + cipherLength;
+  if (offset >= body.length) return { status: "invalid", reason: "TLS compression list is truncated." };
+  const compressionLength = body[offset++];
+  offset += compressionLength;
+  if (offset + 2 > body.length) return { status: "invalid", reason: "TLS extension list is missing." };
+  const extensionsLength = body.readUInt16BE(offset);
+  offset += 2;
+  const extensionsEnd = offset + extensionsLength;
+  if (extensionsEnd > body.length) return { status: "invalid", reason: "TLS extension list exceeds ClientHello bounds." };
+  while (offset + 4 <= extensionsEnd) {
+    const extensionType = body.readUInt16BE(offset);
+    const extensionLength = body.readUInt16BE(offset + 2);
+    offset += 4;
+    const extensionEnd = offset + extensionLength;
+    if (extensionEnd > extensionsEnd) return { status: "invalid", reason: "TLS extension length is invalid." };
+    if (extensionType === 0x0000) {
+      if (offset + 2 > extensionEnd) return { status: "invalid", reason: "TLS server-name extension is truncated." };
+      const listLength = body.readUInt16BE(offset);
+      let nameOffset = offset + 2;
+      const listEnd = nameOffset + listLength;
+      if (listEnd > extensionEnd) return { status: "invalid", reason: "TLS server-name list is invalid." };
+      while (nameOffset + 3 <= listEnd) {
+        const nameType = body[nameOffset++];
+        const nameLength = body.readUInt16BE(nameOffset);
+        nameOffset += 2;
+        if (nameOffset + nameLength > listEnd) return { status: "invalid", reason: "TLS server-name value is invalid." };
+        const name = body.subarray(nameOffset, nameOffset + nameLength).toString("ascii").toLowerCase().replace(/\.$/, "");
+        if (nameType === 0) {
+          if (!name || !/^[a-z0-9.-]+$/.test(name)) return { status: "invalid", reason: "TLS server name is not a valid DNS hostname." };
+          return { status: "complete", hostname: name };
+        }
+        nameOffset += nameLength;
+      }
+      return { status: "invalid", reason: "TLS ClientHello did not include a DNS server name." };
+    }
+    offset = extensionEnd;
+  }
+  return { status: "invalid", reason: "TLS ClientHello has no server-name extension." };
+}
+
 function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127.0.0.1", port = 0, token = crypto.randomBytes(32).toString("hex"), resolveHost = dns.lookup, allowPrivateAddresses = false } = {}) {
   if (typeof authorize !== "function" || typeof onBlocked !== "function") throw new TypeError("Network proxy requires policy authorization and audit callbacks.");
   if (typeof resolveHost !== "function" || typeof allowPrivateAddresses !== "boolean") throw new TypeError("Invalid proxy DNS policy.");
@@ -118,10 +176,38 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
     upstream.once("connect", () => {
       if (clientSocket.destroyed) { upstream.destroy(); return; }
       established = true;
-      clientSocket.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: Axiom\r\n\r\n");
-      if (head && head.length) upstream.write(head);
-      clientSocket.pipe(upstream);
-      upstream.pipe(clientSocket);
+      clientSocket.write("HTTP/1.1 200 Connection Established\\r\\nProxy-Agent: Axiom\\r\\n\\r\\n");
+      let clientHello = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
+      const handshakeTimer = setTimeout(() => {
+        void reportBlocked(target.url, new Error("TLS ClientHello timed out."));
+        clientSocket.destroy();
+        upstream.destroy();
+      }, 10000);
+      const onClientData = chunk => {
+        clientHello = Buffer.concat([clientHello, chunk]);
+        if (clientHello.length > 65536) {
+          clearTimeout(handshakeTimer);
+          void reportBlocked(target.url, new Error("TLS ClientHello exceeded the inspection limit."));
+          clientSocket.destroy();
+          upstream.destroy();
+          return;
+        }
+        const parsed = extractTlsServerName(clientHello);
+        if (parsed.status === "need-more") return;
+        clearTimeout(handshakeTimer);
+        if (parsed.status !== "complete" || parsed.hostname !== target.hostname.toLowerCase().replace(/\\.$/, "")) {
+          void reportBlocked(target.url, new Error(parsed.reason || "TLS SNI does not match the authorized CONNECT hostname."));
+          clientSocket.destroy();
+          upstream.destroy();
+          return;
+        }
+        clientSocket.off("data", onClientData);
+        upstream.write(clientHello);
+        clientSocket.pipe(upstream);
+        upstream.pipe(clientSocket);
+      };
+      clientSocket.on("data", onClientData);
+      clientSocket.once("close", () => upstream.destroy());
     });
     upstream.once("close", () => sockets.delete(upstream));
   }
@@ -223,4 +309,4 @@ function createNetworkPolicyProxy({ authorize, onBlocked = () => {}, host = "127
   return Object.freeze({ start, environment, stop, get running() { return !!server && !stopped; } });
 }
 
-module.exports = { createNetworkPolicyProxy, isPublicAddress, SOCKET_TIMEOUT_MS, MAX_HEADER_BYTES };
+module.exports = { createNetworkPolicyProxy, isPublicAddress, extractTlsServerName, SOCKET_TIMEOUT_MS, MAX_HEADER_BYTES };
