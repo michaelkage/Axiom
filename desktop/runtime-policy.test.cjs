@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildRuntimePermissionRules, effectFor } = require("./runtime-policy.cjs");
+const { buildRuntimePermissionRules, effectFor, applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
 
 const policy = {
   "filesystem.read": "allow",
@@ -49,4 +49,21 @@ test("runtime policy allows only exact HTTPS webfetch hosts when network is othe
   assert.equal(hostRule.effect, "allow");
   assert.equal(rules.find(rule => rule.action === "webfetch" && rule.resource === "*").effect, "deny");
   assert.equal(rules.find(rule => rule.action === "websearch").effect, "deny");
+});
+
+test("runtime policy is applied after configured rules for built-in and custom agents", () => {
+  const config = {
+    permissions: [{ action: "shell", resource: "*", effect: "allow" }],
+    agents: {
+      custom: { description: "Custom worker", permissions: [{ action: "shell", resource: "*", effect: "allow" }] }
+    },
+    mcp: { github: { type: "remote", url: "https://api.githubcopilot.com/mcp/" } }
+  };
+  applyRuntimePermissionPolicy(config, policy);
+  for (const id of ["build", "plan", "general", "explore", "title", "summary", "compaction", "custom"]) {
+    const rules = config.agents[id].permissions;
+    assert.equal(rules.at(-1).effect, "deny");
+    assert.equal(rules.some(rule => rule.action === "github_*" && rule.effect === "ask"), true);
+  }
+  assert.equal(config.permissions.at(-1).effect, "ask");
 });
