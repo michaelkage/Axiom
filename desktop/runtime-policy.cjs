@@ -15,6 +15,7 @@ function buildRuntimePermissionRules({ policy, mcpServerIds = [] } = {}) {
   const rules = [
     { action: "shell", resource: "*", effect: effectFor(policy, "shell.execute") },
     { action: "shell", resource: "git push *", effect: effectFor(policy, "git.push") },
+    { action: "subagent", resource: "*", effect: effectFor(policy, "shell.execute") },
     { action: "edit", resource: "*", effect: effectFor(policy, "filesystem.write") },
     { action: "read", resource: "*", effect: effectFor(policy, "filesystem.read") },
     { action: "read", resource: "*.env", effect: "deny" },
