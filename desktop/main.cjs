@@ -1190,6 +1190,11 @@ ipcMain.handle("axiom:security-audit-list", event => {
   return currentSecurityAuditStore().list(200);
 });
 
+ipcMain.handle("axiom:security-audit-verify", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return { verified: true, sequence: currentSecurityAuditStore().verify() };
+});
+
 ipcMain.handle("axiom:security-policy-read", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
