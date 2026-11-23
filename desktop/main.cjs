@@ -49,6 +49,8 @@ let securityAuditStore;
 let workspaceSecurityPolicyStore;
 let runtimeNetworkProxy;
 const runtimeNetworkApprovalCache = new Map();
+const runtimeNetworkApprovalPending = new Map();
+let runtimeNetworkEpoch = 0;
 function currentWorkspaceSecurityPolicyStore() {
   if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
   return workspaceSecurityPolicyStore;
@@ -1093,21 +1095,35 @@ async function authorizeRuntimeNetwork(rawUrl, workspaceRoot) {
   const port = target.port || (target.protocol === "https:" ? "443" : "80");
   const cacheKey = projectId + ":" + target.hostname.toLowerCase() + ":" + port;
   if (runtimeNetworkApprovalCache.get(cacheKey) === record.revision) return true;
-  await enforceWorkspaceNetworkApproval(target.toString(), {
-    title: "Approve runtime outbound connection",
-    message: "Allow the Axiom runtime or one of its managed tools to connect to this external host?",
-    detail: "Runtime egress",
-    approveLabel: "Allow host"
-  }, workspaceRoot);
-  const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
-  runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
-  return true;
+  const pending = runtimeNetworkApprovalPending.get(cacheKey);
+  if (pending) return pending;
+  if (runtimeNetworkApprovalCache.size + runtimeNetworkApprovalPending.size >= 128) {
+    throw new Error("Runtime network approval limit reached for this policy revision.");
+  }
+  const epoch = runtimeNetworkEpoch;
+  const operation = (async () => {
+    await enforceWorkspaceNetworkApproval(target.toString(), {
+      title: "Approve runtime outbound connection",
+      message: "Allow the Axiom runtime or one of its managed tools to connect to this external host?",
+      detail: "Runtime egress",
+      approveLabel: "Allow host"
+    }, workspaceRoot);
+    if (epoch !== runtimeNetworkEpoch) throw new Error("Runtime stopped while network approval was pending.");
+    const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+    runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
+    return true;
+  })();
+  runtimeNetworkApprovalPending.set(cacheKey, operation);
+  try { return await operation; }
+  finally { if (runtimeNetworkApprovalPending.get(cacheKey) === operation) runtimeNetworkApprovalPending.delete(cacheKey); }
 }
 
 async function stopRuntimeNetworkProxy() {
   const proxy = runtimeNetworkProxy;
   runtimeNetworkProxy = null;
+  runtimeNetworkEpoch += 1;
   runtimeNetworkApprovalCache.clear();
+  runtimeNetworkApprovalPending.clear();
   if (proxy) await proxy.stop();
 }
 
