@@ -18,7 +18,7 @@ const POLICY_ACTIONS = Object.freeze({
 const DEFAULT_POLICY = Object.freeze({
   "filesystem.read": "allow",
   "filesystem.write": "approval-required",
-  "shell.execute": "deny",
+  "shell.execute": "approval-required",
   "network.request": "deny",
   "mcp.invoke": "deny",
   "git.push": "approval-required",
