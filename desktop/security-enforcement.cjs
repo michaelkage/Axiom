@@ -49,64 +49,132 @@ function evaluateFilesystemAccess({ workspaceRoot, relativePath, operation }) {
   return { decision: "allow", reason: "Read is confined to a safe workspace-relative path." };
 }
 
-function createSecurityAuditStore({ userDataPath, fsImpl = require("node:fs") }) {
+function createSecurityAuditStore({ userDataPath, integrityKey, getAnchor = () => null, setAnchor = () => {}, fsImpl = require("node:fs") }) {
   if (typeof userDataPath !== "string" || !path.isAbsolute(userDataPath)) throw new TypeError("A user-data directory is required.");
+  if (typeof integrityKey !== "string" || !/^[a-f0-9]{64}$/i.test(integrityKey)) throw new TypeError("A 256-bit OS-protected audit integrity key is required.");
+  if (typeof getAnchor !== "function" || typeof setAnchor !== "function") throw new TypeError("Audit anchor callbacks are required.");
   const file = path.join(userDataPath, "security-audit.jsonl");
-  function readAuditFile() {
+  const genesis = "0".repeat(64);
+
+  function canonicalEvent(event) {
+    return JSON.stringify({
+      schemaVersion: event.schemaVersion,
+      sequence: event.sequence,
+      timestamp: event.timestamp,
+      action: event.action,
+      decision: event.decision,
+      reason: event.reason,
+      projectId: event.projectId,
+      resource: event.resource,
+      actor: event.actor,
+      previousHash: event.previousHash,
+      legacyUnverified: event.legacyUnverified === true
+    });
+  }
+  function digest(event) {
+    return crypto.createHmac("sha256", Buffer.from(integrityKey, "hex")).update(canonicalEvent(event)).digest("hex");
+  }
+  function readRaw() {
     const descriptor = fsImpl.openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
     try { return fsImpl.readFileSync(descriptor, "utf8"); }
     finally { fsImpl.closeSync(descriptor); }
   }
+  function parseAndVerify(raw) {
+    const lines = raw.split("\n").filter(Boolean);
+    if (lines.length > MAX_AUDIT_EVENTS) throw new Error("Security audit exceeded its retained event limit; privileged operations are blocked.");
+    let previousHash = genesis;
+    let sequence = 0;
+    const events = [];
+    for (const line of lines) {
+      let event;
+      try { event = JSON.parse(line); } catch { throw new Error("Security audit integrity verification failed: malformed event."); }
+      if (!event || event.schemaVersion !== 2 || event.sequence !== sequence + 1 ||
+          event.previousHash !== previousHash || typeof event.hash !== "string" ||
+          !/^[a-f0-9]{64}$/i.test(event.hash) ||
+          !crypto.timingSafeEqual(Buffer.from(event.hash, "hex"), Buffer.from(digest(event), "hex"))) {
+        throw new Error("Security audit integrity verification failed; privileged operations are blocked.");
+      }
+      previousHash = event.hash;
+      sequence = event.sequence;
+      events.push(event);
+    }
+    return { events, sequence, hash: previousHash };
+  }
+  function atomicWrite(raw) {
+    const temporary = file + "." + crypto.randomUUID() + ".tmp";
+    let descriptor;
+    try {
+      descriptor = fsImpl.openSync(temporary, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW || 0), 0o600);
+      fsImpl.writeFileSync(descriptor, raw, "utf8");
+      fsImpl.fsyncSync(descriptor);
+      fsImpl.closeSync(descriptor);
+      descriptor = undefined;
+      fsImpl.renameSync(temporary, file);
+    } catch (error) {
+      if (descriptor !== undefined) fsImpl.closeSync(descriptor);
+      try { fsImpl.unlinkSync(temporary); } catch {}
+      throw error;
+    }
+  }
+  function readVerified() {
+    let raw;
+    try {
+      const stat = fsImpl.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_AUDIT_BYTES) throw new Error("Security audit path is unsafe or oversized.");
+      raw = readRaw();
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        const anchor = getAnchor();
+        if (anchor) throw new Error("Security audit log is missing but its protected integrity anchor exists.");
+        return { events: [], sequence: 0, hash: genesis };
+      }
+      throw error;
+    }
+    const verified = parseAndVerify(raw);
+    const anchor = getAnchor();
+    if (anchor) {
+      if (!anchor || !Number.isSafeInteger(anchor.sequence) || typeof anchor.hash !== "string" ||
+          anchor.sequence !== verified.sequence || anchor.hash !== verified.hash) {
+        throw new Error("Security audit head does not match its OS-protected integrity anchor.");
+      }
+    } else if (verified.sequence > 0) {
+      throw new Error("Security audit exists without its protected integrity anchor.");
+    }
+    return verified;
+  }
   function record(input) {
+    fsImpl.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
+    const current = readVerified();
+    if (current.sequence >= MAX_AUDIT_EVENTS) throw new Error("Security audit retention limit reached; export or archive the audit before further privileged operations.");
     const event = {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      sequence: current.sequence + 1,
       timestamp: new Date().toISOString(),
       action: String(input.action || "unknown").slice(0, 80),
       decision: ["allow", "deny", "approval-required"].includes(input.decision) ? input.decision : "deny",
       reason: String(input.reason || "").slice(0, 500),
       projectId: typeof input.projectId === "string" ? input.projectId.slice(0, 128) : null,
       resource: typeof input.resource === "string" ? input.resource.slice(0, 512) : null,
-      actor: "desktop-main"
+      actor: "desktop-main",
+      previousHash: current.hash,
+      legacyUnverified: false
     };
-    fsImpl.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
-    try {
-      const existing = fsImpl.lstatSync(file);
-      if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
-      if (existing.size >= MAX_AUDIT_BYTES) {
-        const retained = readAuditFile().split("\n").filter(Boolean).slice(-MAX_AUDIT_EVENTS);
-        const temporary = file + "." + crypto.randomUUID() + ".tmp";
-        try {
-          fsImpl.writeFileSync(temporary, retained.join("\n") + (retained.length ? "\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
-          fsImpl.renameSync(temporary, file);
-        } catch (error) {
-          try { fsImpl.unlinkSync(temporary); } catch {}
-          throw error;
-        }
-      }
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
+    event.hash = digest(event);
     const descriptor = fsImpl.openSync(file, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW || 0), 0o600);
-    try { fsImpl.appendFileSync(descriptor, JSON.stringify(event) + "\n", { encoding: "utf8" }); }
-    finally { fsImpl.closeSync(descriptor); }
+    try {
+      fsImpl.appendFileSync(descriptor, JSON.stringify(event) + "\n", { encoding: "utf8" });
+      fsImpl.fsyncSync(descriptor);
+    } finally { fsImpl.closeSync(descriptor); }
+    // The OS-protected anchor is updated after the durable append. If this fails,
+    // the mismatch makes subsequent privileged operations fail closed.
+    setAnchor({ sequence: event.sequence, hash: event.hash });
     return event;
   }
   function list(limit = 100) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new RangeError("Audit limit must be between 1 and 1000.");
-    let raw;
-    try {
-      const stat = fsImpl.lstatSync(file);
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Security audit path is not a regular file.");
-      raw = readAuditFile();
-    } catch (error) { if (error.code === "ENOENT") return []; throw error; }
-    return raw.split("\n").filter(Boolean).slice(-limit).flatMap(line => {
-      try {
-        const item = JSON.parse(line);
-        return item.schemaVersion === 1 && typeof item.timestamp === "string" && typeof item.action === "string" && ["allow", "deny", "approval-required"].includes(item.decision) && typeof item.reason === "string" ? [item] : [];
-      } catch { return []; }
-    });
+    return readVerified().events.slice(-limit);
   }
-  return Object.freeze({ record, list });
+  return Object.freeze({ record, list, verify: () => readVerified().sequence });
 }
 
 module.exports = { MAX_AUDIT_BYTES, MAX_AUDIT_EVENTS, normalizeRelativePath, evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore };
