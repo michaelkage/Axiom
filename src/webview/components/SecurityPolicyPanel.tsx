@@ -85,7 +85,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Security policy update failed.");
-      if (String(error).includes("revision")) await refresh();
+      await refresh();
     } finally { setBusy(false); }
   }
 
