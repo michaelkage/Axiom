@@ -1383,12 +1383,23 @@ ipcMain.handle("axiom:telemetry-snapshot", event => {
 
 ipcMain.handle("axiom:omniroute-status", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const config = omniRouteManager.getConfig();
+  const hostname = (() => { try { return new URL(config.baseUrl).hostname.toLowerCase(); } catch { return ""; } })();
+  const isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+  if (!isLoopback) {
+    if (!selectedWorkspace) return omniRouteManager.status({ skipEndpointProbe: true });
+    try { await authorizeRuntimeNetwork(config.baseUrl, selectedWorkspace); }
+    catch { return omniRouteManager.status({ skipEndpointProbe: true }); }
+  }
   return omniRouteManager.status();
 });
 
 ipcMain.handle("axiom:omniroute-check", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!settings || typeof settings !== "object") throw new TypeError("Invalid OmniRoute connection settings.");
+  const target = settings.baseUrl || omniRouteManager.getConfig().baseUrl;
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork(target, networkWorkspace);
   await requirePrivilegedApproval({
     title: "Approve OmniRoute connection test",
     message: "Allow Axiom to send a connection test to this model-routing endpoint?",
@@ -1442,6 +1453,8 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   const config = omniRouteManager.getConfig();
   const url = new URL(config.baseUrl);
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork(url.toString(), networkWorkspace);
   await requirePrivilegedApproval({
     title: "Approve external dashboard",
     message: "Open the configured model-router dashboard in your default browser?",
