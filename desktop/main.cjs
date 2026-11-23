@@ -1737,7 +1737,26 @@ ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!request || typeof request.requestId !== "string" || typeof request.command !== "string" || !request.command.trim()) {
     throw new Error("A terminal request needs a request ID and non-empty command.");
   }
-  await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request.command, approveLabel: "Run command" });
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const commandResource = redactSecrets(request.command).replace(/[\\r\\n\\t]+/g, " ").slice(0, 512);
+  const shellPolicy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "shell.execute");
+  const securityAudit = currentSecurityAuditStore();
+  if (shellPolicy.decision === "deny") {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: shellPolicy.reason, projectId, resource: commandResource });
+    throw new Error("Workspace security policy denied terminal execution.");
+  }
+  if (shellPolicy.decision !== "approval-required") {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: "Invalid shell policy decision; execution fails closed.", projectId, resource: commandResource });
+    throw new Error("Workspace security policy returned an invalid terminal decision.");
+  }
+  securityAudit.record({ action: "shell.execute", decision: "approval-required", reason: shellPolicy.reason, projectId, resource: commandResource });
+  try {
+    await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request.command, approveLabel: "Run command" });
+    securityAudit.record({ action: "shell.execute", decision: "allow", reason: "User approved terminal execution.", projectId, resource: commandResource });
+  } catch (error) {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: "Terminal execution approval was denied or dismissed.", projectId, resource: commandResource });
+    throw error;
+  }
   const startedAt = Date.now();
   const output = [];
   let outputBytes = 0;
