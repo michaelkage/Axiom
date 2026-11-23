@@ -59,10 +59,9 @@ The active chain is bounded to 4000 events and 5 MiB. Automatic truncation/rotat
 
 ## Remaining security work
 
-- Extend the persisted policy evaluator to every MCP tool call, runtime/network client, Git operation, deployment provider call, plugin execution and credential consumer.
-- Enforce outbound host allowlists for runtime and browser subresource traffic.
-- Add a user-facing policy editor; versioned project-scoped persistence and filesystem IPC enforcement are now present.
-- Add tamper-evident audit chaining and retention controls.
+- Add socket-level egress enforcement for arbitrary shell traffic, local MCP server processes and model providers configured outside Axiom's OmniRoute integration.
+- Add an explicit verified audit archive/export and retention workflow before the bounded chain reaches its hard stop.
+- Extend policy checks to any future Git, deployment, plugin and credential execution paths not routed through the desktop main process.
 - Complete platform-specific filesystem race hardening and independent security review.
 
 The current implementation provides application-level permission gates and an OS-key-protected audit chain for the documented paths. It is not an OS-wide network firewall, not every third-party process is socket-mediated, and no independent security audit is claimed.
