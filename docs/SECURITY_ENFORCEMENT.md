@@ -21,9 +21,9 @@ The file adapter retains its own path validation. IPC policy is an additional bo
 
 Each selected workspace has a versioned policy record under Axiom user data, keyed by a SHA-256 identity derived from the canonical workspace path. The record includes its schema version, workspace identity, monotonically increasing revision and update timestamp. Policy writes use an exclusive temporary file, file flush, atomic rename and directory flush where supported. A revision supplied by the caller is checked before a write so stale settings cannot silently overwrite a newer policy.
 
-The initial policy is least-privilege for operations not yet connected to the evaluator: shell execution, outbound network requests and MCP invocation are denied; Git push, deployment publishing and plugin execution require approval. Safe project reads are allowed and project file writes require approval. Privileged actions cannot be changed to unconditional allow by this policy schema. Policy changes themselves require native main-process confirmation and are recorded in the security audit.
+The initial policy is least-privilege for operations not yet connected to the evaluator: outbound network requests are denied; shell execution, MCP activation/probes, Git push, deployment publishing and plugin execution require approval. Safe project reads are allowed and project file writes require approval. Privileged actions cannot be changed to unconditional allow by this policy schema. Policy changes themselves require native main-process confirmation and are recorded in the security audit.
 
-The filesystem IPC authorization path now combines its existing path/symlink checks with the persisted workspace policy. Either layer can deny access; a corrupt, oversized, symlinked or workspace-mismatched policy fails closed. The preload exposes read/update methods only through main-process IPC. The policy evaluator is intentionally not yet wired to all shell, MCP, runtime network, Git, deployment and plugin execution producers; those producers remain governed only by their existing individual controls until each integration is implemented and tested.
+The filesystem IPC authorization path now combines its existing path/symlink checks with the persisted workspace policy. Terminal execution, MCP integration activation and the explicit MCP worker-tool probe also consult the persisted policy and write approval/denial outcomes to the audit log. Either layer can deny access; a corrupt, oversized, symlinked or workspace-mismatched policy fails closed. The preload exposes read/update methods only through main-process IPC. The policy evaluator is not yet wired to every MCP tool call inside the model runtime, runtime or browser subresource network request, Git operation, deployment provider call or plugin execution. Those paths remain governed only by their existing individual controls until each integration is implemented and tested.
 
 ## Credentials
 
@@ -47,7 +47,7 @@ Audit persistence is fail-closed for privileged operations: if the decision cann
 
 ## Remaining security work
 
-- Apply a single project policy evaluator to all worker process creation, MCP tool calls, network clients, deployment provider calls, Git operations and credential consumers.
+- Extend the persisted policy evaluator to every MCP tool call, runtime/network client, Git operation, deployment provider call, plugin execution and credential consumer.
 - Enforce outbound host allowlists for runtime and browser subresource traffic.
 - Add a user-facing policy editor; versioned project-scoped persistence and filesystem IPC enforcement are now present.
 - Add tamper-evident audit chaining and retention controls.
