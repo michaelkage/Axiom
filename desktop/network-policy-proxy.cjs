@@ -39,11 +39,10 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
   let proxyUrl = null;
   let stopped = false;
   const authCredential = Buffer.from("axiom:" + token);
-  const authValue = authCredential.toString("base64");
 
   function authorizedProxyRequest(request) {
     const header = request.headers["proxy-authorization"];
-    if (typeof header !== "string" || !header.startsWith("Basic ")) return false;
+    if (typeof header !== "string" || !header.startsWith("Basic ") || !/^[A-Za-z0-9+/]+=*$/.test(header.slice(6))) return false;
     const supplied = Buffer.from(header.slice(6), "base64");
     const expected = authCredential;
     return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
@@ -112,6 +111,7 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
     });
     upstream.once("connect", () => {
       if (clientSocket.destroyed) { upstream.destroy(); return; }
+      established = true;
       clientSocket.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: Axiom\r\n\r\n");
       if (head && head.length) upstream.write(head);
       clientSocket.pipe(upstream);
@@ -127,10 +127,11 @@ function createNetworkPolicyProxy({ authorize, host = "127.0.0.1", port = 0, tok
       return;
     }
     let target;
+    let resolved;
     try {
       target = await authorizeUrl(request.url);
       if (target.protocol !== "http:") throw new Error("HTTPS requests must use CONNECT.");
-      var resolved = await resolvePublicHost(target.hostname);
+      resolved = await resolvePublicHost(target.hostname);
     } catch {
       response.writeHead(403, { "content-type": "text/plain", connection: "close" });
       response.end("Outbound request denied by Axiom workspace security policy.");
