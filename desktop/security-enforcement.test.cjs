@@ -41,11 +41,11 @@ test("security audit writes a verifiable HMAC chain and rejects altered events",
     assert.equal(rows[1].previousHash, rows[0].hash);
     assert.equal(audit.verify(), 2);
     const file = path.join(root, "security-audit.jsonl");
-    const changed = JSON.parse(fs.readFileSync(file, "utf8").trim().split("\\n")[0]);
+    const changed = JSON.parse(fs.readFileSync(file, "utf8").trim().split("\n")[0]);
     changed.reason = "tampered";
-    const lines = fs.readFileSync(file, "utf8").trim().split("\\n");
+    const lines = fs.readFileSync(file, "utf8").trim().split("\n");
     lines[0] = JSON.stringify(changed);
-    fs.writeFileSync(file, lines.join("\\n") + "\\n");
+    fs.writeFileSync(file, lines.join("\n") + "\n");
     assert.throws(() => audit.list(), /integrity verification failed/);
     assert.throws(() => audit.record({ action: "privileged.test", decision: "allow" }), /integrity verification failed/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -58,8 +58,8 @@ test("security audit protected head anchor detects tail truncation and log delet
     audit.record({ action: "one", decision: "allow" });
     audit.record({ action: "two", decision: "allow" });
     const file = path.join(root, "security-audit.jsonl");
-    const lines = fs.readFileSync(file, "utf8").trim().split("\\n");
-    fs.writeFileSync(file, lines[0] + "\\n");
+    const lines = fs.readFileSync(file, "utf8").trim().split("\n");
+    fs.writeFileSync(file, lines[0] + "\n");
     assert.throws(() => audit.list(), /integrity verification failed|protected integrity anchor/);
     fs.unlinkSync(file);
     assert.throws(() => audit.list(), /missing but its protected integrity anchor exists/);
