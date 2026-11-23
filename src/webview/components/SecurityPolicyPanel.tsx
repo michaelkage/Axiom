@@ -92,7 +92,7 @@ export function SecurityPolicyPanel(props: { workspaceRoot?: string }) {
   return <section class="workflow-plan workflow-plan--plugins" aria-label="Workspace security policy">
     <div class="workflow-plan__eyebrow">SECURITY CONTROL CENTRE <span>WORKSPACE POLICY</span></div>
     <h2>Security and permissions</h2>
-    <p class="workflow-plan__prompt">These controls are enforced by Axiom's desktop main process, runtime egress proxy and OpenCode permission configuration. Privileged policy changes always require native confirmation. Desktop and proxy gates update immediately; OpenCode tool permission changes are loaded when the runtime starts, so restart Axiom after changing tool permissions. Denials take precedence over approvals.</p>
+    <p class="workflow-plan__prompt">These controls are enforced by Axiom's desktop main process, runtime egress proxy and OpenCode permission configuration. Privileged policy changes always require native confirmation. Exact-host allowlist entries are narrow exceptions to the general network decision; filesystem and operation-specific denials remain enforced. Desktop and proxy gates update immediately; OpenCode tool permission changes are loaded when the runtime starts, so restart Axiom after changing tool permissions.</p>
     <Show when={loading()}><p role="status">Loading policy and verifying audit chain…</p></Show>
     <Show when={policy()} keyed>
       {(current) => <>
