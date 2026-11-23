@@ -71,6 +71,17 @@ test("network proxy gates CONNECT destinations through the supplied workspace au
   }
 });
 
+test("network proxy rejects CONNECT targets outside authority form", async () => {
+  const proxy = createNetworkPolicyProxy({ authorize: async () => true });
+  try {
+    const environment = await proxy.start();
+    const pathTarget = await connectProxy(environment.HTTPS_PROXY, "example.com:443/private");
+    const credentialTarget = await connectProxy(environment.HTTPS_PROXY, "user@example.com:443");
+    assert.match(pathTarget, /^HTTP\/1\.1 400/);
+    assert.match(credentialTarget, /^HTTP\/1\.1 400/);
+  } finally { await proxy.stop(); }
+});
+
 test("network proxy environment bypasses only explicit loopback destinations", async () => {
   const proxy = createNetworkPolicyProxy({ authorize: async () => true });
   try {
