@@ -30,6 +30,7 @@ import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, review
 import { createIndependentTasks, isCurrentTaskAttempt, isCurrentDispatchedTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
 import { resolvePermissionDecision } from "../shared/securityPolicy";
+import { appendWorkerSecurityAudit } from "../shared/workerSecurityAudit";
 
 export interface QueuedMessage {
   id: string;
@@ -1595,10 +1596,32 @@ function App() {
         sessionId,
       });
     }
+    const permissionType = permission?.permission ?? "unknown";
+    try {
+      await appendWorkerSecurityAudit({
+        permission: permissionType,
+        requestedDecision: response,
+        effectiveDecision: effectiveResponse,
+        sessionId,
+      });
+    } catch (auditError) {
+      const reason = auditError instanceof Error ? auditError.message : String(auditError);
+      logger.error("Worker permission blocked because the security audit could not be verified or persisted", {
+        permission: permissionType,
+        sessionId,
+        reason,
+      });
+      // Preserve fail-closed behavior without leaving the worker blocked on an
+      // unresolved prompt: reject the requested operation if the host accepts it.
+      await respondToPermission(sessionId, permissionId, "reject");
+      sync.setSessionError(sessionId, "A worker operation was rejected because its security audit could not be verified or saved. Check the runtime log before retrying.");
+      return;
+    }
     logger.info("Worker permission decision", {
-      permission: permission?.permission ?? "unknown",
+      permission: permissionType,
       response: effectiveResponse,
       sessionId,
+      audit: "sha256-chain-verified",
     });
     await respondToPermission(sessionId, permissionId, effectiveResponse);
     // Permission removal is handled by store via SSE events
