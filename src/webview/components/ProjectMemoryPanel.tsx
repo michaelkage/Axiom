@@ -57,7 +57,11 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
           cacheProjectMemories(workspace, items);
         }
       }).catch(error => {
-        if (active) setStorageError(error instanceof Error ? error.message : "Could not load .axiom/memory.json.");
+        if (active) {
+          setMemories([]);
+          cacheProjectMemories(workspace, []);
+          setStorageError(error instanceof Error ? error.message : "Could not load .axiom/memory.json.");
+        }
       });
       onCleanup(() => { active = false; });
     }
