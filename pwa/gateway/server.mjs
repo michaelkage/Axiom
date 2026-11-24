@@ -5,7 +5,8 @@ import { mkdir, readFile, writeFile, chmod, rename, rm } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { createCompanionCoordinator } from './companion.js';
-import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';\nimport { assertSafeMcpTarget } from './network-policy.mjs';
+import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';
+import { assertSafeMcpTarget } from './network-policy.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
@@ -85,7 +86,9 @@ export function createAxiomGateway({
   if (!['http:', 'https:'].includes(ollamaBase.protocol) || ollamaBase.username || ollamaBase.password) throw new Error('OLLAMA_BASE_URL must be an HTTP(S) URL without embedded credentials.');
   const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
-  const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');\n  const allowedPrivateMcpHosts = new Set(String(env.AXIOM_MCP_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));\n  if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|\\[[0-9a-f:]+\\])$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
+  const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');
+  const allowedPrivateMcpHosts = new Set(String(env.AXIOM_MCP_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
+  if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|\\[[0-9a-f:]+\\])$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
   const audit = createAuditChain({ path: env.AXIOM_AUDIT_LOG_PATH || join(homedir(), '.config', 'axiom', 'gateway-audit.jsonl'), now });
   const sessionTokens = new Map();
   const companion = createCompanionCoordinator({ now });
@@ -495,7 +498,8 @@ export function createAxiomGateway({
       }
       const headers = upstreamHeaders(req, config.token ? { authorization: 'Bearer ' + config.token } : {});
       try {
-        const target = await assertSafeMcpTarget(config.url, allowedPrivateMcpHosts);\n        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(120000) });
+        const target = await assertSafeMcpTarget(config.url, allowedPrivateMcpHosts);
+        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(120000) });
         const responseHeaders = {
           'cache-control': 'no-store',
           'x-content-type-options': 'nosniff'
