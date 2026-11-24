@@ -172,6 +172,7 @@ export async function executeTool(name, input, context = {}) {
       throw error;
     }
   }
+  validateToolInput(tool.inputSchema, input);
   if (tool.requiresApproval && context?.approvalGranted !== true) {
     if (typeof context?.confirmTool !== 'function') {
       const error = new Error('Privileged tool execution requires an explicit user approval callback: ' + name);
@@ -196,7 +197,6 @@ export async function executeTool(name, input, context = {}) {
       throw error;
     }
   }
-  validateToolInput(tool.inputSchema, input);
   const startedAt = Date.now();
   const controller = new AbortController();
   let timeout;
