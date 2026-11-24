@@ -49,7 +49,7 @@ function detectQualityGatePresets(workspaceRoot, changedPaths = []) {
     let config = "";
     try { config = fs.readFileSync(path.join(root, "pyproject.toml"), "utf8"); } catch {}
     if (exists("tests") || paths.some(file => /(^|\/)(test_[^/]+|[^/]+_test)\.py$/i.test(file))) {
-      add("Python tests", "python", ["-m", "pytest"], 300000);
+      add("Python tests", process.platform === "win32" ? "python" : "python3", ["-m", "pytest"], 300000);
     } else if (/\[tool\.pytest(?:\.ini_options)?\]/.test(config)) {
       add("Python tests", "python", ["-m", "pytest"], 300000);
     }
