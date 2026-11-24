@@ -29,6 +29,7 @@ import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import { createIndependentTasks, isCurrentTaskAttempt, isCurrentDispatchedTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
+import { resolvePermissionDecision } from "../shared/securityPolicy";
 
 export interface QueuedMessage {
   id: string;
@@ -1585,7 +1586,21 @@ function App() {
       return;
     }
 
-    await respondToPermission(sessionId, permissionId, response);
+    const effectiveResponse = resolvePermissionDecision(permission?.permission ?? "unknown", response);
+    if (effectiveResponse !== response) {
+      logger.warn("Persistent permission grant blocked for privileged worker operation", {
+        permission: permission?.permission ?? "unknown",
+        requestedResponse: response,
+        effectiveResponse,
+        sessionId,
+      });
+    }
+    logger.info("Worker permission decision", {
+      permission: permission?.permission ?? "unknown",
+      response: effectiveResponse,
+      sessionId,
+    });
+    await respondToPermission(sessionId, permissionId, effectiveResponse);
     // Permission removal is handled by store via SSE events
   };
 
