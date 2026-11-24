@@ -212,3 +212,20 @@ test('aggregates model metrics across tool turns', async () => {
   assert.ok(result.metrics.firstTokenMs >= 0);
   assert.ok(result.metrics.wallTimeMs >= result.metrics.firstTokenMs);
 });
+
+test('fails closed for privileged tool calls when no approval callback is supplied', async () => {
+  let executed = false;
+  const harness = setup([
+    streamResponse([assistant('', [toolCall('github_update_file')])]),
+    streamResponse([assistant('No write was performed')])
+  ], {
+    getToolMeta: () => ({ requiresApproval: true }),
+    executeTool: async () => { executed = true; }
+  });
+  await harness.run();
+  assert.equal(executed, false);
+  assert.deepEqual(JSON.parse(harness.requests[1].payload.messages.at(-1).content), {
+    cancelled: true, message: 'User declined this action.'
+  });
+});
+
