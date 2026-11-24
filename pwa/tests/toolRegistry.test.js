@@ -221,3 +221,34 @@ test('runs the runtime authorization callback before a tool handler', async () =
     assert.equal(called, true);
   } finally { unregister(); }
 });
+
+test('requires privileged tools to receive explicit approval at the execution boundary', async () => {
+  let called = false;
+  const unregister = registerTool({ name: 'test_privileged', requiresApproval: true, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; return 'done'; });
+  try {
+    await assert.rejects(executeTool('test_privileged', {}), { name: 'ToolApprovalRequiredError' });
+    await assert.rejects(executeTool('test_privileged', {}, { confirmTool: async () => false }), { name: 'ToolApprovalDeclinedError' });
+    assert.equal(called, false);
+    assert.equal(await executeTool('test_privileged', {}, { confirmTool: async () => true }), 'done');
+    assert.equal(called, true);
+  } finally { unregister(); }
+});
+
+test('uses the registered MCP integration identity and rejects missing policy before approval or handler', async () => {
+  let called = false;
+  let prompted = false;
+  const unregister = registerTool({ name: 'mcp_server_sensitive', integrationId: 'server-1', requiresApproval: true, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; });
+  try {
+    await assert.rejects(executeTool('mcp_server_sensitive', {}, {
+      mcpPolicy: {},
+      confirmTool: async () => { prompted = true; return true; }
+    }), { name: 'ToolPolicyError' });
+    assert.equal(prompted, false);
+    assert.equal(called, false);
+    assert.equal(await executeTool('mcp_server_sensitive', {}, {
+      mcpPolicy: { 'server-1': { allowedTools: ['mcp_server_sensitive'] } },
+      confirmTool: async () => true
+    }), undefined);
+    assert.equal(called, true);
+  } finally { unregister(); }
+});
