@@ -1,6 +1,17 @@
 const STORAGE_KEY = "axiom.worker-security-audit.v1";
 const GENESIS_HASH = "0".repeat(64);
 
+type DesktopWorkerAuditBridge = {
+  append(input: { permission: string; requestedDecision: AuditDecision; effectiveDecision: AuditDecision; sessionId: string }): Promise<WorkerSecurityAuditRecord>;
+  list(): Promise<{ valid: boolean; total: number; records: WorkerSecurityAuditRecord[] }>;
+  verify(): Promise<{ valid: boolean; records: number; latestHash?: string; reason?: string }>;
+};
+
+function desktopAuditBridge(): DesktopWorkerAuditBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as Window & { axiomDesktop?: { workerAudit?: DesktopWorkerAuditBridge } }).axiomDesktop?.workerAudit;
+}
+
 type AuditDecision = "once" | "always" | "reject";
 export interface WorkerSecurityAuditRecord {
   sequence: number;
@@ -94,4 +105,17 @@ export async function appendWorkerSecurityAudit(input: {
     throw new Error(`Worker security audit persistence verification failed: ${persisted.reason || "record count mismatch"}`);
   }
   return record;
+}
+
+
+export async function listWorkerSecurityAudit(): Promise<{ valid: boolean; total: number; records: WorkerSecurityAuditRecord[]; reason?: string }> {
+  const desktop = desktopAuditBridge();
+  if (desktop) {
+    const result = await desktop.list();
+    return { valid: result.valid, total: result.total, records: result.records };
+  }
+  const verification = await verifyWorkerSecurityAudit();
+  if (!verification.valid) return { valid: false, total: 0, records: [], reason: verification.reason };
+  const records = readRecords();
+  return { valid: true, total: records.length, records: records.slice(-1000).reverse() };
 }
