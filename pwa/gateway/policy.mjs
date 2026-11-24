@@ -44,24 +44,26 @@ export function createAuditChain({ path, now = Date.now } = {}) {
     const operation = tail.then(async () => {
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       let previousHash = '0'.repeat(64);
+      let sequence = 0;
       try {
         const content = await readFile(path, 'utf8');
-        const lines = content.split('\n').filter(Boolean);
-        if (lines.length) {
-          const last = JSON.parse(lines[lines.length - 1]);
-          const { hash, ...payload } = last;
+        const lines = content.split('\\n');
+        if (lines.at(-1) === '') lines.pop();
+        for (const line of lines) {
+          if (!line) throw new Error('Audit chain contains an empty record.');
+          const record = JSON.parse(line);
+          const { hash, ...payload } = record;
           const expected = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-          if (hash !== expected) throw new Error('Audit chain integrity verification failed.');
+          if (record.previousHash !== previousHash || record.sequence !== sequence + 1 || hash !== expected) {
+            throw new Error('Audit chain integrity verification failed.');
+          }
           previousHash = hash;
+          sequence += 1;
         }
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
-      const payload = { sequence: previousHash === '0'.repeat(64) ? 1 : undefined, timestamp: new Date(now()).toISOString(), previousHash, ...event };
-      if (payload.sequence === undefined) {
-        const content = await readFile(path, 'utf8');
-        payload.sequence = content.split('\n').filter(Boolean).length + 1;
-      }
+      const payload = { ...event, sequence: sequence + 1, timestamp: new Date(now()).toISOString(), previousHash };
       const hash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
       await appendFile(path, JSON.stringify({ ...payload, hash }) + '\n', { encoding: 'utf8', mode: 0o600, flag: 'a' });
       await chmod(path, 0o600);
