@@ -6,6 +6,13 @@ import { redactSecrets } from './securityRedaction.js';
 const tools = new Map();
 const listeners = new Set();
 
+const PRIVILEGED_TOOL_ACTION = /(?:^|_)(?:create|update|delete|remove|write|commit|push|merge|deploy|release|publish|install|uninstall|rollback|execute|run_command|bash|shell|restart|migrate|enable|disable|configure|authorize|connect)(?:_|$)/i;
+
+function requiresExplicitApproval(definition) {
+  return definition.requiresApproval === true
+    || PRIVILEGED_TOOL_ACTION.test(definition.name || "");
+}
+
 function emit(event) {
   for (const listener of listeners) {
     try { listener(event); } catch { /* Observability listeners cannot break tool execution. */ }
@@ -25,6 +32,7 @@ export function registerTool(definition, handler) {
     description: '',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     ...definition,
+    requiresApproval: requiresExplicitApproval(definition),
     timeoutMs: definition.timeoutMs ?? 30000,
     handler
   };
