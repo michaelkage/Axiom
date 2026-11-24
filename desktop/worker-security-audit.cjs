@@ -65,14 +65,11 @@ function createWorkerSecurityAudit({ filePath, signingKey, anchorStore, fsImpl =
       records.push(record);
     }
     const anchor = anchorStore.get();
-    if (!anchor) {
-      if (records.length) throw new Error("Worker audit checkpoint is missing; the log may have been replaced or reset.");
-      return records;
+    if (!anchor || !Number.isSafeInteger(anchor.sequence) || anchor.sequence < 0 || typeof anchor.hash !== "string" || !/^[a-f0-9]{64}$/.test(anchor.hash)) {
+      throw new Error("Worker audit checkpoint is missing or malformed.");
     }
-    if (!anchor || !Number.isSafeInteger(anchor.sequence) || anchor.sequence < 1 || typeof anchor.hash !== "string" || !/^[a-f0-9]{64}$/.test(anchor.hash)) {
-      throw new Error("Worker audit checkpoint is malformed.");
-    }
-    if (anchor.sequence > records.length || records[anchor.sequence - 1]?.hash !== anchor.hash) {
+    const anchoredHash = anchor.sequence === 0 ? GENESIS_HASH : records[anchor.sequence - 1]?.hash;
+    if (anchor.sequence > records.length || anchoredHash !== anchor.hash) {
       throw new Error("Worker audit checkpoint mismatch; truncation or replacement detected.");
     }
     // A crash can occur after fsync of the log record but before the encrypted
