@@ -48,7 +48,8 @@ export async function runOllamaToolChat({
   onEvent = () => {},
   maxTurns = 5,
   maxRetries = 2,
-  onRetry = () => {}
+  onRetry = () => {},
+  executionContext = {}
 }) {
   if (typeof executeTool !== 'function') throw new TypeError('executeTool is required');
   if (!Number.isInteger(maxTurns) || maxTurns < 1) throw new TypeError('maxTurns must be a positive integer');
@@ -159,7 +160,7 @@ export async function runOllamaToolChat({
       }
 
       try {
-        const result = await executeTool(name, args, { signal });
+        const result = await executeTool(name, args, { ...executionContext, signal, ...(meta?.requiresApproval ? { approvalGranted: true } : {}) });
         const serialized = serializeToolResult(result);
         conversation.push({ role: 'tool', tool_name: name, content: serialized });
         onEvent({ type: 'tool.completed', name, result: serialized });
