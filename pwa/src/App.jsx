@@ -717,7 +717,7 @@ export default function App(){
    try {
     for(const tool of tools){
      const safeName='mcp_'+id.replace(/[^a-zA-Z0-9_]/g,'_')+'_'+tool.name.replace(/[^a-zA-Z0-9_]/g,'_');
-     cleanups.push(registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:true},async (args,{signal}={})=>{
+     cleanups.push(registerTool({name:safeName,description:tool.description||('MCP tool '+tool.name),inputSchema:tool.inputSchema||{type:'object',properties:{}},requiresApproval:true,integrationId:id},async (args,{signal}={})=>{
       const result=server.transport==='sse'
        ?await connection.call('tools/call',{name:tool.name,arguments:args},{signal})
        :await connection.call('tools/call',{name:tool.name,arguments:args},undefined,{signal});
