@@ -31,8 +31,8 @@ function createWorkerSecurityAudit({ filePath, signingKey, fsImpl = fs, now = ()
 
   function readRaw() {
     try {
-      const stat = fsImpl.statSync(filePath);
-      if (!stat.isFile() || stat.size > MAX_AUDIT_FILE_BYTES) throw new Error("Worker audit file is not a regular file or exceeds the size limit.");
+      const stat = fsImpl.lstatSync(filePath);
+      if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_AUDIT_FILE_BYTES) throw new Error("Worker audit file is not a regular file or exceeds the size limit.");
       return fsImpl.readFileSync(filePath, "utf8");
     } catch (error) {
       if (error && error.code === "ENOENT") return "";
@@ -95,7 +95,9 @@ function createWorkerSecurityAudit({ filePath, signingKey, fsImpl = fs, now = ()
       };
       const record = { ...payload, hash: digest(canonical(payload)) };
       await fsImpl.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
-      const handle = await fsImpl.promises.open(filePath, "a", 0o600);
+      const noFollow = fsImpl.constants && fsImpl.constants.O_NOFOLLOW ? fsImpl.constants.O_NOFOLLOW : 0;
+      const flags = fsImpl.constants.O_WRONLY | fsImpl.constants.O_CREAT | fsImpl.constants.O_APPEND | noFollow;
+      const handle = await fsImpl.promises.open(filePath, flags, 0o600);
       try {
         await handle.writeFile(JSON.stringify(record) + "\n", "utf8");
         await handle.sync();
