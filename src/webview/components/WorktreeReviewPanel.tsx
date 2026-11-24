@@ -72,6 +72,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
         {gate()?.loading ? "Running checks…" : "Run quality gate"}
       </button>
     </div>
+    <p class="worktree-review__note">Quality-gate commands are detected from the project manifests and lockfiles (JavaScript/TypeScript, Rust, Python, and Android). Environment-specific Android checks are shown as suggestions rather than run automatically.</p>
     <Show when={review()} keyed>{item => <div>
       <strong>{item.ok ? "Actual worktree diff" : "Inspection needs attention"}</strong>
       <Show when={item.error}><p>{item.error}</p></Show>
@@ -107,7 +108,7 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
       <strong>Quality gate: {effectiveStatus() ?? (result.loading ? "Running" : "Blocked")}</strong>
       <Show when={result.error}><p>{result.error}</p></Show>
       <For each={result.checks}>{check => <div class="worktree-review__check">
-        <span>{check.state === "passed" ? "✓" : "✕"} {check.name}</span>
+        <span>{check.state === "passed" ? "✓" : check.state === "failed" ? "✕" : "◌"} {check.name} · {check.state}</span>
         <Show when={check.output}><details><summary>Output</summary><pre>{check.output}</pre></details></Show>
       </div>}</For>
       <Show when={result.status === "Needs fixes" && (result.checks ?? []).some(check => check.state === "failed") && props.onRepair && repairAttempts() < 1}>
