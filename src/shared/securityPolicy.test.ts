@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolvePermissionDecision } from "./securityPolicy";
 
 describe("worker permission policy", () => {
-  it.each(["bash", "edit", "external_directory", "task", "webfetch"])(
+  it.each(["bash", "edit", "external_directory", "task", "webfetch", "websearch", "mcp", "plugin"])(
     "downgrades persistent grants for privileged %s operations",
     permission => {
       expect(resolvePermissionDecision(permission, "always")).toBe("once");
