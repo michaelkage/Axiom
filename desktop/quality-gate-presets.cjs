@@ -5,7 +5,7 @@ const path = require("node:path");
 
 function detectQualityGatePresets(workspaceRoot, changedPaths = []) {
   const root = path.resolve(workspaceRoot);
-  const exists = relative => fs.existsSync(path.join(root, relative));
+  const exists = relative => {\n    try {\n      const target = path.resolve(root, relative);\n      if (target !== root && !target.startsWith(root + path.sep)) return false;\n      return !fs.lstatSync(target).isSymbolicLink();\n    } catch { return false; }\n  };
   const readJson = relative => {
     try { return JSON.parse(fs.readFileSync(path.join(root, relative), "utf8")); }
     catch { return null; }
