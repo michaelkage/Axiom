@@ -1939,7 +1939,6 @@ function App() {
           <ChangeTopicsPanel diffs={currentSessionDiffs()} />
         </Show>
         <VerificationPanel results={verificationResults()} />
-        <WorkerSecurityAuditPanel />
         <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkspaceRecoveryPanel />
         
@@ -2023,6 +2022,7 @@ function App() {
           editorRef={handleEditorMethodsReady}
         />
       </Show>
+      <WorkerSecurityAuditPanel />
     </div>
   );
 }
