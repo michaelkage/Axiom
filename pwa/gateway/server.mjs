@@ -446,6 +446,7 @@ export function createAxiomGateway({
       const target = new URL(suffix + url.search, supabaseBase);
       const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
       try {
+        await assertSafeMcpTarget(target, allowedPrivateMcpHosts);
         const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: upstreamSignal(60000) });
         const responseHeaders = { 'cache-control': 'no-store' };
         for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
