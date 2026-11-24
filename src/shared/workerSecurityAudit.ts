@@ -76,7 +76,7 @@ export async function appendWorkerSecurityAudit(input: {
   const verification = await verifyWorkerSecurityAudit();
   if (!verification.valid) throw new Error(`Worker security audit integrity failure: ${verification.reason || "unknown"}`);
   const records = readRecords();
-  const previousHash = records.at(-1)?.hash ?? GENESIS_HASH;
+  const previousHash = records.length ? records[records.length - 1].hash : GENESIS_HASH;
   const payload = {
     sequence: records.length + 1,
     timestamp: new Date().toISOString(),
