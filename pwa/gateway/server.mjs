@@ -353,6 +353,7 @@ export function createAxiomGateway({
           method: req.method,
           headers: upstreamHeaders(req),
           body,
+          redirect: 'error',
           signal: upstreamSignal(120000)
         });
         res.writeHead(upstream.status, {
