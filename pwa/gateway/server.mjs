@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile, chmod, rename, rm } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { createCompanionCoordinator } from './companion.js';
-import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';
+import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';\nimport { assertSafeMcpTarget } from './network-policy.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
@@ -85,7 +85,7 @@ export function createAxiomGateway({
   if (!['http:', 'https:'].includes(ollamaBase.protocol) || ollamaBase.username || ollamaBase.password) throw new Error('OLLAMA_BASE_URL must be an HTTP(S) URL without embedded credentials.');
   const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
-  const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');
+  const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');\n  const allowedPrivateMcpHosts = new Set(String(env.AXIOM_MCP_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));\n  if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|\\[[0-9a-f:]+\\])$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
   const audit = createAuditChain({ path: env.AXIOM_AUDIT_LOG_PATH || join(homedir(), '.config', 'axiom', 'gateway-audit.jsonl'), now });
   const sessionTokens = new Map();
   const companion = createCompanionCoordinator({ now });
@@ -406,7 +406,7 @@ export function createAxiomGateway({
       const upstreamPath = validSearch ? '/search/code' : requestedPath;
       const target = new URL(upstreamPath + url.search, 'https://api.github.com');
       try {
-        const upstream = await fetchImpl(target, { method: req.method, headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }, body, signal: upstreamSignal(60000) });
+        const upstream = await fetchImpl(target, { method: req.method, headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }, body, redirect: 'error', signal: upstreamSignal(60000) });
         res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
         if (!upstream.body) return res.end();
         for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
@@ -442,7 +442,7 @@ export function createAxiomGateway({
       const target = new URL(suffix + url.search, supabaseBase);
       const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
       try {
-        const upstream = await fetchImpl(target, { method: req.method, headers, body, signal: upstreamSignal(60000) });
+        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: upstreamSignal(60000) });
         const responseHeaders = { 'cache-control': 'no-store' };
         for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
           const value = upstream.headers.get(name);
@@ -495,7 +495,7 @@ export function createAxiomGateway({
       }
       const headers = upstreamHeaders(req, config.token ? { authorization: 'Bearer ' + config.token } : {});
       try {
-        const upstream = await fetchImpl(config.url, { method: req.method, headers, body, signal: AbortSignal.timeout(120000) });
+        const target = await assertSafeMcpTarget(config.url, allowedPrivateMcpHosts);\n        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(120000) });
         const responseHeaders = {
           'cache-control': 'no-store',
           'x-content-type-options': 'nosniff'
