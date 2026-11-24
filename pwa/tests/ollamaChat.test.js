@@ -229,3 +229,19 @@ test('fails closed for privileged tool calls when no approval callback is suppli
   });
 });
 
+
+test('propagates the runtime policy context to every model-originated tool execution', async () => {
+  let received;
+  const harness = setup([
+    streamResponse([assistant('', [toolCall('read_repo')])]),
+    streamResponse([assistant('Finished')])
+  ], {
+    executionContext: { source: 'model_runtime', mcpPolicy: { serverA: { allowedTools: ['mcp_serverA_read_repo'] } } },
+    executeTool: async (_name, _args, context) => { received = context; return { ok: true }; }
+  });
+  await harness.run();
+  assert.equal(received.source, 'model_runtime');
+  assert.deepEqual(received.mcpPolicy, { serverA: { allowedTools: ['mcp_serverA_read_repo'] } });
+  assert.ok(received.signal instanceof AbortSignal);
+});
+
