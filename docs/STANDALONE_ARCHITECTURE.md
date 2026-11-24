@@ -31,4 +31,4 @@ Axiom is a standalone Electron desktop application for AI-first software buildin
 
 CI builds the standalone renderer, type-checks it, runs unit tests, and runs desktop host tests. The Windows release workflow additionally packages the installer, installs it on a Windows runner, launches the installed application, verifies runtime and renderer readiness, generates a checksum, and publishes a GitHub Release only after the workflow succeeds.
 
-See [README.md](./README.md) for build commands and [desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for operational recovery.
+See [main README](../README.md) for build commands and [desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for operational recovery.
