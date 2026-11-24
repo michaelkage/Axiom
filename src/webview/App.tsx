@@ -96,7 +96,7 @@ function App() {
     if (!workspace || !api) return;
     let active = true;
     void api.load().then(memories => { if (active) cacheProjectMemories(workspace, memories); })
-      .catch(error => logger.error("Could not preload versioned project memory: " + String(error)));
+      .catch(error => { cacheProjectMemories(workspace, []); logger.error("Could not preload versioned project memory: " + String(error)); });
     onCleanup(() => { active = false; });
   });
   const [projectContextDraft, setProjectContextDraft] = createSignal("");
