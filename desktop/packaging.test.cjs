@@ -17,6 +17,8 @@ test("macOS packaging defines Intel and Apple Silicon DMG and ZIP targets", () =
   assert.equal(desktop.build.mac.hardenedRuntime, true);
   assert.equal(desktop.build.mac.entitlements, "build/entitlements.mac.plist");
   assert.ok(desktop.build.files.includes("secure-storage.cjs"), "The Electron credential vault must ship inside the app.");
+  assert.ok(desktop.build.files.includes("project-memory.cjs"), "The versioned project memory host must ship inside the app.");
+  assert.ok(desktop.build.files.includes("quality-gate-presets.cjs"), "The project quality gate detector must ship inside the app.");
 });
 
 test("macOS release workflow builds both architectures and accepts signing credentials", () => {

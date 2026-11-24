@@ -6,6 +6,8 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
+const { createProjectMemoryStore } = require("./project-memory.cjs");
+const { detectQualityGatePresets } = require("./quality-gate-presets.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
@@ -27,6 +29,17 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let secureCredentialStore;
+let projectMemoryStore;
+let projectMemoryWorkspace;
+function currentProjectMemoryStore() {
+  if (!selectedWorkspace) throw new Error("Open a project before accessing versioned project memory.");
+  const workspace = path.resolve(selectedWorkspace);
+  if (!projectMemoryStore || projectMemoryWorkspace !== workspace) {
+    projectMemoryWorkspace = workspace;
+    projectMemoryStore = createProjectMemoryStore(workspace);
+  }
+  return projectMemoryStore;
+}
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
@@ -559,28 +572,19 @@ async function runQualityGate(event, message) {
       output: untrackedIssues.join("\n") || "No whitespace issues or common conflict markers found in untracked files."
     });
 
-    const packageFile = path.join(message.worktreePath, "package.json");
-    let manifest = null;
-    try { manifest = JSON.parse(await fs.promises.readFile(packageFile, "utf8")); } catch {}
-    const testPaths = paths.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file)
-      && fs.existsSync(path.resolve(message.worktreePath, file)));
-    const lockName = fs.existsSync(path.join(message.worktreePath, "pnpm-lock.yaml")) ? "pnpm" :
-      fs.existsSync(path.join(message.worktreePath, "yarn.lock")) ? "yarn" : "npm";
-    if (testPaths.length && manifest) {
-      const command = lockName === "pnpm" ? "pnpm" : lockName === "yarn" ? "yarn" : "npm";
-      const args = lockName === "npm"
-        ? ["exec", "--", "vitest", "run", ...testPaths]
-        : lockName === "yarn" ? ["vitest", "run", ...testPaths] : ["exec", "vitest", "run", ...testPaths];
-      await addCheck("Targeted unit tests", command, args, message.worktreePath, 180000);
+    const presets = detectQualityGatePresets(message.worktreePath, paths);
+    for (const preset of presets.commands) {
+      await addCheck(preset.name, preset.command, preset.args, message.worktreePath, preset.timeout);
     }
-    const sourceChanged = paths.some(file => /\.(tsx?|jsx?)$/.test(file) && !/(\.test|\.spec)\./.test(file));
-    if (sourceChanged && manifest?.scripts?.build) {
-      const command = lockName === "pnpm" ? "pnpm" : lockName === "yarn" ? "yarn" : "npm";
-      const args = lockName === "npm" ? ["run", "build"] : ["run", "build"];
-      await addCheck("Project build", command, args, message.worktreePath, 240000);
+    for (const suggestion of presets.suggestions) {
+      checks.push({
+        name: suggestion.name,
+        state: "unverified",
+        output: "Suggested command: " + suggestion.command + (suggestion.args.length ? " " + suggestion.args.join(" ") : "") + ". " + suggestion.reason
+      });
     }
 
-    const ranProjectCheck = checks.some(check => check.name === "Targeted unit tests" || check.name === "Project build");
+    const ranProjectCheck = presets.commands.some(preset => /test|build/i.test(preset.name));
     if (!ranProjectCheck) {
       checks.push({
         name: "Project-level verification evidence",
@@ -1121,6 +1125,15 @@ ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return writeProjectFile(selectedWorkspace, relativePath, content);
+});
+
+ipcMain.handle("axiom:project-memory-load", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().load();
+});
+ipcMain.handle("axiom:project-memory-save", async (event, memories) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().save(memories);
 });
 
 ipcMain.handle("axiom:project-bootstrap", event => {

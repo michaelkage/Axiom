@@ -1,202 +1,100 @@
 # Axiom
 
-**[Axiom product site and downloads →](https://michaelkage.github.io/Axiom/)** · [Latest releases](https://github.com/michaelkage/Axiom/releases) · [Quick start](./QUICKSTART.md)
+**Build software by describing the outcome—not by starting with a pile of files.**
 
-**Build software by describing the outcome, not by starting with a pile of files.**
+Axiom is an AI-first desktop workspace for planning, implementing, and verifying software changes. Describe the outcome, review a structured plan, let isolated workers handle scoped tasks, then inspect real diffs and verification evidence before integrating anything.
 
-Axiom is a standalone desktop app for AI-first project building. Describe the feature or outcome you want, let Axiom plan the work, then review scoped changes, diffs, acceptance criteria, and actual verification results. The goal is a project workspace, not another IDE plugin that requires an editor to exist first.
+<p align="center">
+  <a href="media/axiom-task-planner.svg"><img src="media/axiom-task-planner.svg" alt="Illustrative Axiom task planner interface preview" width="49%"></a>
+  <a href="media/axiom-worktree-review.svg"><img src="media/axiom-worktree-review.svg" alt="Illustrative Axiom worktree review interface preview" width="49%"></a>
+</p>
+<p align="center"><sub>Illustrative interface previews. They communicate the workflow and are not captured product screenshots.</sub></p>
 
-## Download Axiom
+## Download
 
-**Windows x64:** open the [Axiom Releases page](https://github.com/michaelkage/Axiom/releases) and download `Axiom-Setup-<version>-x64.exe`.
+Get the latest published installers from the **[Axiom Releases page](https://github.com/michaelkage/Axiom/releases)**.
 
-The installer installs the standalone Axiom desktop application, including its desktop shell and bundled Axiom runtime. It does **not** install a VS Code extension. Launch Axiom from the Start menu or desktop shortcut, choose a project folder, and connect/configure your model provider in the app. Use **File → Switch Project** (Ctrl+O) to change folders without manually restarting. If the runtime fails to start, Axiom offers a retry and records diagnostics in its application user-data folder; **Help → Open Axiom Runtime Log** opens that log.
+| Platform | Package | Availability |
+| --- | --- | --- |
+| Windows x64 | NSIS installer (.exe) | Release workflow builds and smoke-tests installation and first launch |
+| macOS Intel and Apple Silicon | DMG and ZIP | CI builds both architectures; signed release assets require Apple signing and notarization secrets |
+| Linux x64 | AppImage, DEB, RPM | Release workflow builds packages on Ubuntu |
 
-If the Releases page does not contain a Windows installer yet, a release has not been published. CI artifacts are not the same as published release assets, because apparently one download location was too straightforward.
+A published release contains downloadable assets. A successful CI artifact upload alone is not a published release. See [platform and release details](docs/RELEASE_PROCESS.md).
 
-## End-user system requirements
+## What you can do
 
-- **Operating system:** Windows 10 or Windows 11, 64-bit. The current installer workflow targets Windows x64 only.
-- **AI provider:** internet access and valid provider credentials for hosted models, or a separately configured local model provider. Model access may incur provider charges.
-- **Project tools:** Axiom can open a folder without Git, but Git is needed for worktree-based task isolation and some change-review workflows.
-- **Storage:** keep enough free disk space for the app, its runtime, project dependencies, and any model/provider tools you use. The installer is large because it bundles the desktop runtime.
+- **Plan work:** turn a feature request into scoped tasks, dependencies, and acceptance criteria.
+- **Delegate safely:** isolate task changes in Git worktrees where supported.
+- **Review actual changes:** inspect Git diffs, select files, and integrate only what you approve.
+- **Verify the result:** run repository-aware quality checks and inspect their real output.
+- **Repair deliberately:** send failed check output back for a bounded correction attempt.
+- **Keep project context:** save conventions, decisions, architecture notes, and fixes in versioned project memory.
+- **Work directly in the project:** browse files, use a terminal, and manage remote workspaces from the desktop app.
 
-Axiom is a standalone Electron application and has no editor-extension runtime or VS Code dependency. Node.js and pnpm are needed only to build Axiom from source.
-
-## Troubleshooting
-
-See [Desktop troubleshooting](./docs/DESKTOP_TROUBLESHOOTING.md) for startup recovery, provider setup, project access, runtime logs, and known limitations.
-
-## What Axiom does
-
-- **Outcome-first building:** describe the result you want in plain language.
-- **Adaptive planning:** break larger requests into scoped tasks, acceptance criteria, dependencies, and parallel work where safe.
-- **Reviewable agent work:** isolate task changes in Git worktrees where supported and inspect diffs before integrating.
-- **Evidence-based quality gates:** run relevant checks and show actual command output instead of treating an agent's “done” message as proof.
-- **Bounded repair:** send real failed-check output back for a limited correction attempt.
-- **Selective integration:** review changed files and integrate selected work without blindly replacing unrelated edits.
-- **Project memory:** save project conventions, architecture notes, decisions, and fixes. Project context and verification history are stored locally in Axiom's per-user application data, outside the repository, and are not synced between devices.
-- **Native file workspace:** browse, inspect, edit, and save project files from inside the desktop app. The desktop file bridge rejects path traversal and symbolic links, excludes dependency/build directories, and caps file edits at 1 MiB.
-- **Outcome-centered handoff:** track completed and blocked tasks, outstanding requirements, and verification evidence.
-
-Features are actively evolving. Axiom is built on upstream runtime and client libraries, while the installed product, interface, and supported workflow are Axiom.
+Axiom is a standalone Electron application. It does not require VS Code or an editor extension.
 
 ## Quick start
 
-1. Install and launch Axiom.
-2. Choose the folder for the project you want to work on.
-3. Configure a supported model provider in the app. Provider access and model API credentials may be required.
-4. Enter a concrete request, for example: “Add CSV export to the reports page, include tests, and summarize the files changed.”
-5. Review the proposed plan, task scopes, and acceptance criteria.
-6. Inspect each task's changed files, diff, and quality-gate output.
-7. Integrate the changes you want. A successful agent response is not the same thing as a passed quality gate.
+1. Install Axiom from the [Releases page](https://github.com/michaelkage/Axiom/releases).
+2. Launch Axiom and select a project folder.
+3. Configure a supported hosted or local model provider.
+4. Describe a concrete outcome, such as: “Add CSV export to reports, include tests, and explain the changes.”
+5. Review the plan, task scopes, and acceptance criteria.
+6. Inspect changed files, diffs, and verification results.
+7. Integrate only the changes you approve.
 
-Start with a small change while you confirm your model provider and local development toolchain are configured.
+For a guided walkthrough, see [Quick start](docs/QUICKSTART.md).
 
-## How the desktop app works
+## Project memory
 
-Axiom is an Electron desktop application. It opens a project folder and starts a bundled Axiom runtime for that workspace. The runtime listens on a loopback interface, not a public network interface. The installer bundles the desktop app and the Axiom runtime so a separate VS Code installation is not required.
+Desktop project memory is stored in `.axiom/memory.json` inside the selected repository. It contains user-authored architecture notes, conventions, decisions, preferences, fixes, and failure learnings. Review and commit the file with Git to share context with collaborators and sync it across devices. Axiom does not commit it automatically.
 
-Axiom works on files in the project folder you select. Review generated changes carefully and keep backups or version control for important projects. Agent permissions and tool availability depend on the runtime and model configuration.
+The file is ordinary versioned project data. Do not store credentials, API keys, private tokens, or other secrets in it.
 
-### Optional OmniRoute integration
+## Development
 
-On the first-run welcome screen, Axiom can connect to an existing OmniRoute-compatible API or optionally install and manage a local OmniRoute instance. OmniRoute's default local API is `http://127.0.0.1:20128/v1`; the dashboard is normally available at `http://127.0.0.1:20128`.
-
-- **Connect existing router:** set the OpenAI-compatible API base URL and, if required, its API key.
-- **Install:** the explicit Install button runs `npm install --global omniroute`. It does not silently install software during Axiom setup.
-- **Attach to Axiom:** enabling this option adds the selected router model to the Axiom runtime configuration on the next Axiom launch. The API key is encrypted with Electron's OS-backed secure storage; Axiom refuses to persist it if secure storage is unavailable.
-- **Start with Axiom:** optional and only for the local default OmniRoute service. Axiom only stops the router process it started itself, never a separately running router.
-- **No router required:** direct model providers, local model servers, custom endpoints, and existing provider credentials remain available without OmniRoute.
-
-The OmniRoute installer is maintained by the [OmniRoute project](https://github.com/ourines/omniroute). Review its install requirements and provider terms before connecting accounts or enabling models.
-  
-## Development setup
-
-### Requirements
-
-- Node.js 20
-- pnpm 10, matching the version pinned in the root `package.json`
-- npm for the Electron desktop packaging project
-- Git for worktree-based task isolation and change review
-
-### Install and build the UI
-
-From the repository root:
+Requirements: Node.js 20+, pnpm 10, npm for Electron packaging, and Git for worktree workflows.
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm run build:webview
-```
-
-The standalone desktop UI is emitted to `out/src/webview/standalone.html` and its associated assets.
-
-### Run checks
-
-```bash
 pnpm exec vitest run
 pnpm exec tsc -p tsconfig.webview.json
-node --check desktop/main.cjs
+pnpm run test:desktop
 ```
 
-The full `pnpm test` script runs unit tests and Playwright browser tests. Browser tests may need browser/runtime dependencies installed for your environment.
-
-### Run the desktop app in development
-
-Build the UI first, then install desktop dependencies and launch Electron:
+To launch the desktop app in development:
 
 ```bash
-pnpm install --frozen-lockfile
 pnpm run build:webview
 cd desktop
 npm install
 npm start
 ```
 
-To create the Windows installer locally, from the repository root:
+See [development setup](docs/DEVELOPMENT.md), [desktop troubleshooting](docs/DESKTOP_TROUBLESHOOTING.md), and [platform porting](docs/PLATFORM_PORTING.md).
 
-```bash
-pnpm run build:webview
-cd desktop
-npm install
-npm run dist
-```
+## Project structure
 
-The installer is emitted to `desktop/release/`. The release workflow performs the same steps on a Windows runner and attaches the installer to a tagged GitHub Release.
-
-## Project layout
-
-| Path | Purpose |
+| Directory | Purpose |
 | --- | --- |
-| `desktop/main.cjs` | Electron main process, project selection, and local runtime lifecycle |
-| `desktop/package.json` | Desktop dependencies and Windows installer configuration |
-| `src/webview/standalone.html` | Standalone desktop UI entry point |
-| `src/webview/App.tsx` | Main project-building workspace and task flow |
-| `src/webview/components/WorktreeReviewPanel.tsx` | Task diff, acceptance criteria, checks, and selective integration UI |
-| `src/webview/components/ProjectMemoryPanel.tsx` | Project memory management UI |
-| `src/shared/axiomRuntime.ts` | Task planning and runtime data contracts |
-| `src/shared/axiomWorkflow.ts` | Shared planning, review, quality-gate, memory-retrieval, and outcome helpers |
-| `src/shared/axiomWorkflow.test.ts` | Workflow helper tests |
-| `.github/workflows/axiom-ci.yml` | Build, type checks, and unit tests on pushes and pull requests |
-| `.github/workflows/release.yml` | Standalone Windows installer packaging and release publishing |
+| `desktop/` | Electron main process, secure host APIs, runtime lifecycle, packaging |
+| `src/` | Shared workflow logic and desktop webview |
+| `pwa/` | Android-first React progressive web app |
+| `docs/` | Architecture, product direction, development, and release documentation |
+| `media/` | README visuals and product media |
 
-## Release process
+## Documentation
 
-1. Ensure CI passes on the intended release commit.
-2. Set the same version in both the root `package.json` and `desktop/package.json`.
-3. Push the release commit to `axiom/product-rebuild`. The release workflow builds and smoke-tests the installer, then creates the matching version tag and GitHub Release if that tag does not already exist. A manually pushed `v*` tag also triggers the workflow.
-4. The **Build Axiom Desktop Release** workflow builds the standalone UI, installs desktop packaging dependencies, packages the app and runtime, and creates `Axiom-Setup-<version>-x64.exe`.
-5. The workflow creates a SHA-256 checksum file alongside the installer and attaches both to the GitHub Release. Verify the downloaded installer against the `.sha256` asset before running it. In PowerShell, from the folder containing the installer, run:
-
-```powershell
-$installer = Get-ChildItem .\Axiom-Setup-*-x64.exe | Select-Object -First 1
-Get-FileHash $installer.FullName -Algorithm SHA256
-Get-Content "$($installer.FullName).sha256"
-```
-
-Confirm the reported hash matches the hash in the checksum file. Inspect the workflow run and test the downloaded installer before announcing the release. Publishing a build does not mean its interactive installation/startup has been smoke-tested.
-
-A manual workflow run builds an artifact but does not publish a GitHub Release unless triggered by a tag.
-
-## Preview status
-
-The Windows installer can be built by CI, but interactive installation, first launch, provider setup, project switching, and shutdown have **not yet been manually smoke-tested on a Windows machine**. That validation is intentionally deferred. Treat the current build as a preview until those checks are completed; a successful packaging workflow is not proof that the full desktop experience works on every machine.
-
-## Current limitations
-
-- The current official packaged installer target is Windows x64. macOS and Linux packages are not yet part of the release workflow.
-- Project memories currently use app/webview-local storage. They are not yet a shared database, versioned project file, or cross-device sync system.
-- Quality-gate checks depend on commands and dependencies available in the target repository. Passing checks are evidence for the checks that ran, not a guarantee that every behavior is correct.
-- Preview and screenshot capture are not yet a complete, automatic end-to-end workflow.
-- The source tree and build pipeline target the standalone desktop app; extension packaging and extension-host code have been removed.
-
-## Product direction
-
-Axiom is intended to make AI-assisted software building feel like collaborating on a project rather than supervising a code generator: clear goals, scoped work, visible progress, inspectable changes, honest verification, and a useful final handoff.
-
-See [AXIOM_PRODUCT_DIRECTION.md](./AXIOM_PRODUCT_DIRECTION.md) and [docs/AXIOM_PRODUCT_WORKFLOWS.md](./docs/AXIOM_PRODUCT_WORKFLOWS.md) for product and workflow details. The [MCP integrations blueprint](./docs/AXIOM_MCP_INTEGRATIONS_BLUEPRINT.md) documents the curated server catalog, security requirements, and staged rollout. The [growth and monetization blueprint](./docs/AXIOM_GROWTH_AND_MONETIZATION_BLUEPRINT.md) records future options only; Axiom will prioritize building a user base before implementing monetization.
+- [Product direction](docs/PRODUCT_DIRECTION.md)
+- [Standalone architecture](docs/STANDALONE_ARCHITECTURE.md)
+- [Desktop troubleshooting](docs/DESKTOP_TROUBLESHOOTING.md)
+- [Release process and smoke-test checklist](docs/RELEASE_PROCESS.md)
+- [Release notes](docs/releases/)
+- [MCP gateway policy](docs/GATEWAY_MCP_POLICY.md)
+- [Mobile PWA architecture](docs/MOBILE_PWA_ARCHITECTURE.md)
 
 ## Contributing
 
-Trace how existing infrastructure is used before replacing it. Keep task scopes explicit, define acceptance criteria for user-visible behavior, and prefer verifiable outcomes over claims in agent summaries. Changes to desktop startup or runtime lifecycle should include a smoke test on the target operating system.
-
-
-## Mobile PWA
-
-The Android-first React PWA lives in [`pwa/`](pwa/), separate from the standalone desktop application.
-
-```bash
-cd pwa
-npm install
-npm run dev
-```
-
-Run its unit tests, production build, and mobile-browser tests from that directory:
-
-```bash
-npm test
-npm run build
-npm run test:e2e:mobile
-```
-
-See [the mobile PWA architecture](docs/MOBILE_PWA_ARCHITECTURE.md) for its runtime adapters, security boundaries, and remaining delivery work.
+Inspect existing architecture before replacing it. Keep task scopes explicit, define acceptance criteria for user-visible behavior, and prefer verifiable outcomes over claims in agent summaries. Changes to startup, runtime lifecycle, security boundaries, or packaging should include focused tests and platform smoke testing where available.

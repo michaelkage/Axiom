@@ -84,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [deb, rpm]
+        target: [AppImage, deb, rpm]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -116,5 +116,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            desktop/release/*.AppImage
             desktop/release/*.deb
             desktop/release/*.rpm

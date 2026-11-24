@@ -12,7 +12,8 @@ import { VerificationPanel } from "./components/VerificationPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
-import { withProjectMemory } from "./utils/projectMemory";
+import { cacheProjectMemories, withProjectMemory } from "./utils/projectMemory";
+import type { ProjectMemory } from "../shared/axiomWorkflow";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
 import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
@@ -89,6 +90,15 @@ function App() {
   const [taskAcceptanceCriteria, setTaskAcceptanceCriteria] = createSignal<Record<string, string[]>>({});
   const [installedPluginIds, setInstalledPluginIds] = createSignal<string[]>([]);
   const [desktopProjectState, setDesktopProjectState] = createSignal<{ workspaceRoot: string; context: string; changes: Array<{ id: string; title: string; summary: string; status: string; createdAt: string; checks?: Array<{ name: string; state: string; details: string }>; files?: string[] }>; updatedAt: string | null } | null>(null);
+  createEffect(() => {
+    const workspace = desktopProjectState()?.workspaceRoot;
+    const api = (window as Window & { axiomDesktop?: { projectMemory?: { load: () => Promise<ProjectMemory[]> } } }).axiomDesktop?.projectMemory;
+    if (!workspace || !api) return;
+    let active = true;
+    void api.load().then(memories => { if (active) cacheProjectMemories(workspace, memories); })
+      .catch(error => { cacheProjectMemories(workspace, []); logger.error("Could not preload versioned project memory: " + String(error)); });
+    onCleanup(() => { active = false; });
+  });
   const [projectContextDraft, setProjectContextDraft] = createSignal("");
   const [desktopProjectNotice, setDesktopProjectNotice] = createSignal("");
   const [desktopProjectBusy, setDesktopProjectBusy] = createSignal(false);
