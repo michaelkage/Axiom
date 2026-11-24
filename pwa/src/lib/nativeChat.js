@@ -28,7 +28,7 @@ export async function runNativeToolChat({
   executeTool,
   serializeToolResult = value => JSON.stringify(value) ?? 'null',
   getToolMeta = () => undefined,
-  confirmTool = async () => true,
+  confirmTool = async () => false,
   onText = () => {},
   onEvent = () => {},
   maxTurns = 5,
