@@ -52,7 +52,7 @@ export function createAuditChain({ path, now = Date.now } = {}) {
       let sequence = 0;
       try {
         const content = await readFile(path, 'utf8');
-        const lines = content.split('\\n');
+        const lines = content.split('\n');
         if (lines.at(-1) === '') lines.pop();
         for (const line of lines) {
           if (!line) throw new Error('Audit chain contains an empty record.');
