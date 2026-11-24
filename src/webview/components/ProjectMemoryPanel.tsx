@@ -5,11 +5,7 @@ import { cacheProjectMemories, isProjectMemoryStale, loadProjectMemories, projec
 
 type MemoryCategory = ProjectMemory["category"];
 const categories: MemoryCategory[] = ["architecture", "convention", "decision", "preference", "fix", "failure"];
-
-type ProjectMemoryApi = {
-  load: () => Promise<ProjectMemory[]>;
-  save: (memories: ProjectMemory[]) => Promise<ProjectMemory[]>;
-};
+type ProjectMemoryApi = { load: () => Promise<ProjectMemory[]>; save: (memories: ProjectMemory[]) => Promise<ProjectMemory[]> };
 
 export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const [memories, setMemories] = createSignal<ProjectMemory[]>([]);
@@ -25,6 +21,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const key = () => projectMemoryStorageKey(props.workspaceRoot);
 
   const persist = async (next: ProjectMemory[]): Promise<boolean> => {
+    if (saving()) return false;
     setStorageError("");
     setSaving(true);
     try {
@@ -34,11 +31,13 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
         setMemories(saved);
         cacheProjectMemories(props.workspaceRoot, saved);
       } else {
-        setMemories(next);
         localStorage.setItem(key(), JSON.stringify(next));
+        setMemories(next);
       }
+      return true;
     } catch (error) {
       setStorageError(error instanceof Error ? error.message : "Could not save project memory.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -69,7 +68,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
     return query().trim() ? retrieveProjectMemories(all, query(), 50) : all;
   });
   const resetForm = () => { setContent(""); setTags(""); setCategory("convention"); setEditingId(null); };
-  const save = () => {
+  const save = async () => {
     const text = content().trim();
     if (!text || saving()) return;
     const now = new Date().toISOString(), id = editingId();
@@ -80,13 +79,22 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
       tags: [...new Set(tags().split(",").map(tag => tag.trim()).filter(Boolean))],
       createdAt: old?.createdAt ?? now, updatedAt: now,
     };
-    void persist(old ? memories().map(memory => memory.id === item.id ? item : memory) : [item, ...memories()]);
-    resetForm();
+    const saved = await persist(old ? memories().map(memory => memory.id === item.id ? item : memory) : [item, ...memories()]);
+    if (saved) resetForm();
   };
-  const edit = (item: ProjectMemory) => { setEditingId(item.id); setContent(item.content); setCategory(item.category); setTags(item.tags.join(", ")); setExpanded(true); };
-  const remove = (id: string) => { if (!saving()) void persist(memories().filter(item => item.id !== id)).then(saved => { if (saved && editingId() === id) resetForm(); }); };
+  const edit = (item: ProjectMemory) => {
+    setEditingId(item.id); setContent(item.content); setCategory(item.category);
+    setTags(item.tags.join(", ")); setExpanded(true);
+  };
+  const remove = (id: string) => {
+    if (saving()) return;
+    void persist(memories().filter(item => item.id !== id)).then(saved => {
+      if (saved && editingId() === id) resetForm();
+    });
+  };
   const markReviewed = (item: ProjectMemory) => {
-    if (!saving()) void persist(memories().map(memory => memory.id === item.id ? { ...memory, updatedAt: new Date().toISOString() } : memory));
+    if (!saving()) void persist(memories().map(memory => memory.id === item.id
+      ? { ...memory, updatedAt: new Date().toISOString() } : memory));
   };
 
   return <section class="axiom-memory" aria-label="Project intelligence">
@@ -111,7 +119,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
         </label>
         <div class="axiom-memory__actions">
           <button disabled={!content().trim() || saving()} onClick={save}>{saving() ? "Saving…" : editingId() ? "Update memory" : "Save memory"}</button>
-          <Show when={editingId()}><button onClick={resetForm}>Cancel edit</button></Show>
+          <Show when={editingId()}><button disabled={saving()} onClick={resetForm}>Cancel edit</button></Show>
         </div>
         <label>Find relevant memories
           <input value={query()} onInput={event => setQuery(event.currentTarget.value)} placeholder="Search by topic or tag" />
@@ -121,7 +129,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
           <div><span class="axiom-memory__category">{item.category}</span><time>{new Date(item.updatedAt).toLocaleDateString()}</time><Show when={isProjectMemoryStale(item)}><span class="axiom-memory__stale" title="This memory has not been reviewed for 180 days or more">Needs review</span></Show></div>
           <p>{item.content}</p>
           <Show when={item.tags.length > 0}><small>{item.tags.join(" · ")}</small></Show>
-          <div class="axiom-memory__actions"><button onClick={() => edit(item)}>Edit</button><Show when={isProjectMemoryStale(item)}><button onClick={() => markReviewed(item)}>Mark reviewed</button></Show><button onClick={() => remove(item.id)}>Delete</button></div>
+          <div class="axiom-memory__actions"><button disabled={saving()} onClick={() => edit(item)}>Edit</button><Show when={isProjectMemoryStale(item)}><button disabled={saving()} onClick={() => markReviewed(item)}>Mark reviewed</button></Show><button disabled={saving()} onClick={() => remove(item.id)}>Delete</button></div>
         </article>}</For>
       </div>
     </Show>
