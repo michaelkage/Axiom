@@ -57,7 +57,7 @@ function detectQualityGatePresets(workspaceRoot, changedPaths = []) {
     if (exists("tests") || paths.some(file => /(^|\/)(test_[^/]+|[^/]+_test)\.py$/i.test(file))) {
       add("Python tests", process.platform === "win32" ? "python" : "python3", ["-m", "pytest"], 300000);
     } else if (/\[tool\.pytest(?:\.ini_options)?\]/.test(config)) {
-      add("Python tests", "python", ["-m", "pytest"], 300000);
+      add("Python tests", process.platform === "win32" ? "python" : "python3", ["-m", "pytest"], 300000);
     }
     if (/\[tool\.ruff\]/.test(config) || exists("ruff.toml") || exists(".ruff.toml")) {
       add("Python Ruff lint", "ruff", ["check", "."], 180000);
