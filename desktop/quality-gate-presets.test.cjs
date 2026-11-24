@@ -40,3 +40,14 @@ test("suggests Android atest without executing it outside an Android build envir
     assert.equal(result.suggestions[0].command, "atest");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test("does not follow symlinked project manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-quality-"));
+  const outside = path.join(root, "outside-package.json");
+  try {
+    await fs.writeFile(outside, JSON.stringify({ scripts: { lint: "echo unsafe" } }));
+    await fs.symlink(outside, path.join(root, "package.json"));
+    const result = detectQualityGatePresets(root, ["src/app.ts"]);
+    assert.equal(result.commands.length, 0);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
