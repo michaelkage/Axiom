@@ -89,7 +89,7 @@ async function createRemoteWorkspace(input, options = {}) {
     const args = ["clone", "--no-tags", "--branch", request.branch];
     if (request.mode === "temporary-selective") args.push("--filter=blob:none", "--sparse");
     args.push("--", request.repositoryUrl, workspacePath);
-    await execFileAsync("git", args, { timeout: options.cloneTimeout ?? 300000, signal: options.signal, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" } });
+    await execFileAsync("git", args, { timeout: options.cloneTimeout ?? 300000, signal: options.signal, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) } });
     if (request.mode === "temporary-selective") {
       await git(workspacePath, ["sparse-checkout", "set", "--", ...request.paths]);
     }
@@ -149,7 +149,7 @@ async function commitAndPushWorkspace(job, options = {}) {
   job.pushSucceeded = true;
   const remote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
   });
   const remoteSha = (remote.stdout.trim().split(/\s+/)[0] || "");
   if (remoteSha !== localSha) {
@@ -181,7 +181,7 @@ async function reconcileRemoteWorkspace(job, options = {}) {
   if (origin !== job.repositoryUrl) return { state: "conflict", reason: "The checkout origin does not match the persisted repository URL.", localSha, remoteSha: null };
   const remoteResult = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
   });
   const remoteSha = remoteResult.stdout.trim().split(/\s+/)[0] || "";
   if (!/^[0-9a-f]{40,64}$/i.test(remoteSha)) return { state: "conflict", reason: "The remote branch did not return a valid commit SHA.", localSha, remoteSha: null };
@@ -224,7 +224,7 @@ async function pushReconciledWorkspace(job, options = {}) {
   if (verifiedLocalSha !== state.localSha || verifiedStatus) throw new Error("The local checkout changed during verification; refusing to push.");
   const currentRemote = await execFileAsync("git", ["ls-remote", "--exit-code", "--heads", job.repositoryUrl, "refs/heads/" + job.branch], {
     timeout: options.verifyRemoteTimeout ?? 60000, signal: options.signal, maxBuffer: 1024 * 1024, windowsHide: true,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" }
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never", ...(options.env || {}) }
   });
   const remoteSha = currentRemote.stdout.trim().split(/\s+/)[0] || "";
   if (remoteSha !== state.remoteSha) throw new Error("Remote branch changed during recovery verification; refusing to push.");

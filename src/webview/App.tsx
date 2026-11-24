@@ -21,6 +21,7 @@ import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
 import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
 import { McpIntegrationsPanel } from "./components/McpIntegrationsPanel";
 import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
+import { SecurityPolicyPanel } from "./components/SecurityPolicyPanel";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -114,6 +115,8 @@ function App() {
     listFiles: (relativePath: string) => Promise<Array<{ name: string; path: string; kind: string }>>;
     readFile: (relativePath: string) => Promise<{ path: string; content: string; size: number }>;
     writeFile: (relativePath: string, content: string) => Promise<{ path: string; size: number }>;
+  }; artifacts?: {
+    put: (request: { taskId?: string; kind: "log" | "report"; name: string; data: string; metadata: Record<string, unknown> }) => Promise<unknown>;
   } } }).axiomDesktop;
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
@@ -488,6 +491,55 @@ function App() {
     setWorkflowPlan(null);
     const workerPersistenceByTask = new Map<string, Promise<void>>();
     const latestWorkerRecordByTask = new Map<string, TaskExecutionRecord>();
+    const workerOutputByAttempt = new Map<string, { lines: string[]; characters: number; truncated: boolean }>();
+    const persistedWorkerAttempts = new Set<string>();
+    const workerAttemptKey = (taskId: string, attempt: number) => taskId + ":" + attempt;
+    const captureWorkerOutput = (taskId: string, line: string, attempt: number) => {
+      const key = workerAttemptKey(taskId, attempt);
+      let capture = workerOutputByAttempt.get(key);
+      if (!capture) {
+        capture = { lines: [], characters: 0, truncated: false };
+        workerOutputByAttempt.set(key, capture);
+      }
+      const normalized = String(line ?? "").replace(/[\r\n]+/g, " ").slice(0, 8000);
+      const remaining = 512 * 1024 - capture.characters;
+      if (remaining <= 0) {
+        capture.truncated = true;
+        return;
+      }
+      const accepted = normalized.slice(0, remaining);
+      capture.lines.push(accepted);
+      capture.characters += accepted.length;
+      if (accepted.length < normalized.length) capture.truncated = true;
+    };
+    const persistWorkerOutput = (record: TaskExecutionRecord, attempt: number) => {
+      const key = workerAttemptKey(record.taskId, attempt);
+      if (persistedWorkerAttempts.has(key)) return;
+      persistedWorkerAttempts.add(key);
+      const capture = workerOutputByAttempt.get(key);
+      if (!capture || capture.lines.length === 0) return;
+      const projectArtifacts = desktopApi()?.artifacts;
+      if (!projectArtifacts?.put) return;
+      const data = capture.lines.join("\n");
+      workerOutputByAttempt.delete(key);
+      void projectArtifacts.put({
+        taskId: record.taskId,
+        kind: "log",
+        name: "Worker output " + record.taskId + " attempt " + attempt,
+        data,
+        metadata: {
+          producer: "local-worker",
+          taskId: record.taskId,
+          attempt,
+          sessionId: record.sessionId ?? null,
+          worktreePath: record.worktreePath ?? null,
+          lineCount: capture.lines.length,
+          characters: capture.characters,
+          truncated: capture.truncated,
+          capturedAt: Date.now()
+        }
+      }).catch(error => logger.error("Could not persist worker output artifact", { taskId: record.taskId, attempt, error }));
+    };
     try {
       let parentSessionId = sync.currentSessionId();
       if (!parentSessionId) {
@@ -532,6 +584,10 @@ function App() {
           const project = desktopApi()?.project;
           latestWorkerRecordByTask.set(record.taskId, mergedRecord);
           if (project) enqueueWorkerPersistence(record.taskId);
+          const completedAttempt = originatingAttempt ?? attemptsByTask.get(record.taskId) ?? record.attempt ?? 1;
+          if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status)) {
+            persistWorkerOutput(record, completedAttempt);
+          }
           if (["succeeded", "failed", "blocked", "cancelled", "timed_out"].includes(record.status) && project) {
             const summary = record.status === "succeeded"
               ? "Worker session finished. Its changes remain isolated until reviewed and explicitly integrated."
@@ -573,6 +629,8 @@ function App() {
         },
         onLog: (taskId: string, line: string, originatingAttempt?: number) => {
           if (!isCurrentTaskAttempt(taskId, originatingAttempt, attemptsByTask)) return;
+          const attempt = originatingAttempt ?? attemptsByTask.get(taskId) ?? 1;
+          captureWorkerOutput(taskId, line, attempt);
           const updated = taskOutcomes().map(item => item.taskId === taskId ? { ...item, logs: [...(item.logs ?? []), line].slice(-200) } : item);
           setTaskOutcomes(updated);
           const existing = updated.find(item => item.taskId === taskId);
@@ -745,6 +803,36 @@ function App() {
             // Replacement work is intentionally independent because sibling worktrees are isolated.
             dependsOn: task.dependsOn.map(id => "replan-" + (replanRound + 1) + "-" + replanned.tasks.findIndex(candidate => candidate.id === id) + "-" + id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48)),
           }));
+          const artifactBridge = desktopApi()?.artifacts;
+          if (artifactBridge?.put) {
+            try {
+              await artifactBridge.put({
+                kind: "report",
+                name: "Autonomous repair replan " + (replanRound + 1),
+                data: JSON.stringify({
+                  round: replanRound + 1,
+                  decision: { action: decision.action, reason: decision.reason, affectedTaskIds: [...affectedIds] },
+                  failedTasks: diagnostics,
+                  successfulTasks,
+                  acceptedReplacementTasks: replacementTasks.map(task => ({
+                    id: task.id, title: task.title, scope: task.scope,
+                    targetFiles: task.targetFiles, dependsOn: task.dependsOn,
+                    acceptanceCriteria: task.acceptanceCriteria
+                  })),
+                  capturedAt: Date.now()
+                }, null, 2),
+                metadata: {
+                  producer: "autonomous-repair-controller",
+                  round: replanRound + 1,
+                  failedTaskCount: failedTasks.length,
+                  replacementTaskCount: replacementTasks.length,
+                  capturedAt: Date.now()
+                }
+              });
+            } catch (artifactError) {
+              logger.error("Could not persist autonomous repair trace", { round: replanRound + 1, error: artifactError });
+            }
+          }
           // Preserve historical attempts when removing failed tasks from the active graph;
           // otherwise each replan would reset the global safety budget.
           retiredAttemptCount += failedTasks.reduce((sum, task) => sum + (attemptsByTask.get(task.id) ?? 0), 0);
@@ -1765,6 +1853,7 @@ function App() {
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
+        <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
         <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {
@@ -1912,6 +2001,7 @@ function App() {
         </Show>
         <VerificationPanel results={verificationResults()} />
         <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
+        <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkspaceRecoveryPanel />
         
         <Show when={standalonePermissions().length > 0}>

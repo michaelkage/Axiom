@@ -20,8 +20,22 @@ const { createOmniRouteManager } = require("./omniroute.cjs");
 const { classifyWorkspaceDrift } = require("./workspace-drift.cjs");
 const { normalizeWorkspaceRelativePath, resolveSafeWorkspaceFile, parseGitStatusPorcelainZ, resolveWorkerQualityStatus, readRegularFileNoFollow, applyStagedWorkspaceFiles, withWorkspaceIntegrationLock } = require("./worktree-integration.cjs");
 const { createWorkerStateStore } = require("./worker-state.cjs");
+const { createExecutionLedger } = require("./execution-ledger.cjs");
+const { createProviderCredentialManager } = require("./provider-credentials.cjs");
+const { createExecutionArtifactStore } = require("./execution-artifacts.cjs");
+const { createRuntimeOutputCapture } = require("./runtime-output-capture.cjs");
+const { createExecutionTelemetry } = require("./execution-telemetry.cjs");
+const { createOpenCodeTelemetryBridge } = require("./opencode-telemetry-bridge.cjs");
+const { createWorkerOwnershipRegistry } = require("./worker-ownership.cjs");
+const { createProjectKnowledgeStore } = require("./project-knowledge-store.cjs");
 const { createDetachedWorktree } = require("./worker-worktree.cjs");
 const { createMcpManager } = require("./mcp-manager.cjs");
+const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
+const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
+const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
+const { applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
+const { createNetworkPolicyProxy } = require("./network-policy-proxy.cjs");
+const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
 const { inspectMcpRuntime, runWorkerToolProbe } = require("./mcp-runtime.cjs");
 const { createRuntimeEnvironment } = require("./runtime-environment.cjs");
 const { createRemoteWorkspace, commitAndPushWorkspace, reconcileRemoteWorkspace, pushReconciledWorkspace, cleanupRemoteWorkspace, discardInterruptedCloneWorkspace, git: remoteGit } = require("./remote-workspace-runner.cjs");
@@ -32,6 +46,92 @@ let runtimeProcess;
 let terminalRunner;
 let omniRouteManager;
 let mcpManager;
+let securityAuditStore;
+let workspaceSecurityPolicyStore;
+let runtimeNetworkProxy;
+let runtimeNetworkProxyWorkspace = null;
+const runtimeNetworkApprovalCache = new Map();
+const runtimeNetworkApprovalPending = new Map();
+let runtimeNetworkEpoch = 0;
+function currentWorkspaceSecurityPolicyStore() {
+  if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
+  return workspaceSecurityPolicyStore;
+}
+function currentSecurityAuditStore() {
+  if (!securityAuditStore) {
+    const secureStore = currentSecureCredentialStore();
+    let integrityKey = secureStore.get("security", "audit-integrity-key");
+    if (!integrityKey) {
+      integrityKey = require("node:crypto").randomBytes(32).toString("hex");
+      secureStore.set("security", "audit-integrity-key", integrityKey);
+    }
+    if (!/^[a-f0-9]{64}$/i.test(integrityKey)) throw new Error("The protected security audit integrity key is invalid.");
+    const readAnchor = () => {
+      const value = secureStore.get("security", "audit-integrity-head");
+      if (!value) return null;
+      let parsed;
+      try { parsed = JSON.parse(value); } catch { throw new Error("The protected security audit head is corrupt."); }
+      return parsed;
+    };
+    securityAuditStore = createSecurityAuditStore({
+      userDataPath: app.getPath("userData"),
+      integrityKey,
+      getAnchor: readAnchor,
+      setAnchor: anchor => secureStore.set("security", "audit-integrity-head", JSON.stringify(anchor))
+    });
+  }
+  return securityAuditStore;
+}
+async function authorizeFilesystemOperation(operation, relativePath) {
+  const baseEvaluation = evaluateFilesystemAccess({ workspaceRoot: selectedWorkspace, relativePath, operation });
+  const projectPolicy = selectedWorkspace ? currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "filesystem." + operation) : { decision: "deny", reason: "No trusted workspace is selected." };
+  const evaluation = combineFilesystemDecisions(baseEvaluation, projectPolicy);
+  const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
+  const audit = currentSecurityAuditStore();
+  if (evaluation.decision === "deny") {
+    audit.record({ action: "filesystem." + operation, decision: "deny", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
+    await appendRuntimeLog("Security policy denied filesystem." + operation + ": " + evaluation.reason);
+    throw new Error("Security policy denied filesystem access: " + evaluation.reason);
+  }
+  if (evaluation.decision === "approval-required") {
+    audit.record({ action: "filesystem." + operation, decision: "approval-required", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
+    try {
+      await requirePrivilegedApproval({
+        title: "Approve project file modification",
+        message: "Allow Axiom to modify a file in the selected project?",
+        detail: "Path: " + String(relativePath || "(project root)") + "\nPolicy: " + evaluation.reason,
+        approveLabel: "Modify file"
+      });
+      audit.record({ action: "filesystem." + operation, decision: "allow", reason: "User approved the native filesystem confirmation.", projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
+    } catch (error) {
+      audit.record({ action: "filesystem." + operation, decision: "deny", reason: "User denied or dismissed native filesystem confirmation.", projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
+      throw error;
+    }
+  } else {
+    audit.record({ action: "filesystem." + operation, decision: "allow", reason: evaluation.reason, projectId, resource: redactSecrets(String(relativePath || "")).slice(0, 512) });
+  }
+  return true;
+}
+let pluginHost;
+function currentPluginHost() {
+  if (!pluginHost) {
+    const root = path.join(app.getPath("userData"), PLUGIN_DIRECTORY);
+    pluginHost = createPluginHost({
+      root,
+      spawnSandbox: request => createPlatformPluginSandbox().run(request),
+      authorize: async ({ pluginId, capabilities }) => enforceWorkspacePolicyApproval("plugin.execute", {
+        title: "Approve plugin execution",
+        message: "Allow this installed plugin to execute in Axiom's isolated runtime?",
+        detail: "Plugin: " + pluginId + "\\nRequested capabilities: " + (capabilities.length ? capabilities.join(", ") : "none"),
+        approveLabel: "Run plugin",
+        resource: "plugin:" + pluginId
+      })
+    });
+  }
+  return pluginHost;
+}
+const executionTelemetry = createExecutionTelemetry();
+let openCodeTelemetryBridge;
 let secureCredentialStore;
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
@@ -60,6 +160,17 @@ let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+let workerOwnership;
+let workerOwnershipWorkspace = null;
+function ownershipForWorkspace(workspaceRoot) {
+  const root = path.resolve(workspaceRoot);
+  if (!workerOwnership || workerOwnershipWorkspace !== root) {
+    const id = require("node:crypto").createHash("sha256").update(root).digest("hex").slice(0, 40);
+    workerOwnership = createWorkerOwnershipRegistry({ filePath: path.join(app.getPath("userData"), "worker-ownership", id + ".json"), workspaceRoot: root });
+    workerOwnershipWorkspace = root;
+  }
+  return workerOwnership;
+}
 const browserSessions = new Map();
 const remoteWorkspaceOperations = new Map();
 const remoteWorkspaceInstanceId = require("node:crypto").randomUUID();
@@ -199,16 +310,38 @@ async function runtimeExecutable() {
   throw new Error("Axiom's bundled runtime could not be found. Reinstall Axiom using the latest installer for your platform.");
 }
 
-function runtimeConfigurationEnvironment() {
+async function runtimeConfigurationEnvironment(workspaceRoot) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted runtime workspace is required.");
   const merged = {};
-  for (const manager of [omniRouteManager, mcpManager]) {
-    const environment = manager ? manager.openCodeEnvironment({ workspaceRoot: selectedWorkspace }) : {};
+  for (const manager of (selectedWorkspace ? [omniRouteManager, mcpManager] : [])) {
+    const environment = manager ? manager.openCodeEnvironment({ workspaceRoot }) : {};
     if (environment.OPENCODE_CONFIG_CONTENT) {
       try { Object.assign(merged, JSON.parse(environment.OPENCODE_CONFIG_CONTENT)); }
       catch { throw new Error("Axiom generated invalid local runtime configuration; startup was blocked."); }
     }
   }
-  return Object.keys(merged).length ? { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) } : {};
+  const policy = currentWorkspaceSecurityPolicyStore().read(workspaceRoot).policy;
+  const configuredProvider = merged.provider && merged.provider.omniroute;
+  const routerBaseUrl = configuredProvider?.options?.baseURL;
+  if (typeof routerBaseUrl === "string") {
+    let routerUrl;
+    try { routerUrl = new URL(routerBaseUrl); } catch { throw new Error("OmniRoute provider endpoint is invalid; runtime startup was blocked."); }
+    const isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(routerUrl.hostname.toLowerCase());
+    if (!isLoopback && !(await tryAuthorizeRuntimeNetwork(routerBaseUrl, workspaceRoot, "external OmniRoute endpoint"))) {
+      delete merged.provider.omniroute;
+      if (typeof merged.model === "string" && merged.model.startsWith("omniroute/")) delete merged.model;
+      if (Object.keys(merged.provider).length === 0) delete merged.provider;
+    }
+  }
+  const configuredMcp = merged.mcp && typeof merged.mcp === "object" ? merged.mcp : {};
+  for (const [id, server] of Object.entries(configuredMcp)) {
+    if (server && server.type === "remote" && typeof server.url === "string") {
+      if (!(await tryAuthorizeRuntimeNetwork(server.url, workspaceRoot, "remote MCP server " + id))) delete configuredMcp[id];
+    }
+  }
+  if (merged.mcp && Object.keys(merged.mcp).length === 0) delete merged.mcp;
+  applyRuntimePermissionPolicy(merged, policy);
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(merged) };
 }
 
 function findFreePort() {
@@ -263,29 +396,78 @@ async function startRuntime(workspace) {
   const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
   const runtimeEnvironment = createRuntimeEnvironment(process.env, app.getPath("userData"));
   await appendRuntimeLog(`Runtime data isolation: APPDATA=${runtimeEnvironment.APPDATA}; XDG_DATA_HOME=${runtimeEnvironment.XDG_DATA_HOME}`);
-  runtimeProcess = spawn(executable, args, {
-    cwd: workspace,
-    windowsHide: true,
-    // Native .exe paths must bypass cmd.exe. In particular, shell:true splits
-    // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
-    shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...runtimeEnvironment, ...runtimeConfigurationEnvironment() }
-  });
+  await stopRuntimeNetworkProxy();
+  runtimeNetworkProxy = createWorkspaceNetworkProxy(workspace);
+  runtimeNetworkProxyWorkspace = path.resolve(workspace);
+  let proxyEnvironment;
+  let runtimeConfiguration;
+  try {
+    proxyEnvironment = await runtimeNetworkProxy.start();
+    runtimeConfiguration = await runtimeConfigurationEnvironment(workspace);
+  } catch (error) {
+    await stopRuntimeNetworkProxy();
+    throw error;
+  }
+  try {
+    runtimeProcess = spawn(executable, args, {
+      cwd: workspace,
+      windowsHide: true,
+      // Native .exe paths must bypass cmd.exe. In particular, shell:true splits
+      // "C:\\Program Files\\..." and makes Windows try to execute "C:\\Program".
+      shell: process.platform === "win32" && /\\.(cmd|bat)$/i.test(executable),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...runtimeEnvironment, ...runtimeConfiguration, ...proxyEnvironment }
+    });
+  } catch (error) {
+    await stopRuntimeNetworkProxy();
+    throw error;
+  }
 
+  const runtimeCapture = createRuntimeOutputCapture();
+  const runtimeCaptureId = require("node:crypto").randomUUID();
+  let runtimeCapturePersisted = false;
+  const persistRuntimeOutput = async () => {
+    if (runtimeCapturePersisted) return;
+    runtimeCapturePersisted = true;
+    const captured = runtimeCapture.snapshot();
+    if (!captured.bytes) return;
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspace)).digest("hex").slice(0, 40);
+    try {
+      await createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") }).put({
+        projectId,
+        kind: "log",
+        name: "Runtime output " + runtimeCaptureId,
+        data: captured.data,
+        metadata: {
+          producer: "opencode-runtime",
+          runtimeSessionId: runtimeCaptureId,
+          workspace: path.basename(workspace),
+          bytes: captured.bytes,
+          stdoutBytes: captured.stdoutBytes,
+          stderrBytes: captured.stderrBytes,
+          truncated: captured.truncated,
+          capturedAt: Date.now()
+        }
+      });
+    } catch (error) {
+      await appendRuntimeLog("Could not persist runtime output artifact: " + redactSecrets(error?.message || error).slice(0, 400));
+    }
+  };
   let recentOutput = "";
   const collect = chunk => {
     recentOutput = (recentOutput + chunk.toString()).slice(-6000);
   };
-  runtimeProcess.stdout?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
-  runtimeProcess.stderr?.on("data", chunk => { collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
+  runtimeProcess.stdout?.on("data", chunk => { runtimeCapture.append("stdout", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
+  runtimeProcess.stderr?.on("data", chunk => { runtimeCapture.append("stderr", chunk); collect(chunk); void appendRuntimeLog(chunk.toString().trimEnd()); });
   runtimeProcess.on("error", error => {
+    void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime process error: ${error.stack || error.message}`);
     if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
       void dialog.showMessageBox(mainWindow, { type: "error", title: "Axiom runtime error", message: "Axiom could not launch its local AI runtime.", detail: `${error.message}\n\nRuntime log: ${path.join(app.getPath("userData"), "logs", "runtime.log")}\n\nRestart Axiom after reviewing the log.`, buttons: ["OK"] });
     }
   });
   runtimeProcess.on("exit", (code, signal) => {
+    void stopRuntimeNetworkProxy();
     void appendRuntimeLog(`Runtime exited (code=${code}, signal=${signal || "none"}).`);
     if (!isQuitting && !stoppingRuntime && mainWindow && !mainWindow.isDestroyed()) {
       void dialog.showMessageBox(mainWindow, {
@@ -306,6 +488,8 @@ async function startRuntime(workspace) {
       }).catch(error => { void appendRuntimeLog(`Runtime-exit dialog failed: ${error.message}`); });
     }
   });
+
+  runtimeProcess.once("close", () => { void persistRuntimeOutput(); });
 
   const url = "http://127.0.0.1:" + port;
   try {
@@ -386,6 +570,18 @@ async function createWindow() {
   }
 
   activeRuntimeUrl = serverUrl;
+  openCodeTelemetryBridge = createOpenCodeTelemetryBridge({
+    telemetry: executionTelemetry,
+    onMetric: metric => {
+      void appendRuntimeLog("Model request completed: provider=" + metric.providerId + " model=" + metric.modelId + " durationMs=" + metric.durationMs + " inputTokens=" + metric.inputTokens + " outputTokens=" + metric.outputTokens + ".");
+      if (selectedWorkspace) {
+        const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+        void currentExecutionArtifactStore().put({ projectId, kind: "report", name: "Model request " + metric.id, data: JSON.stringify(metric), metadata: { producer: "model-telemetry", providerId: metric.providerId, modelId: metric.modelId } }).catch(error => appendRuntimeLog("Model telemetry artifact persistence failed: " + redactSecrets(error?.message || error).slice(0, 300)));
+      }
+    },
+    onError: error => { void appendRuntimeLog("OpenCode telemetry stream error: " + redactSecrets(error?.message || error).slice(0, 300)); }
+  });
+  openCodeTelemetryBridge.start(activeRuntimeUrl);
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -545,6 +741,38 @@ async function inspectWorktree(event, message) {
   }
 }
 
+async function persistQualityGateArtifact(message, report) {
+  if (!selectedWorkspace || path.resolve(String(message.workspaceRoot || "")) !== path.resolve(selectedWorkspace)) return;
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const checks = Array.isArray(report.checks) ? report.checks.slice(0, 40).map(check => ({
+    name: redactSecrets(String(check.name || "Verification check")).slice(0, 160),
+    command: redactSecrets(String(check.command || "")).slice(0, 500),
+    state: String(check.state || "unverified").slice(0, 32),
+    exitCode: Number.isInteger(check.exitCode) ? check.exitCode : null,
+    output: redactSecrets(String(check.output || "")).slice(0, 64 * 1024)
+  })) : [];
+  const data = redactSecrets(JSON.stringify({
+    status: String(report.status || "Blocked").slice(0, 80),
+    ranProjectCheck: report.ranProjectCheck === true,
+    checks
+  })).slice(0, 512 * 1024);
+  await currentExecutionArtifactStore().put({
+    projectId,
+    taskId: typeof message.taskId === "string" ? message.taskId : null,
+    kind: "report",
+    name: "Quality gate " + String(message.taskId || message.requestId || "verification").slice(0, 120),
+    data,
+    metadata: {
+      producer: "quality-gate",
+      requestId: String(message.requestId || "").slice(0, 160),
+      status: String(report.status || "Blocked").slice(0, 80),
+      checkCount: checks.length,
+      passedCount: checks.filter(check => check.state === "passed").length,
+      capturedAt: Date.now()
+    }
+  });
+}
+
 async function runQualityGate(event, message) {
   const checks = [];
   const addCheck = async (name, command, args, cwd, timeout) => {
@@ -623,6 +851,8 @@ async function runQualityGate(event, message) {
       checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." })),
       files: Array.isArray(message.changedPaths) ? message.changedPaths : []
     });
+    try { await persistQualityGateArtifact(message, { status, checks, ranProjectCheck }); }
+    catch (artifactError) { await appendRuntimeLog("Could not persist quality-gate artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400)); }
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status, checks, ranProjectCheck });
     sendHostMessage(event, { type: "project-state-updated" });
   } catch (error) {
@@ -635,6 +865,8 @@ async function runQualityGate(event, message) {
       });
       sendHostMessage(event, { type: "project-state-updated" });
     } catch { /* A history write failure must not hide the verification error. */ }
+    try { await persistQualityGateArtifact(message, { status: "Blocked", checks }); }
+    catch (artifactError) { await appendRuntimeLog("Could not persist blocked quality-gate artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400)); }
     sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status: "Blocked", checks, error: error.message });
   }
 }
@@ -673,6 +905,8 @@ async function applyWorktreeChanges(event, message) {
       if (await gitRoot(message.worktreePath) !== root) throw new Error("Task worktree belongs to a different Git repository.");
       if (!Array.isArray(message.paths) || message.paths.length > 100) throw new Error("Select between 1 and 100 files to integrate.");
       const requested = [...new Set(message.paths.map(normalizeWorkspaceRelativePath))];
+      const ownership = ownershipForWorkspace(root).validateChanges(message.taskId, requested);
+      if (!ownership.allowed) throw new Error("Worker attempted to integrate files outside its assigned ownership: " + ownership.violations.join(", "));
       if (!requested.length) throw new Error("Select at least one file to integrate.");
       const pathKeys = requested.map(value => process.platform === "win32" ? value.toLowerCase() : value);
       if (new Set(pathKeys).size !== pathKeys.length) throw new Error("The selection contains duplicate paths after normalization.");
@@ -789,6 +1023,7 @@ async function applyWorktreeChanges(event, message) {
         }
       });
       appliedPaths.push(...committedPaths);
+      ownershipForWorkspace(root).release(message.taskId);
 
       sendHostMessage(event, { type: "agent-worktree-apply-result", taskId: message.taskId, ok: true, appliedPaths, remoteRevision: upstream?.sha ?? null });
       if (typeof message.worktreePath === "string") {
@@ -810,6 +1045,196 @@ function trustedRenderer(event) {
   return !!mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
 }
 
+async function requirePrivilegedApproval({ title, message, detail, approveLabel = "Approve" }) {
+  const options = {
+    type: "warning",
+    title,
+    message,
+    detail: redactSecrets(String(detail || "")).slice(0, 3000),
+    buttons: [approveLabel, "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true
+  };
+  const result = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showMessageBox(mainWindow, options)
+    : await dialog.showMessageBox(options);
+  const projectId = selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null;
+  const auditAction = "privileged." + String(title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 72);
+  currentSecurityAuditStore().record({
+    action: auditAction,
+    decision: result.response === 0 ? "allow" : "deny",
+    reason: result.response === 0 ? "Explicit native main-process approval granted." : "Explicit native main-process approval denied or dismissed.",
+    projectId,
+    resource: redactSecrets(String(detail || "")).slice(0, 512)
+  });
+  if (result.response !== 0) {
+    await appendRuntimeLog("Privileged operation denied by the user: " + title + ".");
+    throw new Error("Operation cancelled: explicit main-process approval was not granted.");
+  }
+  await appendRuntimeLog("Privileged operation approved by the user: " + title + ".");
+  return true;
+}
+
+function normalizeNetworkPolicyTarget(rawUrl) {
+  if (typeof rawUrl !== "string" || rawUrl.length > 4096) throw new TypeError("A valid network destination is required.");
+  if (/^git@[a-z0-9.-]+:/i.test(rawUrl)) {
+    const host = rawUrl.slice(4).split(":")[0].toLowerCase();
+    return "https://" + host + ":22/";
+  }
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { throw new Error("Network destination is invalid."); }
+  if (parsed.protocol === "ssh:") return "https://" + parsed.hostname + ":" + (parsed.port || "22") + "/";
+  return parsed.toString();
+}
+
+async function enforceWorkspaceNetworkApproval(rawUrl, options = {}, workspaceRoot = selectedWorkspace) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted workspace is required for outbound network access.");
+  const target = normalizeNetworkPolicyTarget(rawUrl);
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
+  const origin = new URL(target).origin;
+  const audit = currentSecurityAuditStore();
+  const result = currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(workspaceRoot, target, []);
+  const resource = redactSecrets(origin).slice(0, 512);
+  if (result.decision === "deny") {
+    audit.record({ action: "network.request", decision: "deny", reason: result.reason, projectId, resource });
+    throw new Error("Workspace security policy denied outbound network access to " + origin + ".");
+  }
+  if (result.decision === "approval-required") {
+    audit.record({ action: "network.request", decision: "approval-required", reason: result.reason, projectId, resource });
+    try {
+      await requirePrivilegedApproval({
+        title: options.title || "Approve outbound network access",
+        message: options.message || "Allow this project to connect to an external service?",
+        detail: (options.detail ? options.detail + "\\n" : "") + "Destination: " + origin,
+        approveLabel: options.approveLabel || "Allow connection"
+      });
+      audit.record({ action: "network.request", decision: "allow", reason: "User approved outbound network access.", projectId, resource });
+      return true;
+    } catch (error) {
+      audit.record({ action: "network.request", decision: "deny", reason: "Outbound network approval was denied or dismissed.", projectId, resource });
+      throw error;
+    }
+  }
+  audit.record({ action: "network.request", decision: "allow", reason: result.reason, projectId, resource });
+  return true;
+}
+
+async function authorizeRuntimeNetwork(rawUrl, workspaceRoot, options = {}) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot)) throw new Error("A trusted runtime workspace is required.");
+  const target = new URL(normalizeNetworkPolicyTarget(rawUrl));
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
+  const record = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+  const port = target.port || (target.protocol === "https:" ? "443" : "80");
+  const cacheKey = projectId + ":" + record.revision + ":" + target.hostname.toLowerCase() + ":" + port;
+  if (runtimeNetworkApprovalCache.get(cacheKey) === record.revision) return true;
+  const pending = runtimeNetworkApprovalPending.get(cacheKey);
+  if (pending) return pending;
+  if (runtimeNetworkApprovalCache.size + runtimeNetworkApprovalPending.size >= 128) {
+    throw new Error("Runtime network approval limit reached for this policy revision.");
+  }
+  const epoch = runtimeNetworkEpoch;
+  const operation = (async () => {
+    await enforceWorkspaceNetworkApproval(target.toString(), {
+      title: "Approve runtime outbound connection",
+      message: "Allow the Axiom runtime or one of its managed tools to connect to this external host?",
+      detail: "Runtime egress",
+      approveLabel: "Allow host"
+    }, workspaceRoot);
+    if (epoch !== runtimeNetworkEpoch) {
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Runtime stopped while network approval was pending.", projectId, resource: target.origin });
+      throw new Error("Runtime stopped while network approval was pending.");
+    }
+    const updated = currentWorkspaceSecurityPolicyStore().read(workspaceRoot);
+    if (updated.revision !== record.revision) {
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Workspace network policy changed while approval was pending.", projectId, resource: target.origin });
+      throw new Error("Workspace network policy changed while approval was pending; retry the connection.");
+    }
+    runtimeNetworkApprovalCache.set(cacheKey, updated.revision);
+    return true;
+  })();
+  runtimeNetworkApprovalPending.set(cacheKey, operation);
+  try { return await operation; }
+  finally { if (runtimeNetworkApprovalPending.get(cacheKey) === operation) runtimeNetworkApprovalPending.delete(cacheKey); }
+}
+
+function createWorkspaceNetworkProxy(workspaceRoot) {
+  return createNetworkPolicyProxy({
+    authorize: request => authorizeRuntimeNetwork(request.url, workspaceRoot),
+    onBlocked: ({ url, reason }) => {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(workspaceRoot)).digest("hex").slice(0, 40);
+      let resource = "invalid-origin";
+      try { resource = new URL(url).origin; } catch {}
+      currentSecurityAuditStore().record({ action: "network.request", decision: "deny", reason: "Runtime proxy blocked destination: " + reason, projectId, resource: redactSecrets(resource) });
+    }
+  });
+}
+
+async function withWorkspaceNetworkProxy(workspaceRoot, operation) {
+  if (typeof workspaceRoot !== "string" || !path.isAbsolute(workspaceRoot) || typeof operation !== "function") {
+    throw new TypeError("A trusted workspace and network operation are required.");
+  }
+  let temporary = false;
+  if (runtimeNetworkProxy) {
+    if (path.resolve(runtimeNetworkProxyWorkspace || "") !== path.resolve(workspaceRoot)) {
+      throw new Error("The active runtime proxy belongs to another workspace; restart the runtime before network operations.");
+    }
+  } else {
+    runtimeNetworkProxy = createWorkspaceNetworkProxy(workspaceRoot);
+    runtimeNetworkProxyWorkspace = path.resolve(workspaceRoot);
+    try { await runtimeNetworkProxy.start(); temporary = true; }
+    catch (error) { await stopRuntimeNetworkProxy(); throw error; }
+  }
+  try { return await operation(runtimeNetworkProxy.environment()); }
+  finally { if (temporary) await stopRuntimeNetworkProxy(); }
+}
+
+async function stopRuntimeNetworkProxy() {
+  const proxy = runtimeNetworkProxy;
+  runtimeNetworkProxy = null;
+  runtimeNetworkProxyWorkspace = null;
+  runtimeNetworkEpoch += 1;
+  runtimeNetworkApprovalCache.clear();
+  runtimeNetworkApprovalPending.clear();
+  if (proxy) await proxy.stop();
+}
+
+async function tryAuthorizeRuntimeNetwork(rawUrl, workspaceRoot, label) {
+  try {
+    await authorizeRuntimeNetwork(rawUrl, workspaceRoot);
+    return true;
+  } catch (error) {
+    await appendRuntimeLog("Blocked " + String(label || "runtime network endpoint") + ": " + redactSecrets(error?.message || error).slice(0, 400));
+    return false;
+  }
+}
+
+async function enforceWorkspacePolicyApproval(action, options) {
+  if (!selectedWorkspace) throw new Error("A selected project is required for this privileged operation.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const resource = redactSecrets(String(options.resource || "workspace-operation")).slice(0, 512);
+  const audit = currentSecurityAuditStore();
+  const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, action);
+  if (policy.decision === "deny") {
+    audit.record({ action, decision: "deny", reason: policy.reason, projectId, resource });
+    throw new Error("Workspace security policy denied " + action + ".");
+  }
+  if (policy.decision !== "allow" && policy.decision !== "approval-required") {
+    audit.record({ action, decision: "deny", reason: "Invalid workspace policy decision; operation fails closed.", projectId, resource });
+    throw new Error("Workspace security policy returned an invalid decision for " + action + ".");
+  }
+  audit.record({ action, decision: policy.decision, reason: policy.reason, projectId, resource });
+  if (policy.decision === "allow") return true;
+  try {
+    await requirePrivilegedApproval(options);
+    audit.record({ action, decision: "allow", reason: "User approved operation under workspace policy.", projectId, resource });
+    return true;
+  } catch (error) {
+    audit.record({ action, decision: "deny", reason: "Native approval was denied or dismissed.", projectId, resource });
+    throw error;
+  }
+}
+
 function currentProjectStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createProjectStore(app.getPath("userData"), selectedWorkspace);
@@ -818,24 +1243,22 @@ function currentWorkerStateStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
-
-ipcMain.handle("axiom:secure-storage-get", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().get(request.namespace, request.key);
-});
-
-ipcMain.handle("axiom:secure-storage-set", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string" || typeof request.value !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().set(request.namespace, request.key, request.value);
-});
-
-ipcMain.handle("axiom:secure-storage-remove", (event, request) => {
-  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.namespace !== "string" || typeof request.key !== "string") throw new Error("Invalid secure storage request.");
-  return currentSecureCredentialStore().remove(request.namespace, request.key);
-});
+function currentExecutionLedger() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createExecutionLedger(app.getPath("userData"), selectedWorkspace);
+}
+function currentProviderCredentialManager() {
+  return createProviderCredentialManager(currentSecureCredentialStore());
+}
+function currentProjectKnowledgeStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return createProjectKnowledgeStore({ userDataPath: app.getPath("userData"), workspaceRoot: selectedWorkspace });
+}
+function currentExecutionArtifactStore() {
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  return createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") });
+}
 
 ipcMain.handle("axiom:mcp-diagnostics", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -852,6 +1275,32 @@ ipcMain.handle("axiom:mcp-worker-probe", async (event, id) => {
   if (typeof id !== "string") throw new Error("Invalid MCP integration ID.");
   const entry = mcpManager.getStatus().find(item => item.id === id);
   if (!entry || !entry.enabled) throw new Error("Enable this integration and restart Axiom before testing a worker tool call.");
+  if (!selectedWorkspace) throw new Error("Open a project before probing an MCP tool.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const audit = currentSecurityAuditStore();
+  const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "mcp.invoke");
+  const resource = "integration:" + entry.id;
+  if (policy.decision === "deny") {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: policy.reason, projectId, resource });
+    throw new Error("Workspace security policy denied MCP tool invocation.");
+  }
+  if (policy.decision !== "approval-required") {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: "Invalid MCP policy decision; invocation fails closed.", projectId, resource });
+    throw new Error("Workspace security policy returned an invalid MCP decision.");
+  }
+  audit.record({ action: "mcp.invoke", decision: "approval-required", reason: policy.reason, projectId, resource });
+  try {
+    await requirePrivilegedApproval({
+      title: "Approve MCP tool probe",
+      message: "Allow Axiom to create a model session and invoke a tool from this integration?",
+      detail: "Integration: " + entry.name + " (" + entry.id + ")\\nRisk: " + entry.riskLabel,
+      approveLabel: "Run tool probe"
+    });
+    audit.record({ action: "mcp.invoke", decision: "allow", reason: "User approved MCP tool probe.", projectId, resource });
+  } catch (error) {
+    audit.record({ action: "mcp.invoke", decision: "deny", reason: "MCP tool probe approval was denied or dismissed.", projectId, resource });
+    throw error;
+  }
   const taskId = "mcp-probe-" + require("node:crypto").randomUUID();
   const taskStore = currentWorkerStateStore();
   await taskStore.record({ taskId, title: "MCP tool verification: " + entry.name, status: "running", workerType: "mcp-diagnostic", integrationId: id, startedAt: Date.now() });
@@ -889,19 +1338,65 @@ ipcMain.handle("axiom:mcp-status", event => {
   return mcpManager.getStatus();
 });
 
-ipcMain.handle("axiom:mcp-save-secret", (event, request) => {
+ipcMain.handle("axiom:mcp-save-secret", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  if (!request || typeof request.id !== "string" || typeof request.secret !== "string") throw new Error("Invalid MCP credential request.");
+  if (!request || typeof request.id !== "string" || typeof request.secret !== "string" || !request.secret.trim()) throw new Error("Invalid MCP credential request.");
+  const integration = mcpManager.getStatus().find(item => item.id === request.id);
+  if (!integration) throw new Error("Unknown MCP integration.");
+  await requirePrivilegedApproval({
+    title: "Approve MCP credential storage",
+    message: "Store an encrypted credential for this MCP integration?",
+    detail: "Integration: " + integration.name + " (" + integration.id + ")\\nThe credential value is excluded from this confirmation and audit record.",
+    approveLabel: "Store credential"
+  });
   const result = mcpManager.saveSecret(request.id, request.secret);
-  void appendRuntimeLog("Saved secure MCP credential for " + request.id + "; restart required to load the integration.");
+  await appendRuntimeLog("Saved secure MCP credential for " + request.id + "; restart required to load the integration.");
   return result;
 });
 
-ipcMain.handle("axiom:mcp-enable", (event, request) => {
+ipcMain.handle("axiom:mcp-enable", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!request || typeof request.id !== "string" || typeof request.enabled !== "boolean") throw new Error("Invalid MCP enable request.");
+  if (request.enabled) {
+    const integration = mcpManager.getStatus().find(item => item.id === request.id);
+    if (!integration) throw new Error("Unknown MCP integration.");
+    if (!selectedWorkspace) throw new Error("Open a project before enabling an MCP integration.");
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+    const audit = currentSecurityAuditStore();
+    const policy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "mcp.invoke");
+    const resource = "integration:" + integration.id;
+    if (integration.transport === "remote" && integration.endpoint) {
+      await authorizeRuntimeNetwork(integration.endpoint, selectedWorkspace, {
+        title: "Approve remote MCP network access",
+        message: "Allow this MCP integration to connect to its remote service?",
+        detail: "Integration: " + integration.name,
+        approveLabel: "Allow MCP connection"
+      });
+    }
+    if (policy.decision === "deny") {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: policy.reason, projectId, resource });
+      throw new Error("Workspace security policy denied MCP integration activation.");
+    }
+    if (policy.decision !== "approval-required") {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: "Invalid MCP policy decision; activation fails closed.", projectId, resource });
+      throw new Error("Workspace security policy returned an invalid MCP decision.");
+    }
+    audit.record({ action: "mcp.invoke", decision: "approval-required", reason: policy.reason, projectId, resource });
+    try {
+      await requirePrivilegedApproval({
+        title: "Approve MCP integration",
+        message: "Allow this MCP integration to start with Axiom and expose its tools to the model runtime?",
+        detail: "Integration: " + integration.name + " (" + integration.id + ")\\nTransport: " + integration.transport + "\\nRisk: " + integration.riskLabel + "\\nEndpoint/package: " + String(integration.endpoint || integration.package || "managed"),
+        approveLabel: "Enable integration"
+      });
+      audit.record({ action: "mcp.invoke", decision: "allow", reason: "User approved MCP integration activation.", projectId, resource });
+    } catch (error) {
+      audit.record({ action: "mcp.invoke", decision: "deny", reason: "MCP integration approval was denied or dismissed.", projectId, resource });
+      throw error;
+    }
+  }
   const result = mcpManager.setEnabled(request.id, request.enabled);
-  void appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
+  await appendRuntimeLog("MCP integration " + request.id + " set enabled=" + request.enabled + "; restart required.");
   return result;
 });
 
@@ -912,28 +1407,129 @@ ipcMain.handle("axiom:mcp-remove", (event, id) => {
   return result;
 });
 
+ipcMain.handle("axiom:plugin-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentPluginHost().list();
+});
+
+ipcMain.handle("axiom:plugin-run", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before running a plugin.");
+  if (!request || typeof request.pluginId !== "string" || !Array.isArray(request.args || [])) throw new TypeError("Invalid plugin execution request.");
+  const result = await currentPluginHost().run(request.pluginId, {
+    workspaceRoot: selectedWorkspace,
+    args: request.args || []
+  });
+  await appendRuntimeLog("Plugin " + request.pluginId + " completed in the isolated runtime.");
+  return result;
+});
+
+ipcMain.handle("axiom:security-audit-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentSecurityAuditStore().list(200);
+});
+
+ipcMain.handle("axiom:security-audit-verify", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return { verified: true, sequence: currentSecurityAuditStore().verify() };
+});
+
+ipcMain.handle("axiom:security-policy-read", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  return currentWorkspaceSecurityPolicyStore().read(selectedWorkspace);
+});
+
+ipcMain.handle("axiom:security-policy-update", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("A security policy update is required.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const audit = currentSecurityAuditStore();
+  audit.record({ action: "security-policy.update", decision: "approval-required", reason: "Changing workspace security policy requires native confirmation.", projectId, resource: "workspace-policy" });
+  try {
+    await requirePrivilegedApproval({
+      title: "Change project security policy",
+      message: "Allow this change to the selected project's security policy?",
+      detail: "This policy controls filesystem reads and writes, shell execution, network requests, MCP calls, Git pushes, deployments and plugin execution. More restrictive decisions may block existing workflows.",
+      approveLabel: "Update policy"
+    });
+    const updated = currentWorkspaceSecurityPolicyStore().update(selectedWorkspace, request.policy, request.expectedRevision);
+    runtimeNetworkApprovalCache.clear();
+    audit.record({ action: "security-policy.update", decision: "allow", reason: "User approved a versioned workspace security policy update.", projectId, resource: "revision:" + updated.revision });
+    return updated;
+  } catch (error) {
+    audit.record({ action: "security-policy.update", decision: "deny", reason: "Policy update was denied or rejected: " + String(error.message || error).slice(0, 300), projectId, resource: "workspace-policy" });
+    throw error;
+  }
+});
+
+ipcMain.handle("axiom:telemetry-snapshot", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return executionTelemetry.snapshot();
+});
+
 ipcMain.handle("axiom:omniroute-status", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const config = omniRouteManager.getConfig();
+  const hostname = (() => { try { return new URL(config.baseUrl).hostname.toLowerCase(); } catch { return ""; } })();
+  const isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+  if (!isLoopback) {
+    if (!selectedWorkspace) return omniRouteManager.status({ skipEndpointProbe: true });
+    try { await authorizeRuntimeNetwork(config.baseUrl, selectedWorkspace); }
+    catch { return omniRouteManager.status({ skipEndpointProbe: true }); }
+  }
   return omniRouteManager.status();
 });
 
 ipcMain.handle("axiom:omniroute-check", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!settings || typeof settings !== "object") throw new TypeError("Invalid OmniRoute connection settings.");
+  const target = settings.baseUrl || omniRouteManager.getConfig().baseUrl;
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork(target, networkWorkspace);
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute connection test",
+    message: "Allow Axiom to send a connection test to this model-routing endpoint?",
+    detail: "Endpoint: " + String(settings.baseUrl || "configured endpoint") + "\nThe API key is excluded from this confirmation and audit record.",
+    approveLabel: "Test connection"
+  });
   return omniRouteManager.checkConnection(settings);
 });
 
 ipcMain.handle("axiom:omniroute-save", async (event, settings) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new TypeError("Invalid OmniRoute settings.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute configuration",
+    message: "Save this model-routing endpoint and its encrypted API credential?",
+    detail: "Endpoint: " + String(settings.baseUrl || "default local endpoint") + "\nModel: " + String(settings.model || "auto") + "\nThe API key is excluded from this confirmation and audit record.",
+    approveLabel: "Save routing settings"
+  });
   return omniRouteManager.save(settings);
 });
 
 ipcMain.handle("axiom:omniroute-install", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  return omniRouteManager.install();
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork("https://registry.npmjs.org", networkWorkspace);
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute installation",
+    message: "Allow Axiom to download and install the OmniRoute runtime?",
+    detail: "This operation installs a third-party command-line runtime on this device.",
+    approveLabel: "Install OmniRoute"
+  });
+  return withWorkspaceNetworkProxy(networkWorkspace, () => omniRouteManager.install());
 });
 
 ipcMain.handle("axiom:omniroute-start", async event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await requirePrivilegedApproval({
+    title: "Approve OmniRoute process startup",
+    message: "Allow Axiom to start the configured local model-routing process?",
+    detail: "The process will run in the background until stopped or Axiom exits.",
+    approveLabel: "Start OmniRoute"
+  });
   return omniRouteManager.start();
 });
 
@@ -947,6 +1543,14 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   const config = omniRouteManager.getConfig();
   const url = new URL(config.baseUrl);
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
+  const networkWorkspace = selectedWorkspace || path.join(app.getPath("userData"), "welcome-workspace");
+  await authorizeRuntimeNetwork(url.toString(), networkWorkspace);
+  await requirePrivilegedApproval({
+    title: "Approve external dashboard",
+    message: "Open the configured model-router dashboard in your default browser?",
+    detail: "URL: " + url.toString(),
+    approveLabel: "Open dashboard"
+  });
   await shell.openExternal(url.toString());
   return true;
 });
@@ -985,6 +1589,13 @@ function recordBrowserError(entry, value) {
 ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const url = validateBrowserNavigation(rawUrl);
+  const initialOrigin = new URL(url).origin;
+  await requirePrivilegedApproval({
+    title: "Approve browser network access",
+    message: "Allow the isolated Axiom browser to connect to this website?",
+    detail: "Origin: " + initialOrigin + "\nThe browser session is isolated from your normal browser profile.",
+    approveLabel: "Open website"
+  });
   const sessionId = require("node:crypto").randomUUID();
   const browserWindow = new BrowserWindow({
     parent: mainWindow, width: 1280, height: 860, minWidth: 720, minHeight: 520,
@@ -996,15 +1607,69 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
     },
   });
   browserWindow.removeMenu();
-  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [] };
+  const browserProjectId = selectedWorkspace
+    ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40)
+    : null;
+  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [], projectId: browserProjectId, openedAt: Date.now(), initialUrl: url, approvedOrigins: new Set([initialOrigin]) };
   browserSessions.set(sessionId, entry);
   const pageSession = browserWindow.webContents.session;
   pageSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   pageSession.on("will-download", (_downloadEvent, item) => item.cancel());
+  pageSession.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }, (details, callback) => {
+    let decision;
+    try {
+      decision = selectedWorkspace
+        ? currentWorkspaceSecurityPolicyStore().evaluateNetworkRequest(selectedWorkspace, details.url, [...entry.approvedOrigins])
+        : { decision: "deny", reason: "No trusted workspace is selected." };
+    } catch (error) {
+      decision = { decision: "deny", reason: "Network policy evaluation failed: " + String(error.message || error).slice(0, 200) };
+    }
+    if (decision.decision === "allow") {
+      callback({ cancel: false });
+      return;
+    }
+    try {
+      currentSecurityAuditStore().record({
+        action: "network.request",
+        decision: "deny",
+        reason: decision.reason,
+        projectId: entry.projectId,
+        resource: (() => { try { return new URL(details.url).origin; } catch { return "invalid-origin"; } })()
+      });
+    } catch (error) {
+      void appendRuntimeLog("Network denial audit failed closed: " + String(error.message || error).slice(0, 200));
+    }
+    recordBrowserError(entry, "Blocked outbound request: " + (() => { try { return new URL(details.url).origin; } catch { return "invalid destination"; } })() + ". " + decision.reason);
+    callback({ cancel: true });
+  });
+  pageSession.webRequest.onErrorOccurred({ urls: ["http://*/*", "https://*/*"] }, (_details) => {
+    let origin = "unknown origin";
+    try { origin = new URL(_details.url).origin; } catch {}
+    recordBrowserError(entry, "Network request failed (" + String(_details.error || "unknown").slice(0, 120) + ") at " + origin);
+  });
+  pageSession.webRequest.onCompleted({ urls: ["http://*/*", "https://*/*"] }, details => {
+    if (details.statusCode >= 400) {
+      let origin = "unknown origin";
+      try { origin = new URL(details.url).origin; } catch {}
+      recordBrowserError(entry, "Network response " + details.statusCode + " at " + origin);
+    }
+  });
   browserWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   browserWindow.webContents.on("will-navigate", (navigationEvent, target) => {
-    try { validateBrowserNavigation(target); }
-    catch { navigationEvent.preventDefault(); recordBrowserError(entry, "Blocked navigation to a non-HTTP(S) URL."); }
+    navigationEvent.preventDefault();
+    let origin = "unknown origin";
+    try { origin = new URL(validateBrowserNavigation(target)).origin; } catch {}
+    recordBrowserError(entry, "Blocked page-initiated navigation to " + origin + "; use the approved Axiom navigation control.");
+  });
+  browserWindow.webContents.on("will-redirect", (navigationEvent, target) => {
+    let nextOrigin = "";
+    let currentOrigin = "";
+    try { nextOrigin = new URL(validateBrowserNavigation(target)).origin; } catch {}
+    try { currentOrigin = new URL(browserWindow.webContents.getURL()).origin; } catch {}
+    if (!nextOrigin || nextOrigin !== currentOrigin) {
+      navigationEvent.preventDefault();
+      recordBrowserError(entry, "Blocked cross-origin or unsafe browser redirect to " + (nextOrigin || "an invalid destination") + ".");
+    }
   });
   browserWindow.webContents.on("console-message", (_consoleEvent, detailsOrLevel, message, line, sourceId) => {
     const details = detailsOrLevel && typeof detailsOrLevel === "object"
@@ -1020,6 +1685,24 @@ ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
   });
   browserWindow.on("closed", () => {
     browserSessions.delete(sessionId);
+    if (entry.projectId && entry.errors.length) {
+      const store = createExecutionArtifactStore({ root: path.join(app.getPath("userData"), "execution-artifacts") });
+      const data = redactSecrets(JSON.stringify({
+        sessionId,
+        openedAt: entry.openedAt,
+        closedAt: Date.now(),
+        initialOrigin: (() => { try { return new URL(entry.initialUrl).origin; } catch { return "unknown"; } })(),
+        finalOrigin: (() => { try { return new URL(entry.window.webContents.getURL()).origin; } catch { return "unknown"; } })(),
+        diagnostics: entry.errors.slice(-40)
+      })).slice(0, 64 * 1024);
+      void store.put({
+        projectId: entry.projectId,
+        kind: "log",
+        name: "Browser diagnostics " + sessionId,
+        data,
+        metadata: { producer: "browser-session", sessionId, diagnosticCount: entry.errors.length, capturedAt: Date.now() }
+      }).catch(error => appendRuntimeLog("Could not persist browser diagnostics artifact: " + redactSecrets(error?.message || error).slice(0, 400)));
+    }
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === entry.ownerId) {
       mainWindow.webContents.send("axiom:browser-closed", sessionId);
     }
@@ -1039,6 +1722,17 @@ ipcMain.handle("axiom:browser-navigate", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   const entry = ownedBrowserSession(event, request?.sessionId);
   const url = validateBrowserNavigation(request.url);
+  const nextOrigin = new URL(url).origin;
+  const currentOrigin = (() => { try { return new URL(entry.window.webContents.getURL()).origin; } catch { return ""; } })();
+  if (nextOrigin !== currentOrigin) {
+    await requirePrivilegedApproval({
+      title: "Approve browser navigation",
+      message: "Allow the isolated browser session to connect to a different website?",
+      detail: "From: " + (currentOrigin || "about:blank") + "\nTo: " + nextOrigin,
+      approveLabel: "Navigate"
+    });
+  }
+  if (nextOrigin !== currentOrigin) entry.approvedOrigins.add(nextOrigin);
   await loadBrowserPage(entry.window, url);
   return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
 });
@@ -1062,6 +1756,20 @@ ipcMain.handle("axiom:browser-screenshot", async (event, request) => {
   const image = await entry.window.webContents.capturePage();
   const bytes = image.toJPEG(72);
   if (bytes.length > 5 * 1024 * 1024) throw new Error("Screenshot exceeds the 5 MiB transfer limit.");
+  if (selectedWorkspace) {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        kind: "screenshot",
+        name: "Browser screenshot " + request.sessionId,
+        data: bytes,
+        metadata: { producer: "browser", sessionId: request.sessionId, url: entry.window.webContents.getURL(), capturedAt: Date.now(), format: "jpeg" }
+      });
+    } catch (error) {
+      await appendRuntimeLog("Could not persist browser screenshot artifact: " + redactSecrets(error?.message || error).slice(0, 500));
+    }
+  }
   return { dataUrl: "data:image/jpeg;base64," + bytes.toString("base64") };
 });
 ipcMain.handle("axiom:browser-close", (event, request) => {
@@ -1077,10 +1785,17 @@ ipcMain.handle("axiom:remote-worker-config", event => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   return readRemoteWorkerSettings();
 });
-ipcMain.handle("axiom:remote-worker-config-save", (event, request) => {
+ipcMain.handle("axiom:remote-worker-config-save", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid remote worker configuration.");
   const savedToken = currentSecureCredentialStore().get("worker-host", "token");
-  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request?.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  await requirePrivilegedApproval({
+    title: "Approve remote worker credentials",
+    message: "Save this remote worker host configuration and encrypted access token?",
+    detail: "Host: " + validated.hostUrl + "\nRepository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nThe access token is excluded from this confirmation and audit record.",
+    approveLabel: "Save remote worker"
+  });
   const store = currentSecureCredentialStore();
   store.set("worker-host", "host-url", validated.hostUrl);
   store.set("worker-host", "repository-url", validated.repositoryUrl);
@@ -1099,6 +1814,18 @@ ipcMain.handle("axiom:remote-worker-list", async event => {
 });
 ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before submitting work to a remote worker.");
+  if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A remote worker task instruction is required.");
+  const settings = readRemoteWorkerSettings();
+  if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before submitting tasks.");
+  await authorizeRuntimeNetwork(settings.hostUrl, selectedWorkspace, { title: "Approve remote Worker Host connection", message: "Allow this project to send a task to its configured remote Worker Host?", detail: "Remote task submission", approveLabel: "Connect and send" });
+  await enforceWorkspacePolicyApproval("shell.execute", {
+    title: "Approve remote worker submission",
+    message: "Send this task instruction to the configured remote Worker Host?",
+    detail: "Host: " + settings.hostUrl + "\\nRepository: " + settings.repositoryUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    approveLabel: "Send remote task",
+    resource: "remote-worker:" + settings.hostUrl
+  });
   return createRemoteWorkerHostClientForApp().submit(request);
 });
 ipcMain.handle("axiom:remote-worker-get", async (event, id) => {
@@ -1111,7 +1838,18 @@ ipcMain.handle("axiom:remote-worker-patch", async (event, id) => {
 });
 ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  return createRemoteWorkerHostClientForApp().retry(request?.id, { idempotencyKey: request?.idempotencyKey, prompt: request?.prompt });
+  if (!request || typeof request.id !== "string" || typeof request.prompt !== "string" || !request.prompt.trim()) throw new TypeError("A retry requires a job ID and task instruction.");
+  const settings = readRemoteWorkerSettings();
+  if (!settings.enabled || !settings.tokenConfigured) throw new Error("Configure and enable the remote Worker Host before retrying tasks.");
+  await authorizeRuntimeNetwork(settings.hostUrl, selectedWorkspace, { title: "Approve remote Worker Host connection", message: "Allow this project to retry a task through its configured remote Worker Host?", detail: "Remote task retry", approveLabel: "Connect and retry" });
+  await enforceWorkspacePolicyApproval("shell.execute", {
+    title: "Approve remote worker retry",
+    message: "Resubmit this task instruction to the configured remote Worker Host?",
+    detail: "Job: " + request.id + "\\nHost: " + settings.hostUrl + "\\nInstruction: " + redactSecrets(request.prompt).slice(0, 1200),
+    approveLabel: "Retry remote task",
+    resource: "remote-worker:" + settings.hostUrl
+  });
+  return createRemoteWorkerHostClientForApp().retry(request.id, { idempotencyKey: request.idempotencyKey, prompt: request.prompt });
 });
 ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
@@ -1132,6 +1870,21 @@ ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
     patch: request?.patch,
   });
   await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + String(request.taskId) + ".");
+  if (typeof request.patch === "string") {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: String(request.taskId),
+        kind: "patch",
+        name: "Remote worker patch " + String(request.jobId || request.taskId),
+        data: request.patch,
+        metadata: { producer: "remote-worker-patch-import", jobId: String(request.jobId || "").slice(0, 160), importedAt: Date.now() }
+      });
+    } catch (artifactError) {
+      await appendRuntimeLog("Could not persist remote patch artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 400));
+    }
+  }
   return result;
 });
 
@@ -1143,9 +1896,10 @@ ipcMain.handle("axiom:deployment-history", async event => {
 ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
-  if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
+  if (!request || typeof request !== "object" || Array.isArray(request) || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
     throw new Error("Deployment requests must target the currently selected project.");
   }
+  await enforceWorkspacePolicyApproval("deployment.publish", { title: "Approve preview deployment", message: "Upload this project build to an external deployment provider?", detail: "Provider: " + String(request.provider || "unknown") + " | Project: " + selectedWorkspace, approveLabel: "Deploy preview", resource: "provider:" + String(request.provider || "unknown") });
   const manager = createDeploymentManager({
     getCredential: provider => currentSecureCredentialStore().get("deployment", provider),
   });
@@ -1156,6 +1910,18 @@ ipcMain.handle("axiom:deployment-preview", async (event, request) => {
   });
   try { await createDeploymentHistoryStore(app.getPath("userData")).append(selectedWorkspace, result); }
   catch (historyError) { await appendRuntimeLog("Deployment succeeded but history could not be saved: " + redactSecrets(historyError.message || historyError).slice(0, 500)); }
+  try {
+    const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+    await currentExecutionArtifactStore().put({
+      projectId,
+      kind: "deployment",
+      name: result.provider + " preview deployment",
+      data: JSON.stringify(result),
+      metadata: { producer: "deployment", provider: result.provider, status: result.status, previewUrl: result.previewUrl, finishedAt: result.finishedAt }
+    });
+  } catch (artifactError) {
+    await appendRuntimeLog("Could not persist deployment artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 500));
+  }
   await appendRuntimeLog("Created " + result.provider + " preview deployment for " + path.basename(selectedWorkspace) + ".");
   return result;
 });
@@ -1171,6 +1937,13 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   if (validated.mode === "persistent" && (!request.persistentPath || workspacePath === path.parse(workspacePath).root)) {
     throw new Error("Persistent mode requires an explicit, non-root workspace path.");
   }
+  await authorizeRuntimeNetwork(validated.repositoryUrl, selectedWorkspace, { title: "Approve Git repository connection", message: "Allow Axiom to connect to this remote Git repository?", detail: "Repository clone: " + validated.branch, approveLabel: "Connect and clone" });
+  await requirePrivilegedApproval({
+    title: "Approve remote repository clone",
+    message: "Allow Axiom to connect to and clone this remote Git repository?",
+    detail: "Repository: " + validated.repositoryUrl + "\nBranch: " + validated.branch + "\nMode: " + validated.mode,
+    approveLabel: "Clone repository"
+  });
   const job = {
     id, ...validated, workspacePath,
     temporaryRoot: validated.mode === "persistent" ? null : temporaryRoot,
@@ -1185,9 +1958,9 @@ ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {
   // Git is cloning. The operation lease and destination are durable first.
   void runRemoteWorkspaceOperation(job, "clone", async signal => {
     try {
-      const created = await createRemoteWorkspace(request, {
-        temporaryRoot, workspacePath, signal
-      });
+      const created = await withWorkspaceNetworkProxy(selectedWorkspace, env => createRemoteWorkspace(request, {
+        temporaryRoot, workspacePath, signal, env
+      }));
       Object.assign(job, created, { id, error: null, interruptedOperation: null });
       return { id, status: job.status };
     } catch (error) {
@@ -1211,16 +1984,23 @@ ipcMain.handle("axiom:remote-workspace-retry-clone", async (event, id) => {
       job.status !== "clone-interrupted" || job.interruptedOperation?.kind !== "clone") {
     throw new Error("Only an interrupted Axiom-owned temporary clone can be retried automatically. Persistent destinations are preserved for manual inspection.");
   }
+  await authorizeRuntimeNetwork(job.repositoryUrl, selectedWorkspace, { title: "Approve Git repository connection", message: "Allow Axiom to reconnect to this remote Git repository?", detail: "Repository clone retry: " + job.branch, approveLabel: "Connect and retry" });
+  await requirePrivilegedApproval({
+    title: "Approve remote clone retry",
+    message: "Retry connecting to and cloning the remote repository?",
+    detail: "Repository: " + job.repositoryUrl + "\nBranch: " + job.branch,
+    approveLabel: "Retry clone"
+  });
   return runRemoteWorkspaceOperation(job, "clone", async signal => {
     job.status = "creating";
     job.error = null;
     await persistRemoteWorkspaceJobs();
     try {
       await discardInterruptedCloneWorkspace(job);
-      const created = await createRemoteWorkspace({
+      const created = await withWorkspaceNetworkProxy(selectedWorkspace, env => createRemoteWorkspace({
         mode: job.mode, repositoryUrl: job.repositoryUrl,
         branch: job.branch, paths: job.paths
-      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal });
+      }, { temporaryRoot: job.temporaryRoot, workspacePath: job.workspacePath, signal, env }));
       Object.assign(job, created, { id: job.id, error: null, interruptedOperation: null });
       return { id: job.id, status: job.status };
     } catch (error) {
@@ -1244,18 +2024,22 @@ ipcMain.handle("axiom:remote-workspace-list", async event => {
 
 ipcMain.handle("axiom:remote-workspace-commit-push", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!request || typeof request.id !== "string" || typeof request.message !== "string" || !request.message.trim()) throw new TypeError("A remote workspace job ID and commit message are required.");
+  const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await authorizeRuntimeNetwork(job.repositoryUrl, selectedWorkspace, { title: "Approve Git push network access", message: "Allow Axiom to connect to the remote Git repository to push this commit?", detail: "Branch: " + job.branch, approveLabel: "Allow Git connection" });
+  await enforceWorkspacePolicyApproval("git.push", { title: "Approve Git push", message: "Commit and push this remote workspace to its configured repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch + " | Commit message: " + request.message, approveLabel: "Commit and push", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "commit-push", async signal => {
     try {
-      const result = await commitAndPushWorkspace(job, {
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => commitAndPushWorkspace(job, {
         message: request.message,
         signal,
+        env,
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
         }
-      });
+      }));
       return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
     } finally {
       // Preserve a local commit if the process fails after commit but before push confirmation.
@@ -1270,7 +2054,8 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
   if (!job) throw new Error("Remote workspace job not found in this session.");
   return runRemoteWorkspaceOperation(job, "reconcile", async signal => {
     try {
-      const result = await reconcileRemoteWorkspace(job, { signal });
+      await authorizeRuntimeNetwork(job.repositoryUrl, selectedWorkspace, { title: "Approve remote Git reconciliation", message: "Allow Axiom to inspect the remote repository state for this workspace?", detail: "Branch: " + job.branch, approveLabel: "Allow repository check" });
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => reconcileRemoteWorkspace(job, { signal, env }));
       job.interruptedOperation = null;
       return { ...result, id: job.id, status: job.status, remoteCommitConfirmed: job.remoteCommitConfirmed === true };
     } finally { await persistRemoteWorkspaceJobs(); }
@@ -1279,17 +2064,21 @@ ipcMain.handle("axiom:remote-workspace-reconcile", async (event, id) => {
 
 ipcMain.handle("axiom:remote-workspace-push-recovered", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
-  const job = request && remoteWorkspaceJobs.get(request.id);
+  if (!request || typeof request.id !== "string") throw new TypeError("A remote workspace job ID is required.");
+  const job = remoteWorkspaceJobs.get(request.id);
   if (!job) throw new Error("Remote workspace job not found in this session.");
+  await authorizeRuntimeNetwork(job.repositoryUrl, selectedWorkspace, { title: "Approve recovered Git push network access", message: "Allow Axiom to connect to the remote Git repository to push the recovered commit?", detail: "Branch: " + job.branch, approveLabel: "Allow Git connection" });
+  await enforceWorkspacePolicyApproval("git.push", { title: "Approve recovered Git push", message: "Push the reconciled local commit to the remote repository?", detail: "Workspace job: " + job.id + " | Repository: " + job.repositoryUrl + " | Branch: " + job.branch, approveLabel: "Push commit", resource: "repository:" + job.repositoryUrl + "#" + job.branch });
   return runRemoteWorkspaceOperation(job, "push-recovered", async signal => {
     try {
-      const result = await pushReconciledWorkspace(job, {
+      const result = await withWorkspaceNetworkProxy(selectedWorkspace, env => pushReconciledWorkspace(job, {
         signal,
+        env,
         verify: async (directory, operationSignal) => {
           await remoteGit(directory, ["diff", "--check"], { signal: operationSignal });
           return true;
         }
-      });
+      }));
       return { ...result, id: job.id, remoteCommitConfirmed: job.remoteCommitConfirmed };
     } finally { await persistRemoteWorkspaceJobs(); }
   });
@@ -1316,21 +2105,88 @@ ipcMain.handle("axiom:remote-workspace-cleanup", async (event, id) => {
 ipcMain.handle("axiom:terminal-run", async (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!terminalRunner) throw new Error("The project terminal is not ready.");
-  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string") {
-    throw new Error("A terminal request needs a request ID and command.");
+  if (!selectedWorkspace) throw new Error("No project is currently open.");
+  if (!request || typeof request.requestId !== "string" || typeof request.command !== "string" || !request.command.trim()) {
+    throw new Error("A terminal request needs a request ID and non-empty command.");
   }
-  return terminalRunner.run({
-    requestId: request.requestId,
-    command: request.command,
-    cwd: request.cwd,
-    onOutput: chunk => {
-      if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
-        requestId: request.requestId,
-        stream: chunk.stream,
-        text: chunk.text
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const commandResource = redactSecrets(request.command).replace(/[\\r\\n\\t]+/g, " ").slice(0, 512);
+  const shellPolicy = currentWorkspaceSecurityPolicyStore().evaluate(selectedWorkspace, "shell.execute");
+  const securityAudit = currentSecurityAuditStore();
+  if (shellPolicy.decision === "deny") {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: shellPolicy.reason, projectId, resource: commandResource });
+    throw new Error("Workspace security policy denied terminal execution.");
+  }
+  if (shellPolicy.decision !== "approval-required") {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: "Invalid shell policy decision; execution fails closed.", projectId, resource: commandResource });
+    throw new Error("Workspace security policy returned an invalid terminal decision.");
+  }
+  securityAudit.record({ action: "shell.execute", decision: "approval-required", reason: shellPolicy.reason, projectId, resource: commandResource });
+  try {
+    await requirePrivilegedApproval({ title: "Approve terminal command", message: "Allow this command to execute on your project?", detail: request.command, approveLabel: "Run command" });
+    securityAudit.record({ action: "shell.execute", decision: "allow", reason: "User approved terminal execution.", projectId, resource: commandResource });
+  } catch (error) {
+    securityAudit.record({ action: "shell.execute", decision: "deny", reason: "Terminal execution approval was denied or dismissed.", projectId, resource: commandResource });
+    throw error;
+  }
+  const startedAt = Date.now();
+  const output = [];
+  let outputBytes = 0;
+  const maxCaptureBytes = 1024 * 1024;
+  const capture = chunk => {
+    const remaining = maxCaptureBytes - outputBytes;
+    if (remaining <= 0) return;
+    const text = redactSecrets(chunk.text).slice(0, remaining);
+    if (!text) return;
+    output.push("[" + chunk.stream + "] " + text);
+    outputBytes += Buffer.byteLength(text, "utf8");
+  };
+  let result;
+  let failure;
+  try {
+    result = await terminalRunner.run({
+      requestId: request.requestId,
+      command: request.command,
+      cwd: request.cwd,
+      onOutput: chunk => {
+        capture(chunk);
+        if (!event.sender.isDestroyed()) event.sender.send("axiom:terminal-output", {
+          requestId: request.requestId,
+          stream: chunk.stream,
+          text: chunk.text
+        });
+      }
+    });
+    return result;
+  } catch (error) {
+    failure = redactSecrets(error?.message || error);
+    throw error;
+  } finally {
+    try {
+      const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+      await currentExecutionArtifactStore().put({
+        projectId,
+        taskId: typeof request.taskId === "string" ? request.taskId : null,
+        kind: "log",
+        name: "Terminal execution " + request.requestId,
+        data: (output.join("\n") + (failure ? "\n[error] " + failure : "")).slice(0, maxCaptureBytes),
+        metadata: {
+          producer: "terminal",
+          requestId: request.requestId,
+          command: redactSecrets(request.command).slice(0, 1000),
+          cwd: typeof request.cwd === "string" ? request.cwd.slice(0, 500) : "",
+          startedAt,
+          finishedAt: Date.now(),
+          exitCode: result?.exitCode ?? null,
+          signal: result?.signal ?? null,
+          truncated: outputBytes >= maxCaptureBytes,
+          failed: Boolean(failure)
+        }
       });
+    } catch (artifactError) {
+      await appendRuntimeLog("Could not persist terminal execution artifact: " + redactSecrets(artifactError?.message || artifactError).slice(0, 500));
     }
-  });
+  }
 });
 
 ipcMain.handle("axiom:terminal-cancel", async (event, requestId) => {
@@ -1342,18 +2198,21 @@ ipcMain.handle("axiom:terminal-cancel", async (event, requestId) => {
 ipcMain.handle("axiom:fs-list", async (event, relativePath = "") => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("read", relativePath);
   return listDirectory(selectedWorkspace, relativePath);
 });
 
 ipcMain.handle("axiom:fs-read", async (event, relativePath) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("read", relativePath);
   return readProjectFile(selectedWorkspace, relativePath);
 });
 
 ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
+  await authorizeFilesystemOperation("write", relativePath);
   return writeProjectFile(selectedWorkspace, relativePath, content);
 });
 
@@ -1375,6 +2234,114 @@ ipcMain.handle("axiom:worker-state-record", async (event, task) => {
   const saved = await currentWorkerStateStore().record(task);
   sendHostMessage(event, { type: "worker-state-updated", task: saved });
   return saved;
+});
+ipcMain.handle("axiom:execution-ledger-list", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().list();
+});
+ipcMain.handle("axiom:execution-ledger-get", (event, objectiveId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().get(objectiveId);
+});
+ipcMain.handle("axiom:execution-ledger-create", (event, objective) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionLedger().create(objective);
+});
+ipcMain.handle("axiom:execution-ledger-commit", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid execution-ledger commit request.");
+  return currentExecutionLedger().commit(request.objectiveId, request.expectedRevision, request.objective, request.event);
+});
+ipcMain.handle("axiom:execution-ledger-remove", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid execution-ledger removal request.");
+  return currentExecutionLedger().remove(request.objectiveId, request.expectedRevision);
+});
+ipcMain.handle("axiom:provider-credential-status", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return ["github", "supabase"].map(providerId => currentProviderCredentialManager().status(providerId));
+});
+ipcMain.handle("axiom:provider-credential-save", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid provider credential request.");
+  if (!["github", "supabase"].includes(request.providerId) || typeof request.secret !== "string" || !request.secret.trim()) throw new TypeError("Invalid provider credential request.");
+  await requirePrivilegedApproval({
+    title: "Approve provider credential storage",
+    message: "Store an encrypted provider credential for use by Axiom?",
+    detail: "Provider: " + request.providerId + "\nThe credential value is intentionally excluded from this confirmation and audit record.",
+    approveLabel: "Store credential"
+  });
+  return currentProviderCredentialManager().save(request.providerId, request.secret);
+});
+ipcMain.handle("axiom:provider-credential-remove", async (event, providerId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!["github", "supabase"].includes(providerId)) throw new TypeError("Unsupported provider credential.");
+  await requirePrivilegedApproval({
+    title: "Approve provider credential removal",
+    message: "Remove the encrypted provider credential from this device?",
+    detail: "Provider: " + providerId,
+    approveLabel: "Remove credential"
+  });
+  return currentProviderCredentialManager().remove(providerId);
+});
+
+ipcMain.handle("axiom:knowledge-index-scan", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().scanWorkspace();
+});
+ipcMain.handle("axiom:knowledge-index-read", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().readIndex();
+});
+ipcMain.handle("axiom:knowledge-index-update", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object") throw new TypeError("Invalid project index update.");
+  return currentProjectKnowledgeStore().updateIndex(request.changed || [], request.removed || []);
+});
+ipcMain.handle("axiom:knowledge-index-search", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().searchIndex(request?.query, request?.limit);
+});
+ipcMain.handle("axiom:knowledge-memory-read", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().readMemory();
+});
+ipcMain.handle("axiom:knowledge-memory-upsert", async (event, record) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().upsertMemory(record);
+});
+ipcMain.handle("axiom:knowledge-memory-search", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().searchMemory(request?.query, request?.limit);
+});
+ipcMain.handle("axiom:knowledge-memory-remove", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectKnowledgeStore().removeMemory(id);
+});
+
+ipcMain.handle("axiom:artifact-list", async (event, taskId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentExecutionArtifactStore().list(require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40), taskId);
+});
+ipcMain.handle("axiom:artifact-put", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || typeof request.data !== "string" || request.data.length > 22 * 1024 * 1024) throw new TypeError("Invalid or oversized artifact request.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const data = request.encoding === "base64" ? Buffer.from(request.data, "base64") : request.data;
+  const record = await currentExecutionArtifactStore().put({ ...request, projectId, data });
+  await appendRuntimeLog("Stored " + record.kind + " execution artifact " + record.id + " for project " + projectId + ".");
+  return record;
+});
+ipcMain.handle("axiom:artifact-read", async (event, artifactId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  const result = await currentExecutionArtifactStore().read(projectId, artifactId);
+  return { record: result.record, data: result.data.toString("base64"), encoding: "base64" };
+});
+ipcMain.handle("axiom:artifact-remove", async (event, artifactId) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const projectId = require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40);
+  return currentExecutionArtifactStore().remove(projectId, artifactId);
 });
 
 ipcMain.handle("axiom:project-context-save", async (event, context) => {
@@ -1434,6 +2401,8 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
   if (message.type === "create-agent-worktree") {
     try {
       validateWorkspace(message.workspaceRoot);
+      if (!Array.isArray(message.targetFiles) || message.targetFiles.length === 0) throw new Error("Worker tasks must declare explicit target-file ownership before a worktree can be created.");
+      ownershipForWorkspace(message.workspaceRoot).claim(message.taskId, message.targetFiles);
       const worktreePath = await createDetachedWorktree({
         workspaceRoot: message.workspaceRoot,
         userDataPath: app.getPath("userData"),
@@ -1441,6 +2410,7 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
       });
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: true, path: worktreePath });
     } catch (error) {
+      if (typeof message.taskId === "string" && message.workspaceRoot) ownershipForWorkspace(message.workspaceRoot).release(message.taskId);
       sendHostMessage(event, { type: "agent-worktree-result", requestId: message.requestId, ok: false, error: error.message });
     }
   } else if (message.type === "inspect-agent-worktree") {
@@ -1470,6 +2440,8 @@ ipcMain.on("axiom:webview-message", async (event, message) => {
 
 async function stopRuntime() {
   stoppingRuntime = true;
+  if (openCodeTelemetryBridge) await openCodeTelemetryBridge.stop();
+  await stopRuntimeNetworkProxy();
   const child = runtimeProcess;
   runtimeProcess = null;
   if (!child || child.exitCode !== null || child.signalCode !== null) {
@@ -1519,7 +2491,7 @@ async function stopRuntime() {
 
 app.whenReady().then(async () => {
   await restoreRemoteWorkspaceJobs();
-  omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage });
+  omniRouteManager = createOmniRouteManager({ userDataPath: app.getPath("userData"), safeStorage, getNetworkEnvironment: () => runtimeNetworkProxy ? runtimeNetworkProxy.environment() : {} });
   mcpManager = createMcpManager({ userDataPath: app.getPath("userData"), safeStorage });
   const { Menu } = require("electron");
   const menu = Menu.buildFromTemplate([

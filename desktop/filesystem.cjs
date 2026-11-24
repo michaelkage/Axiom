@@ -1,11 +1,19 @@
 "use strict";
 
 const fs = require("node:fs/promises");
+const fsConstants = require("node:fs").constants;
+const crypto = require("node:crypto");
 const path = require("node:path");
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES = 500;
-const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next"]);
+const MAX_DIRECTORY_SCAN = 2000;
+const BLOCKED_SEGMENTS = new Set([".git", "node_modules", ".axiom", "dist", "out", ".next", ".env", ".env.local", ".env.production", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk", "id_ecdsa_sk"]);
+
+function isBlockedSegment(segment) {
+  const name = String(segment).toLowerCase();
+  return BLOCKED_SEGMENTS.has(name) || name.startsWith(".env.") || /\.(?:pem|key|p12|pfx|keystore)$/.test(name);
+}
 
 function normalizeRelativePath(relativePath = "") {
   if (typeof relativePath !== "string" || relativePath.length > 4096) {
@@ -19,7 +27,7 @@ function normalizeRelativePath(relativePath = "") {
   if (segments.some(segment => segment === "." || segment === ".." || segment.includes("\0"))) {
     throw new Error("Path traversal is not allowed.");
   }
-  if (segments.some(segment => BLOCKED_SEGMENTS.has(segment.toLowerCase()))) {
+  if (segments.some(isBlockedSegment)) {
     throw new Error("This project path is excluded from desktop file access.");
   }
   return segments;
@@ -52,9 +60,14 @@ async function listDirectory(workspaceRoot, relativePath = "") {
   const target = await resolveSafePath(workspaceRoot, relativePath);
   const stat = await fs.stat(target.path);
   if (!stat.isDirectory()) throw new Error("The requested project path is not a directory.");
-  const entries = await fs.readdir(target.path, { withFileTypes: true });
+  const entries = [];
+  const directory = await fs.opendir(target.path);
+  for await (const entry of directory) {
+    entries.push(entry);
+    if (entries.length >= MAX_DIRECTORY_SCAN) break;
+  }
   return entries
-    .filter(entry => !BLOCKED_SEGMENTS.has(entry.name.toLowerCase()) && !entry.isSymbolicLink())
+    .filter(entry => !isBlockedSegment(entry.name) && !entry.isSymbolicLink())
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
     .slice(0, MAX_DIRECTORY_ENTRIES)
     .map(entry => ({
@@ -66,30 +79,62 @@ async function listDirectory(workspaceRoot, relativePath = "") {
 
 async function readProjectFile(workspaceRoot, relativePath) {
   const target = await resolveSafePath(workspaceRoot, relativePath);
-  const stat = await fs.stat(target.path);
-  if (!stat.isFile()) throw new Error("Only regular files can be read.");
-  if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
-  return { path: target.segments.join("/"), content: await fs.readFile(target.path, "utf8"), size: stat.size };
+  let handle;
+  try {
+    handle = await fs.open(target.path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("Only regular files can be read.");
+    if (stat.size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
+    const buffer = Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+    let bytesRead = 0;
+    while (bytesRead < buffer.length) {
+      const result = await handle.read(buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+    }
+    if (bytesRead > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop preview limit.");
+    const content = buffer.subarray(0, bytesRead).toString("utf8");
+    return { path: target.segments.join("/"), content, size: bytesRead };
+  } catch (error) {
+    if (error && error.code === "ELOOP") throw new Error("Symbolic links are not allowed in project file operations.");
+    throw error;
+  } finally {
+    if (handle) await handle.close();
+  }
 }
 
 async function writeProjectFile(workspaceRoot, relativePath, content) {
   if (typeof content !== "string") throw new TypeError("File content must be text.");
-  if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop edit limit.");
+  const size = Buffer.byteLength(content, "utf8");
+  if (size > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB desktop edit limit.");
   const target = await resolveSafePath(workspaceRoot, relativePath, { allowMissingFinal: true });
+  if (!target.segments.length) throw new Error("A project file path is required.");
   const parent = path.dirname(target.path);
-  const parentStat = await fs.stat(parent);
-  if (!parentStat.isDirectory()) throw new Error("The destination parent is not a directory.");
+  const parentStat = await fs.lstat(parent);
+  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) throw new Error("The destination parent is not a safe directory.");
   let existing;
+  try { existing = await fs.lstat(target.path); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error("Only regular files can be edited.");
+  const temporary = path.join(parent, ".axiom-write-" + crypto.randomUUID() + ".tmp");
+  let handle;
   try {
-    existing = await fs.lstat(target.path);
+    handle = await fs.open(temporary, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW || 0), 0o600);
+    await handle.writeFile(content, { encoding: "utf8" });
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await fs.rename(temporary, target.path);
+    try {
+      const directory = await fs.open(parent, fsConstants.O_RDONLY);
+      try { await directory.sync(); } finally { await directory.close(); }
+    } catch { /* Directory fsync is not supported on every platform/filesystem. */ }
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (handle) await handle.close().catch(() => {});
+    await fs.unlink(temporary).catch(() => {});
+    throw error;
   }
-  if (existing && (!existing.isFile() || existing.isSymbolicLink())) {
-    throw new Error("Only regular files can be edited.");
-  }
-  await fs.writeFile(target.path, content, { encoding: "utf8", flag: "w" });
-  return { path: target.segments.join("/"), size: Buffer.byteLength(content, "utf8") };
+  return { path: target.segments.join("/"), size };
 }
 
-module.exports = { MAX_FILE_BYTES, MAX_DIRECTORY_ENTRIES, listDirectory, readProjectFile, writeProjectFile, normalizeRelativePath };
+module.exports = { MAX_FILE_BYTES, MAX_DIRECTORY_ENTRIES, MAX_DIRECTORY_SCAN, listDirectory, readProjectFile, writeProjectFile, normalizeRelativePath };

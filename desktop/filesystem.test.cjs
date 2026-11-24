@@ -39,3 +39,37 @@ test("project file adapter rejects traversal, absolute paths, and symlinks", asy
     await fs.rm(temporary, { recursive: true, force: true });
   }
 });
+
+test("project file writes reject symlink targets and leave no temporary files", async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-files-"));
+  try {
+    const workspace = path.join(temporary, "repo");
+    await fs.mkdir(workspace);
+    const outside = path.join(temporary, "outside.txt");
+    await fs.writeFile(outside, "do not overwrite");
+    await fs.symlink(outside, path.join(workspace, "link.txt"));
+    await assert.rejects(() => writeProjectFile(workspace, "link.txt", "malicious"), /Symbolic links/);
+    assert.equal(await fs.readFile(outside, "utf8"), "do not overwrite");
+    await writeProjectFile(workspace, "safe.txt", "atomic");
+    assert.equal(await fs.readFile(path.join(workspace, "safe.txt"), "utf8"), "atomic");
+    assert.deepEqual((await fs.readdir(workspace)).sort(), ["link.txt", "safe.txt"]);
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+});
+
+test("project listings omit environment, credential-store and private-key paths", async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "axiom-files-"));
+  try {
+    const workspace = path.join(temporary, "repo");
+    await fs.mkdir(path.join(workspace, ".ssh"), { recursive: true });
+    await fs.mkdir(path.join(workspace, ".aws"), { recursive: true });
+    await fs.mkdir(path.join(workspace, "certs"), { recursive: true });
+    await fs.writeFile(path.join(workspace, ".env.staging"), "secret");
+    await fs.writeFile(path.join(workspace, ".ssh", "id_ed25519"), "private key");
+    await fs.writeFile(path.join(workspace, ".aws", "credentials"), "secret");
+    await fs.writeFile(path.join(workspace, "certs", "signing.key"), "private key");
+    await fs.writeFile(path.join(workspace, "README.md"), "safe");
+    const entries = await listDirectory(workspace);
+    assert.deepEqual(entries.map(entry => entry.name), ["certs", "README.md"]);
+    assert.deepEqual(await listDirectory(workspace, "certs"), []);
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+});
