@@ -147,7 +147,7 @@ export function validateToolInput(schema, value, path = 'input', depth = 0) {
 export async function executeTool(name, input, context = {}) {
   const tool = tools.get(name);
   if (!tool) throw new Error('Unknown tool: ' + name);
-  const integrationId = typeof context?.integrationId === 'string' ? context.integrationId : '';
+  const integrationId = typeof context?.integrationId === 'string' ? context.integrationId : (typeof tool.integrationId === 'string' ? tool.integrationId : '');
   const isMcpInvocation = context?.source === 'mcp' || integrationId.length > 0;
   if (isMcpInvocation) {
     const policy = context?.mcpPolicy;
@@ -161,6 +161,21 @@ export async function executeTool(name, input, context = {}) {
       const error = new Error('MCP tool execution denied by runtime policy: ' + (integrationId || 'unknown integration') + '/' + name);
       error.name = 'ToolPolicyError';
       emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'mcp_tool_not_allowlisted' });
+      throw error;
+    }
+  }
+  if (tool.requiresApproval && context?.approvalGranted !== true) {
+    if (typeof context?.confirmTool !== 'function') {
+      const error = new Error('Privileged tool execution requires an explicit user approval callback: ' + name);
+      error.name = 'ToolApprovalRequiredError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'approval_callback_missing' });
+      throw error;
+    }
+    const approved = await context.confirmTool(name, input, { signal: context.signal, source: context.source || 'runtime', integrationId: integrationId || null });
+    if (approved !== true) {
+      const error = new Error('User approval was not granted for privileged tool: ' + name);
+      error.name = 'ToolApprovalDeclinedError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'user_declined' });
       throw error;
     }
   }
