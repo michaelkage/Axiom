@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, chmod, rename, rm } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { createCompanionCoordinator } from './companion.js';
+import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
@@ -84,6 +85,8 @@ export function createAxiomGateway({
   if (!['http:', 'https:'].includes(ollamaBase.protocol) || ollamaBase.username || ollamaBase.password) throw new Error('OLLAMA_BASE_URL must be an HTTP(S) URL without embedded credentials.');
   const origins = parseOrigins(env.AXIOM_ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://localhost,capacitor://localhost');
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
+  const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');
+  const audit = createAuditChain({ path: env.AXIOM_AUDIT_LOG_PATH || join(homedir(), '.config', 'axiom', 'gateway-audit.jsonl'), now });
   const sessionTokens = new Map();
   const companion = createCompanionCoordinator({ now });
   const pairingAttempts = new Map();
@@ -464,6 +467,32 @@ export function createAxiomGateway({
         sendJson(res, error.status || 400, { error: error.message }); return null;
       });
       if (body === null) return;
+      const toolCall = req.method === 'POST' ? inspectMcpToolCall(body) : null;
+      if (toolCall) {
+        const rule = mcpPolicy[mcpMatch[1]];
+        const allowed = !toolCall.invalid && Boolean(rule?.allowedTools.has(toolCall.name));
+        try {
+          await audit.append({
+            action: 'mcp.tool.call',
+            serverId: mcpMatch[1],
+            toolName: toolCall.name,
+            requestId: toolCall.requestId,
+            outcome: allowed ? 'allowed' : 'denied'
+          });
+        } catch (error) {
+          logger.error?.('[axiom-gateway] Audit append failed; refusing MCP tool call:', error.message);
+          return sendJson(res, 503, { error: 'MCP tool call blocked because its security audit record could not be persisted.' });
+        }
+        if (!allowed) {
+          return sendJson(res, 403, {
+            jsonrpc: '2.0',
+            id: toolCall.requestId,
+            error: { code: -32003, message: toolCall.invalid
+              ? 'Invalid MCP tool call name.'
+              : 'MCP tool is not permitted by the gateway policy.' }
+          });
+        }
+      }
       const headers = upstreamHeaders(req, config.token ? { authorization: 'Bearer ' + config.token } : {});
       try {
         const upstream = await fetchImpl(config.url, { method: req.method, headers, body, signal: AbortSignal.timeout(120000) });
