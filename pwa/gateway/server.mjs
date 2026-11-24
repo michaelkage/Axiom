@@ -327,7 +327,7 @@ export function createAxiomGateway({
         if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('SUPABASE_URL must be a valid HTTP(S) URL without embedded credentials.');
         supabaseTarget = new URL('/rest/v1/', parsed);
       } catch (error) { supabaseConfigError = error.message; }
-      const [ollama, github, supabase] = await Promise.all([
+      if (supabaseTarget) {\n        try { await assertSafeMcpTarget(supabaseTarget, allowedPrivateMcpHosts); }\n        catch (error) { supabaseConfigError = error.message; supabaseTarget = null; }\n      }\n      const [ollama, github, supabase] = await Promise.all([
         check('Ollama', true, new URL('/api/tags', ollamaBase)),
         check('GitHub', Boolean(env.GITHUB_TOKEN && githubValid),
           githubValid ? new URL('/repos/' + githubRepo, 'https://api.github.com') : new URL('/user', 'https://api.github.com'),
