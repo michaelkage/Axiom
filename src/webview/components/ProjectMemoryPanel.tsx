@@ -24,7 +24,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const desktopMemoryApi = () => (window as Window & { axiomDesktop?: { projectMemory?: ProjectMemoryApi } }).axiomDesktop?.projectMemory;
   const key = () => projectMemoryStorageKey(props.workspaceRoot);
 
-  const persist = async (next: ProjectMemory[]) => {
+  const persist = async (next: ProjectMemory[]): Promise<boolean> => {
     setStorageError("");
     setSaving(true);
     try {
@@ -84,7 +84,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
     resetForm();
   };
   const edit = (item: ProjectMemory) => { setEditingId(item.id); setContent(item.content); setCategory(item.category); setTags(item.tags.join(", ")); setExpanded(true); };
-  const remove = (id: string) => { if (!saving()) void persist(memories().filter(item => item.id !== id)); if (editingId() === id) resetForm(); };
+  const remove = (id: string) => { if (!saving()) void persist(memories().filter(item => item.id !== id)).then(saved => { if (saved && editingId() === id) resetForm(); }); };
   const markReviewed = (item: ProjectMemory) => {
     if (!saving()) void persist(memories().map(memory => memory.id === item.id ? { ...memory, updatedAt: new Date().toISOString() } : memory));
   };
