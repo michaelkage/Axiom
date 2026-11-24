@@ -27,3 +27,20 @@ Before connecting to an HTTP(S) MCP endpoint, the gateway resolves its hostname 
 Redirects are disabled on upstream proxy requests so credentials and authenticated requests are not forwarded to redirect destinations. This protects against redirect-based SSRF and credential leakage.
 
 The DNS check is a preflight guard; it does not pin the resolved address into the subsequent Node fetch connection. Deployments exposed to hostile DNS should additionally enforce egress restrictions at the host/container/network layer or use a transport with connection-time DNS pinning. This gateway check is not a replacement for OS-level egress controls.
+
+
+## Model-runtime tool execution boundary
+
+The PWA tool registry also checks authorization immediately before invoking a registered handler. Calls marked with `source: "mcp"` or carrying an `integrationId` require an exact integration entry in the `mcpPolicy` object passed in the execution context:
+
+```js
+await executeTool(toolName, argumentsObject, {
+  source: "mcp",
+  integrationId: "github",
+  mcpPolicy: {
+    github: { allowedTools: ["github_read_issue"] }
+  }
+});
+```
+
+The tool name must match an entry in that integration's `allowedTools` array exactly. Missing policy, missing integration identity, malformed allowlists, and unlisted tools are denied before the handler runs. A caller may additionally provide an asynchronous `authorizeTool` callback; it must return `true` or an object with `allowed: true`. Denials emit a metadata-only `tool.denied` event; arguments are not included. This is an execution-boundary primitive: callers that invoke the registry for MCP-originated tools must preserve the source and integration identity in the execution context.
