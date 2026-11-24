@@ -6,6 +6,7 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
+const { createProjectMemoryStore } = require("./project-memory.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
@@ -27,6 +28,17 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let secureCredentialStore;
+let projectMemoryStore;
+let projectMemoryWorkspace;
+function currentProjectMemoryStore() {
+  if (!selectedWorkspace) throw new Error("Open a project before accessing versioned project memory.");
+  const workspace = path.resolve(selectedWorkspace);
+  if (!projectMemoryStore || projectMemoryWorkspace !== workspace) {
+    projectMemoryWorkspace = workspace;
+    projectMemoryStore = createProjectMemoryStore(workspace);
+  }
+  return projectMemoryStore;
+}
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
@@ -1121,6 +1133,15 @@ ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return writeProjectFile(selectedWorkspace, relativePath, content);
+});
+
+ipcMain.handle("axiom:project-memory-load", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().load();
+});
+ipcMain.handle("axiom:project-memory-save", async (event, memories) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().save(memories);
 });
 
 ipcMain.handle("axiom:project-bootstrap", event => {
