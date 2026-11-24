@@ -252,3 +252,15 @@ test('uses the registered MCP integration identity and rejects missing policy be
     assert.equal(called, true);
   } finally { unregister(); }
 });
+
+test('automatically marks Git, deployment, and plugin mutation tools as privileged', async () => {
+  const names = ['git_commit_changes', 'github_create_pull_request', 'deploy_production', 'plugin_install'];
+  const cleanups = names.map(name => registerTool({ name, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => 'done'));
+  try {
+    for (const name of names) {
+      assert.equal(listTools().find(tool => tool.name === name)?.requiresApproval, true, name);
+      await assert.rejects(executeTool(name, {}), { name: 'ToolApprovalRequiredError' });
+    }
+  } finally { cleanups.forEach(cleanup => cleanup()); }
+});
+
