@@ -44,3 +44,22 @@ await executeTool(toolName, argumentsObject, {
 ```
 
 The tool name must match an entry in that integration's `allowedTools` array exactly. Missing policy, missing integration identity, malformed allowlists, and unlisted tools are denied before the handler runs. A caller may additionally provide an asynchronous `authorizeTool` callback; it must return `true` or an object with `allowed: true`. Denials emit a metadata-only `tool.denied` event; arguments are not included. This is an execution-boundary primitive: callers that invoke the registry for MCP-originated tools must preserve the source and integration identity in the execution context.
+
+
+## Model-runtime policy propagation and approvals
+
+The PWA model runners (Ollama and native inference) pass a shared execution context into the tool registry. MCP tools are registered with their originating server ID; the registry uses that identity rather than trusting an identity supplied by model output. The application supplies `state.settings.mcpPolicy` as the runtime allowlist. Its shape is keyed by the exact configured server ID, and its entries contain the exact registered tool names:
+
+```js
+{
+  "configured-server-id": {
+    "allowedTools": ["mcp_configured_server_id_browser_navigate"]
+  }
+}
+```
+
+The registered name is `mcp_` + the server ID with non-alphanumeric/underscore characters replaced by underscores + `_` + the MCP tool name normalized the same way. Policy is deny-by-default: an absent entry or a name mismatch blocks execution before an approval prompt is shown. Gateway-side `AXIOM_MCP_POLICY_JSON` remains a separate first enforcement layer; configure both layers consistently.
+
+Privileged tools are approved centrally at the registry boundary. A tool explicitly marked `requiresApproval` requires a confirmation callback and a positive decision, even if invoked outside the normal chat loop. The registry also automatically marks common mutation actions as approval-required, including Git commits/pushes/merges, GitHub creates/updates, deployments/releases, plugin install/uninstall/enable/disable/configuration, SQL execution, and command execution. The model runners fail closed when the approval UI is unavailable.
+
+OpenCode worker sessions use the provider's native permission requests. Persistent `always` grants are downgraded to one-time approval for `bash`, `edit`, `external_directory`, `task`, and `webfetch` permissions. Read-oriented permissions can retain a persistent grant. Permission decisions are logged without recording command text, file contents, or request metadata that could contain secrets.
