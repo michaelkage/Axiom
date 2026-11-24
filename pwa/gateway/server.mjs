@@ -88,7 +88,7 @@ export function createAxiomGateway({
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
   const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');
   const allowedPrivateMcpHosts = new Set(String(env.AXIOM_MCP_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
-  if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|\\[[0-9a-f:]+\\])$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
+  if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|[0-9a-f:]+)$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
   const audit = createAuditChain({ path: env.AXIOM_AUDIT_LOG_PATH || join(homedir(), '.config', 'axiom', 'gateway-audit.jsonl'), now });
   const sessionTokens = new Map();
   const companion = createCompanionCoordinator({ now });
