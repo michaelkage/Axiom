@@ -1,6 +1,6 @@
 # Develop Axiom locally
 
-Axiom's product target is the standalone desktop application. Start with [README.md](./README.md) for user installation, architecture, and release details.
+Axiom's product target is the standalone desktop application. Start with [main README](../README.md) for user installation, architecture, and release details.
 
 ## Requirements
 
