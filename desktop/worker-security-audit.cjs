@@ -20,9 +20,10 @@ function canonical(record) {
   });
 }
 
-function createWorkerSecurityAudit({ filePath, signingKey, fsImpl = fs, now = () => new Date() }) {
+function createWorkerSecurityAudit({ filePath, signingKey, anchorStore, fsImpl = fs, now = () => new Date() }) {
   if (typeof filePath !== "string" || !path.isAbsolute(filePath)) throw new Error("An absolute worker audit path is required.");
   if (!Buffer.isBuffer(signingKey) || signingKey.length !== 32) throw new Error("A 32-byte OS-protected worker audit signing key is required.");
+  if (!anchorStore || typeof anchorStore.get !== "function" || typeof anchorStore.set !== "function") throw new Error("An OS-protected worker audit checkpoint store is required.");
   let queue = Promise.resolve();
 
   function digest(value) {
@@ -62,6 +63,24 @@ function createWorkerSecurityAudit({ filePath, signingKey, fsImpl = fs, now = ()
       if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) throw new Error("Worker audit authentication failed at record " + (index + 1) + ".");
       previousHash = record.hash;
       records.push(record);
+    }
+    const anchor = anchorStore.get();
+    if (!anchor) {
+      if (records.length) throw new Error("Worker audit checkpoint is missing; the log may have been replaced or reset.");
+      return records;
+    }
+    if (!anchor || !Number.isSafeInteger(anchor.sequence) || anchor.sequence < 1 || typeof anchor.hash !== "string" || !/^[a-f0-9]{64}$/.test(anchor.hash)) {
+      throw new Error("Worker audit checkpoint is malformed.");
+    }
+    if (anchor.sequence > records.length || records[anchor.sequence - 1]?.hash !== anchor.hash) {
+      throw new Error("Worker audit checkpoint mismatch; truncation or replacement detected.");
+    }
+    // A crash can occur after fsync of the log record but before the encrypted
+    // checkpoint update. Advance only when the authenticated chain extends the
+    // previous checkpoint; forged records cannot pass the HMAC verification.
+    if (records.length > anchor.sequence) {
+      const latest = records[records.length - 1];
+      anchorStore.set({ sequence: latest.sequence, hash: latest.hash });
     }
     return records;
   }
@@ -107,6 +126,11 @@ function createWorkerSecurityAudit({ filePath, signingKey, fsImpl = fs, now = ()
       const verified = parseAndVerify();
       if (verified.length !== records.length + 1 || verified[verified.length - 1].hash !== record.hash) {
         throw new Error("Worker audit append could not be verified after durable write.");
+      }
+      anchorStore.set({ sequence: record.sequence, hash: record.hash });
+      const anchored = anchorStore.get();
+      if (!anchored || anchored.sequence !== record.sequence || anchored.hash !== record.hash) {
+        throw new Error("Worker audit checkpoint could not be persisted.");
       }
       return record;
     });
