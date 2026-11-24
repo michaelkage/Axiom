@@ -110,11 +110,16 @@ function createWorkerSecurityAudit({ filePath, signingKey, anchorStore, fsImpl =
         previousHash
       };
       const record = { ...payload, hash: digest(canonical(payload)) };
-      await fsImpl.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+      const directory = path.dirname(filePath);
+      await fsImpl.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+      const directoryStat = await fsImpl.promises.lstat(directory);
+      if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) throw new Error("Worker audit directory is not a trusted regular directory.");
+      await fsImpl.promises.chmod(directory, 0o700);
       const noFollow = fsImpl.constants && fsImpl.constants.O_NOFOLLOW ? fsImpl.constants.O_NOFOLLOW : 0;
       const flags = fsImpl.constants.O_WRONLY | fsImpl.constants.O_CREAT | fsImpl.constants.O_APPEND | noFollow;
       const handle = await fsImpl.promises.open(filePath, flags, 0o600);
       try {
+        await handle.chmod(0o600);
         await handle.writeFile(JSON.stringify(record) + "\n", "utf8");
         await handle.sync();
       } finally {
