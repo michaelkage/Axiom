@@ -584,7 +584,7 @@ async function runQualityGate(event, message) {
       });
     }
 
-    const ranProjectCheck = presets.commands.length > 0;
+    const ranProjectCheck = presets.commands.some(preset => /test|build/i.test(preset.name));
     if (!ranProjectCheck) {
       checks.push({
         name: "Project-level verification evidence",
