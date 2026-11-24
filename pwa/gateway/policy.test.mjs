@@ -18,7 +18,7 @@ test('only valid JSON-RPC tools/call requests are classified', () => {
     invalid: false, name: 'read_file', requestId: 1
   });
   assert.equal(inspectMcpToolCall(Buffer.from('{"method":"tools/list"}')), null);
-  assert.equal(inspectMcpToolCall(Buffer.from('{"method":"tools/call","params":{"name":"../secret"}}')).invalid, true);
+  assert.equal(inspectMcpToolCall(Buffer.from('{"method":"tools/call","params":{"name":"../secret"}}')).invalid, true);\n  assert.equal(inspectMcpToolCall(Buffer.from('[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file"}}]')).invalid, true);
 });
 
 test('audit log appends a verifiable hash-linked sequence and rejects tampering', async () => {
