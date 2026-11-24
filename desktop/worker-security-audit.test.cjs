@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { createWorkerSecurityAudit } = require("./worker-security-audit.cjs");
+const { createWorkerSecurityAudit, canonical, GENESIS_HASH } = require("./worker-security-audit.cjs");
+const crypto = require("node:crypto");
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-worker-audit-"));
@@ -83,4 +84,26 @@ test("audit file symlinks are rejected", async () => {
   const result = await audit.verify();
   assert.equal(result.valid, false);
   assert.match(result.reason, /regular file/i);
+});
+
+
+test("recovers a durable authenticated append when a crash preceded checkpoint update", async () => {
+  const { filePath, signingKey, anchorStore, audit } = fixture();
+  const payload = {
+    sequence: 1,
+    timestamp: "2026-11-24T00:00:00.000Z",
+    permission: "bash",
+    requestedDecision: "always",
+    effectiveDecision: "once",
+    sessionId: "session-crash-recovery",
+    previousHash: GENESIS_HASH
+  };
+  const hash = crypto.createHmac("sha256", signingKey).update(canonical(payload), "utf8").digest("hex");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({ ...payload, hash }) + "\n", { mode: 0o600 });
+  assert.equal(anchorStore.get().sequence, 0);
+  const verified = await audit.verify();
+  assert.equal(verified.valid, true);
+  assert.equal(verified.records, 1);
+  assert.deepEqual(anchorStore.get(), { sequence: 1, hash });
 });
