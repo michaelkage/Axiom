@@ -11,7 +11,9 @@ function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "axiom-worker-audit-"));
   const filePath = path.join(root, "security", "worker-audit.jsonl");
   const signingKey = Buffer.alloc(32, 0x5a);
-  return { root, filePath, signingKey, audit: createWorkerSecurityAudit({ filePath, signingKey }) };
+  let anchor = { sequence: 0, hash: "0".repeat(64) };
+  const anchorStore = { get: () => anchor, set: value => { anchor = value; } };
+  return { root, filePath, signingKey, anchorStore, audit: createWorkerSecurityAudit({ filePath, signingKey, anchorStore }) };
 }
 
 const decision = {
@@ -61,4 +63,24 @@ test("concurrent appends are serialized without duplicate sequence numbers", asy
   const listed = await audit.list();
   assert.equal(listed.total, 12);
   assert.deepEqual(listed.records.map(record => record.sequence), Array.from({ length: 12 }, (_, index) => 12 - index));
+});
+
+
+test("deleting the complete log is detected by the encrypted external checkpoint", async () => {
+  const { filePath, audit } = fixture();
+  await audit.append(decision);
+  fs.unlinkSync(filePath);
+  const result = await audit.verify();
+  assert.equal(result.valid, false);
+  assert.match(result.reason, /checkpoint mismatch/i);
+});
+
+test("audit file symlinks are rejected", async () => {
+  const { root, filePath, audit } = fixture();
+  const target = path.join(root, "attacker-controlled.jsonl");
+  fs.writeFileSync(target, "");
+  fs.symlinkSync(target, filePath);
+  const result = await audit.verify();
+  assert.equal(result.valid, false);
+  assert.match(result.reason, /regular file/i);
 });
