@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
     ipcRenderer.send("axiom:webview-message", message);
   },
+  workerAudit: Object.freeze({
+    append: record => ipcRenderer.invoke("axiom:worker-audit-append", record),
+    list: () => ipcRenderer.invoke("axiom:worker-audit-list"),
+    verify: () => ipcRenderer.invoke("axiom:worker-audit-verify")
+  }),
   secureStorage: Object.freeze({
     get: (namespace, key) => ipcRenderer.invoke("axiom:secure-storage-get", { namespace, key }),
     set: (namespace, key, value) => ipcRenderer.invoke("axiom:secure-storage-set", { namespace, key, value }),

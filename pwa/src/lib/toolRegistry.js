@@ -6,6 +6,13 @@ import { redactSecrets } from './securityRedaction.js';
 const tools = new Map();
 const listeners = new Set();
 
+const PRIVILEGED_TOOL_ACTION = /(?:^|_)(?:create|update|delete|remove|write|commit|push|merge|deploy|release|publish|install|uninstall|rollback|execute|run_command|bash|shell|restart|migrate|enable|disable|configure|authorize|connect)(?:_|$)/i;
+
+function requiresExplicitApproval(definition) {
+  return definition.requiresApproval === true
+    || PRIVILEGED_TOOL_ACTION.test(definition.name || "");
+}
+
 function emit(event) {
   for (const listener of listeners) {
     try { listener(event); } catch { /* Observability listeners cannot break tool execution. */ }
@@ -25,6 +32,7 @@ export function registerTool(definition, handler) {
     description: '',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     ...definition,
+    requiresApproval: requiresExplicitApproval(definition),
     timeoutMs: definition.timeoutMs ?? 30000,
     handler
   };
@@ -147,7 +155,48 @@ export function validateToolInput(schema, value, path = 'input', depth = 0) {
 export async function executeTool(name, input, context = {}) {
   const tool = tools.get(name);
   if (!tool) throw new Error('Unknown tool: ' + name);
+  const integrationId = typeof context?.integrationId === 'string' ? context.integrationId : (typeof tool.integrationId === 'string' ? tool.integrationId : '');
+  const isMcpInvocation = context?.source === 'mcp' || integrationId.length > 0;
+  if (isMcpInvocation) {
+    const policy = context?.mcpPolicy;
+    const allowedTools = policy && typeof policy === 'object' && !Array.isArray(policy)
+      ? policy[integrationId]?.allowedTools
+      : undefined;
+    const explicitlyAllowed = Array.isArray(allowedTools)
+      && allowedTools.every(item => typeof item === 'string')
+      && allowedTools.includes(name);
+    if (!integrationId || !explicitlyAllowed) {
+      const error = new Error('MCP tool execution denied by runtime policy: ' + (integrationId || 'unknown integration') + '/' + name);
+      error.name = 'ToolPolicyError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'mcp_tool_not_allowlisted' });
+      throw error;
+    }
+  }
   validateToolInput(tool.inputSchema, input);
+  if (tool.requiresApproval && context?.approvalGranted !== true) {
+    if (typeof context?.confirmTool !== 'function') {
+      const error = new Error('Privileged tool execution requires an explicit user approval callback: ' + name);
+      error.name = 'ToolApprovalRequiredError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'approval_callback_missing' });
+      throw error;
+    }
+    const approved = await context.confirmTool(name, input, { signal: context.signal, source: context.source || 'runtime', integrationId: integrationId || null });
+    if (approved !== true) {
+      const error = new Error('User approval was not granted for privileged tool: ' + name);
+      error.name = 'ToolApprovalDeclinedError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'user_declined' });
+      throw error;
+    }
+  }
+  if (typeof context?.authorizeTool === 'function') {
+    const decision = await context.authorizeTool({ name, input, source: context.source || 'runtime', integrationId: integrationId || null });
+    if (decision !== true && decision?.allowed !== true) {
+      const error = new Error(typeof decision?.reason === 'string' ? decision.reason : 'Tool execution denied by runtime authorization policy: ' + name);
+      error.name = 'ToolPolicyError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'runtime_authorizer_denied' });
+      throw error;
+    }
+  }
   const startedAt = Date.now();
   const controller = new AbortController();
   let timeout;

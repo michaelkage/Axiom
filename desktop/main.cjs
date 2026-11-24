@@ -7,6 +7,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
+const { createWorkerSecurityAudit } = require("./worker-security-audit.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
@@ -27,9 +28,49 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let secureCredentialStore;
+let workerSecurityAuditStore;
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
+}
+
+async function currentWorkerSecurityAuditStore() {
+  if (workerSecurityAuditStore) return workerSecurityAuditStore;
+  const credentials = currentSecureCredentialStore();
+  let encodedKey = credentials.get("worker-audit", "hmac-signing-key");
+  const isNewKey = !encodedKey;
+  if (isNewKey) {
+    encodedKey = require("node:crypto").randomBytes(32).toString("base64");
+    credentials.set("worker-audit", "hmac-signing-key", encodedKey);
+  }
+  const signingKey = Buffer.from(encodedKey, "base64");
+  if (signingKey.length !== 32 || signingKey.toString("base64") !== encodedKey) {
+    throw new Error("The OS-protected worker audit signing key is invalid; audit operations are blocked.");
+  }
+  let encodedAnchor = credentials.get("worker-audit", "chain-anchor");
+  if (!encodedAnchor && isNewKey) {
+    encodedAnchor = JSON.stringify({ sequence: 0, hash: "0".repeat(64) });
+    credentials.set("worker-audit", "chain-anchor", encodedAnchor);
+  }
+  if (!encodedAnchor) {
+    throw new Error("The OS-protected worker audit checkpoint is missing; audit operations are blocked.");
+  }
+  const anchorStore = {
+    get() {
+      const value = credentials.get("worker-audit", "chain-anchor");
+      if (!value) throw new Error("The OS-protected worker audit checkpoint is missing.");
+      return JSON.parse(value);
+    },
+    set(value) {
+      credentials.set("worker-audit", "chain-anchor", JSON.stringify(value));
+    }
+  };
+  workerSecurityAuditStore = createWorkerSecurityAudit({
+    filePath: path.join(app.getPath("userData"), "security", "worker-audit.jsonl"),
+    signingKey,
+    anchorStore
+  });
+  return workerSecurityAuditStore;
 }
 let activeRuntimeUrl = null;
 let mainWindow;
@@ -793,6 +834,21 @@ function currentWorkerStateStore() {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   return createWorkerStateStore(app.getPath("userData"), selectedWorkspace);
 }
+
+ipcMain.handle("axiom:worker-audit-append", async (event, record) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return (await currentWorkerSecurityAuditStore()).append(record);
+});
+
+ipcMain.handle("axiom:worker-audit-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return (await currentWorkerSecurityAuditStore()).list();
+});
+
+ipcMain.handle("axiom:worker-audit-verify", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return (await currentWorkerSecurityAuditStore()).verify();
+});
 
 ipcMain.handle("axiom:secure-storage-get", (event, request) => {
   if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");

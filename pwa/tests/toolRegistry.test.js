@@ -188,3 +188,79 @@ test('does not start a tool when its caller signal is already aborted', async ()
     unregister();
   }
 });
+
+test('denies MCP execution when the integration has no explicit allowlist', async () => {
+  let called = false;
+  const unregister = registerTool({ name: 'github_read_issue', inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; });
+  try {
+    await assert.rejects(
+      executeTool('github_read_issue', {}, { source: 'mcp', integrationId: 'github', mcpPolicy: {} }),
+      error => error?.name === 'ToolPolicyError' && /denied by runtime policy/.test(error.message)
+    );
+    assert.equal(called, false);
+  } finally { unregister(); }
+});
+
+test('allows only exact tool names explicitly listed for the invoking MCP integration', async () => {
+  const unregister = registerTool({ name: 'github_read_issue', inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => ({ ok: true }));
+  const policy = { github: { allowedTools: ['github_read_issue'] }, supabase: { allowedTools: [] } };
+  try {
+    assert.deepEqual(await executeTool('github_read_issue', {}, { source: 'mcp', integrationId: 'github', mcpPolicy: policy }), { ok: true });
+    await assert.rejects(executeTool('github_read_issue', {}, { source: 'mcp', integrationId: 'supabase', mcpPolicy: policy }), { name: 'ToolPolicyError' });
+    await assert.rejects(executeTool('github_read_issue', {}, { source: 'mcp', integrationId: 'github', mcpPolicy: { github: { allowedTools: ['github_read_issue_extra'] } } }), { name: 'ToolPolicyError' });
+  } finally { unregister(); }
+});
+
+test('runs the runtime authorization callback before a tool handler', async () => {
+  let called = false;
+  const unregister = registerTool({ name: 'test_authorized', inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; });
+  try {
+    await assert.rejects(executeTool('test_authorized', {}, { authorizeTool: () => ({ allowed: false, reason: 'approval required' }) }), /approval required/);
+    assert.equal(called, false);
+    assert.deepEqual(await executeTool('test_authorized', {}, { authorizeTool: () => true }), undefined);
+    assert.equal(called, true);
+  } finally { unregister(); }
+});
+
+test('requires privileged tools to receive explicit approval at the execution boundary', async () => {
+  let called = false;
+  const unregister = registerTool({ name: 'test_privileged', requiresApproval: true, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; return 'done'; });
+  try {
+    await assert.rejects(executeTool('test_privileged', {}), { name: 'ToolApprovalRequiredError' });
+    await assert.rejects(executeTool('test_privileged', {}, { confirmTool: async () => false }), { name: 'ToolApprovalDeclinedError' });
+    assert.equal(called, false);
+    assert.equal(await executeTool('test_privileged', {}, { confirmTool: async () => true }), 'done');
+    assert.equal(called, true);
+  } finally { unregister(); }
+});
+
+test('uses the registered MCP integration identity and rejects missing policy before approval or handler', async () => {
+  let called = false;
+  let prompted = false;
+  const unregister = registerTool({ name: 'mcp_server_sensitive', integrationId: 'server-1', requiresApproval: true, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => { called = true; });
+  try {
+    await assert.rejects(executeTool('mcp_server_sensitive', {}, {
+      mcpPolicy: {},
+      confirmTool: async () => { prompted = true; return true; }
+    }), { name: 'ToolPolicyError' });
+    assert.equal(prompted, false);
+    assert.equal(called, false);
+    assert.equal(await executeTool('mcp_server_sensitive', {}, {
+      mcpPolicy: { 'server-1': { allowedTools: ['mcp_server_sensitive'] } },
+      confirmTool: async () => true
+    }), undefined);
+    assert.equal(called, true);
+  } finally { unregister(); }
+});
+
+test('automatically marks Git, deployment, and plugin mutation tools as privileged', async () => {
+  const names = ['git_commit_changes', 'github_create_pull_request', 'deploy_production', 'plugin_install'];
+  const cleanups = names.map(name => registerTool({ name, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }, async () => 'done'));
+  try {
+    for (const name of names) {
+      assert.equal(listTools().find(tool => tool.name === name)?.requiresApproval, true, name);
+      await assert.rejects(executeTool(name, {}), { name: 'ToolApprovalRequiredError' });
+    }
+  } finally { cleanups.forEach(cleanup => cleanup()); }
+});
+

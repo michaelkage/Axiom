@@ -9,6 +9,7 @@ import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
+import { WorkerSecurityAuditPanel } from "./components/WorkerSecurityAuditPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
@@ -29,6 +30,8 @@ import { parseHostMessage } from "./types";
 import { BUILTIN_PLUGIN_CATALOG, comboPromptForState, getAvailableCombos, reviewPluginManifest, suggestNextActions, type ExecutionSummary } from "../shared/intelligence";
 import { createIndependentTasks, isCurrentTaskAttempt, isCurrentDispatchedTaskAttempt, TaskBatchExecutionError, type TaskExecutionRecord } from "../shared/axiomRuntime";
 import { decideTurboNext, getRequeueableBlockedTaskIds, type TurboTask } from "../shared/turboSupervisor";
+import { resolvePermissionDecision } from "../shared/securityPolicy";
+import { appendWorkerSecurityAudit } from "../shared/workerSecurityAudit";
 
 export interface QueuedMessage {
   id: string;
@@ -1585,7 +1588,43 @@ function App() {
       return;
     }
 
-    await respondToPermission(sessionId, permissionId, response);
+    const effectiveResponse = resolvePermissionDecision(permission?.permission ?? "unknown", response);
+    if (effectiveResponse !== response) {
+      logger.warn("Persistent permission grant blocked for privileged worker operation", {
+        permission: permission?.permission ?? "unknown",
+        requestedResponse: response,
+        effectiveResponse,
+        sessionId,
+      });
+    }
+    const permissionType = permission?.permission ?? "unknown";
+    try {
+      await appendWorkerSecurityAudit({
+        permission: permissionType,
+        requestedDecision: response,
+        effectiveDecision: effectiveResponse,
+        sessionId,
+      });
+    } catch (auditError) {
+      const reason = auditError instanceof Error ? auditError.message : String(auditError);
+      logger.error("Worker permission blocked because the security audit could not be verified or persisted", {
+        permission: permissionType,
+        sessionId,
+        reason,
+      });
+      // Preserve fail-closed behavior without leaving the worker blocked on an
+      // unresolved prompt: reject the requested operation if the host accepts it.
+      await respondToPermission(sessionId, permissionId, "reject");
+      sync.setSessionError(sessionId, "A worker operation was rejected because its security audit could not be verified or saved. Check the runtime log before retrying.");
+      return;
+    }
+    logger.info("Worker permission decision", {
+      permission: permissionType,
+      response: effectiveResponse,
+      sessionId,
+      audit: "sha256-chain-verified",
+    });
+    await respondToPermission(sessionId, permissionId, effectiveResponse);
     // Permission removal is handled by store via SSE events
   };
 
@@ -1983,6 +2022,7 @@ function App() {
           editorRef={handleEditorMethodsReady}
         />
       </Show>
+      <WorkerSecurityAuditPanel />
     </div>
   );
 }

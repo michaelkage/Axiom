@@ -55,6 +55,14 @@ jobs:
       - name: Run unit tests
         run: pnpm exec vitest run
 
+      - name: Install PWA gateway test dependencies
+        working-directory: pwa
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Run PWA and gateway security tests
+        working-directory: pwa
+        run: npm test
+
       - name: Validate product site and release catalog
         run: pnpm run test:site
 
