@@ -2532,3 +2532,60 @@ button:focus-visible, a:focus-visible { outline:2px solid #8b9cff; outline-offse
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.axiom-deployment{display:grid;gap:10px;padding:14px;border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}
+.axiom-deployment__heading,.axiom-deployment__actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.axiom-deployment__heading>div{display:grid;gap:3px}.axiom-deployment__heading small,.axiom-deployment>small{color:var(--vscode-descriptionForeground);font-size:11px}
+.axiom-deployment__heading>span{font-size:10px;letter-spacing:.08em;color:var(--vscode-descriptionForeground);border:1px solid var(--vscode-panel-border);border-radius:20px;padding:3px 8px}
+.axiom-deployment label{display:grid;gap:5px;font-size:12px;color:var(--vscode-descriptionForeground)}
+.axiom-deployment input,.axiom-deployment select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+.axiom-deployment__actions button{padding:7px 11px;border-radius:6px;border:1px solid var(--vscode-button-border,transparent);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}
+.axiom-deployment__actions button:last-child{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+.axiom-deployment__actions button:disabled{opacity:.5;cursor:not-allowed}
+.axiom-deployment__result{margin:0;color:var(--vscode-testing-iconPassed)}
+.axiom-deployment a{overflow-wrap:anywhere}
+
+.axiom-browser{display:grid;gap:10px;padding:14px;border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}
+.axiom-browser__heading,.axiom-browser__url,.axiom-browser__actions,.axiom-browser__metrics{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.axiom-browser__heading>div{display:grid;gap:3px}.axiom-browser__heading small,.axiom-browser__footnote,.axiom-browser__summary small{color:var(--vscode-descriptionForeground);font-size:11px}
+.axiom-browser__heading>span{font-size:10px;letter-spacing:.08em;border:1px solid var(--vscode-panel-border);border-radius:20px;padding:3px 8px}
+.axiom-browser__url input{flex:1;min-width:180px;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+.axiom-browser button{padding:7px 11px;border:1px solid var(--vscode-panel-border);border-radius:6px;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}
+.axiom-browser button:disabled{opacity:.5;cursor:not-allowed}.axiom-browser__notice{margin:0;font-size:12px;color:var(--vscode-descriptionForeground)}
+.axiom-browser__summary{display:grid;gap:5px;min-width:0}.axiom-browser__summary small{overflow-wrap:anywhere}.axiom-browser__summary p{margin:0;font-size:12px}
+.axiom-browser__metrics span{font-size:10px;padding:3px 7px;border-radius:5px;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground)}.axiom-browser__metrics .has-errors{background:var(--vscode-inputValidation-errorBackground);color:var(--vscode-errorForeground)}
+.axiom-browser__screenshot{width:100%;max-height:420px;object-fit:contain;object-position:top;border:1px solid var(--vscode-panel-border);border-radius:7px;background:#fff}
+.axiom-browser__errors{display:grid;gap:5px;padding:9px;border:1px solid var(--vscode-inputValidation-errorBorder);border-radius:6px}.axiom-browser__errors p{margin:0;font:11px/1.5 var(--vscode-editor-font-family);overflow-wrap:anywhere}
+.axiom-browser details{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px}.axiom-browser summary{cursor:pointer;font-size:12px}.axiom-browser pre{max-height:280px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 var(--vscode-editor-font-family)}
+.axiom-browser .axiom-browser__analyze{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+
+.axiom-browser__action-form{display:grid;gap:8px;padding:10px;border:1px solid var(--vscode-panel-border);border-radius:7px}
+.axiom-browser__action-form label{display:grid;gap:4px;font-size:11px;color:var(--vscode-descriptionForeground)}
+.axiom-browser__action-form input,.axiom-browser__action-form select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+
+.axiom-remote-worker{display:grid;gap:10px;padding:14px;border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}
+.axiom-remote-worker__heading,.axiom-remote-worker__actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.axiom-remote-worker__heading>div{display:grid;gap:3px}.axiom-remote-worker__heading small,.axiom-remote-worker>small{color:var(--vscode-descriptionForeground);font-size:11px}
+.axiom-remote-worker__heading>span{font-size:10px;letter-spacing:.08em;border:1px solid var(--vscode-panel-border);border-radius:20px;padding:3px 8px}
+.axiom-remote-worker label:not(.axiom-remote-worker__toggle){display:grid;gap:5px;font-size:12px;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker input:not([type=checkbox]){width:100%;min-width:0;padding:7px 9px;border:1px solid var(--vscode-input-border);border-radius:6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}
+.axiom-remote-worker__toggle{display:flex;align-items:center;gap:8px;font-size:12px}
+.axiom-remote-worker__saved{color:var(--vscode-testing-iconPassed);font-size:11px}
+.axiom-remote-worker button{padding:7px 11px;border:1px solid var(--vscode-panel-border);border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer}
+.axiom-remote-worker button:disabled{opacity:.5;cursor:not-allowed}.axiom-remote-worker p{margin:0;font-size:12px;color:var(--vscode-descriptionForeground)}
+
+.axiom-remote-worker__jobs{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+.axiom-remote-worker__jobs-heading,.axiom-remote-worker__jobs article>div,.axiom-remote-worker__job-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.axiom-remote-worker__jobs article{display:grid;gap:6px;padding:10px;border:1px solid var(--vscode-panel-border);border-radius:7px}
+.axiom-remote-worker__jobs article>div span{font-size:10px;text-transform:uppercase;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker__jobs article small{font-size:10px;color:var(--vscode-descriptionForeground)}
+.axiom-remote-worker__jobs article p{margin:0;font-size:11px;overflow-wrap:anywhere}
+.axiom-remote-worker__jobs details{font-size:11px}.axiom-remote-worker__jobs details p{font-family:var(--vscode-editor-font-family)}
+.axiom-remote-worker__error{color:var(--vscode-errorForeground)}
+.axiom-remote-worker__review{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+
+.axiom-deployment__history{display:grid;gap:7px;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}
+.axiom-deployment__history>strong{font-size:12px}
+.axiom-deployment__history>div{display:grid;gap:3px;padding:8px;border:1px solid var(--vscode-panel-border);border-radius:6px}
+.axiom-deployment__history span{font-size:11px}.axiom-deployment__history small{font-size:10px;color:var(--vscode-descriptionForeground)}
+.axiom-deployment__history a{font-size:11px;overflow-wrap:anywhere}

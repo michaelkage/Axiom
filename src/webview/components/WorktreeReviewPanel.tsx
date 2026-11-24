@@ -1,19 +1,22 @@
 import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
 import { hostBridge } from "../utils/hostBridge";
+import { runBoundedRepair, type RepairControllerResult } from "../../shared/repairController";
 
 type ChangedFile = { status: string; path: string };
-type Check = { name: string; state: string; exitCode?: number; output?: string };
+type Check = { name: string; command?: string; state: string; exitCode?: number; output?: string };
 type Review = { ok: boolean; loading?: boolean; error?: string; changedFiles?: ChangedFile[]; patch?: string; whitespaceCheck?: { passed: boolean; output: string } };
 type Gate = { loading?: boolean; status?: string; checks?: Check[]; error?: string };
 type Apply = { loading?: boolean; ok: boolean; error?: string; appliedPaths?: string[] };
 
-export function WorktreeReviewPanel(props: { taskId: string; worktreePath: string; workspaceRoot?: string; acceptanceCriteria?: string[]; onRepair?: (failure: string) => Promise<void> | void }) {
+export function WorktreeReviewPanel(props: { taskId: string; worktreePath: string; workspaceRoot?: string; acceptanceCriteria?: string[]; onRepair?: (failure: string, signal?: AbortSignal) => Promise<void> | void }) {
   const [review, setReview] = createSignal<Review | null>(null);
   const [selected, setSelected] = createSignal<string[]>([]);
   const [gate, setGate] = createSignal<Gate | null>(null);
   const [applyResult, setApplyResult] = createSignal<Apply | null>(null);
   const [repairAttempts, setRepairAttempts] = createSignal(0);
   const [repairing, setRepairing] = createSignal(false);
+  const [repairController, setRepairController] = createSignal<AbortController | null>(null);
+  const [repairResult, setRepairResult] = createSignal<RepairControllerResult | null>(null);
   const [forceAcknowledged, setForceAcknowledged] = createSignal(false);
   const changedPaths = createMemo(() => (review()?.changedFiles ?? []).map(file => file.path));
   const [criteriaEvidence, setCriteriaEvidence] = createSignal<Record<string, string>>({});
@@ -31,6 +34,39 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
     setGate({ loading: true });
     hostBridge.postMessage({ type: "run-agent-quality-gate", taskId: props.taskId, worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot, changedPaths: changedPaths() });
   };
+
+  const runGateAndWait = (signal: AbortSignal): Promise<Gate> => new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("Repair cancelled before verification."));
+    const requestId = crypto.randomUUID();
+    let settled = false;
+    const cleanup = () => {
+      window.removeEventListener("message", listener);
+      signal.removeEventListener("abort", abort);
+      clearTimeout(timeout);
+    };
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true; cleanup(); callback();
+    };
+    const listener = (event: MessageEvent) => {
+      const data = event.data as { type?: string; taskId?: string; requestId?: string; status?: string; checks?: Check[]; error?: string };
+      if (data?.type !== "agent-quality-gate-result" || data.taskId !== props.taskId || data.requestId !== requestId) return;
+      const result: Gate = { loading: false, status: data.status, checks: data.checks ?? [], error: data.error };
+      setGate(result);
+      finish(() => resolve(result));
+    };
+    const abort = () => finish(() => reject(new Error("Repair cancelled while verification was running.")));
+    const timeout = setTimeout(() => finish(() => reject(new Error("Verification did not return within eight minutes."))), 8 * 60 * 1000);
+    window.addEventListener("message", listener);
+    signal.addEventListener("abort", abort, { once: true });
+    setGate({ loading: true });
+    hostBridge.postMessage({
+      type: "run-agent-quality-gate", taskId: props.taskId, requestId,
+      worktreePath: props.worktreePath, workspaceRoot: props.workspaceRoot,
+      changedPaths: changedPaths(),
+    });
+  });
+
   const applySelected = (forceIntegration = false) => {
     if (!props.workspaceRoot || !selected().length) return;
     if (!forceIntegration && effectiveStatus() !== "Ready to review") return;
@@ -110,13 +146,61 @@ export function WorktreeReviewPanel(props: { taskId: string; worktreePath: strin
         <span>{check.state === "passed" ? "✓" : "✕"} {check.name}</span>
         <Show when={check.output}><details><summary>Output</summary><pre>{check.output}</pre></details></Show>
       </div>}</For>
-      <Show when={result.status === "Needs fixes" && (result.checks ?? []).some(check => check.state === "failed") && props.onRepair && repairAttempts() < 1}>
+      <Show when={result.status === "Needs fixes" && (result.checks ?? []).some(check => check.state === "failed") && props.onRepair && repairAttempts() < 2}>
         <button class="workflow-plan__secondary" disabled={repairing()} onClick={async () => {
-          const failure = (result.checks ?? []).filter(check => check.state === "failed").map(check => check.name + " (exit " + check.exitCode + "): " + (check.output || "No output captured.")).join("\n\n");
-          setRepairAttempts(count => count + 1);
+          if (!props.onRepair) return;
+          const controller = new AbortController();
+          setRepairController(controller);
           setRepairing(true);
-          try { await props.onRepair?.(failure); } finally { setRepairing(false); }
-        }}>{repairing() ? "Requesting one bounded repair…" : "Ask task agent to fix failures (1 retry)"}</button>
+          setRepairResult(null);
+          setRepairAttempts(0);
+          try {
+            const recovery = await runBoundedRepair({
+              maxAttempts: 2,
+              maxDurationMs: 10 * 60 * 1000,
+              signal: controller.signal,
+              verify: async signal => {
+                const verified = await runGateAndWait(signal);
+                const failures = (verified.checks ?? []).filter(check => check.state === "failed" && check.command && Number.isInteger(check.exitCode) && check.exitCode !== 0);
+                if (verified.status === "Ready to review" && (verified.checks ?? []).every(check => check.state === "passed")) {
+                  return { status: "passed", command: "Axiom worktree quality gate", exitCode: 0, output: "All required worktree checks passed." };
+                }
+                if (failures.length) {
+                  const failure = failures[0];
+                  return { status: "failed", command: failure.command, exitCode: failure.exitCode, label: failure.name, output: failure.output || "The check failed without captured output." };
+                }
+                return { status: "unverified", output: verified.error || "Quality gate did not provide a concrete failing command and exit code." };
+              },
+              repair: async (failure, attempt, signal) => {
+                if (signal.aborted) throw new Error("Repair cancelled.");
+                await props.onRepair?.(
+                  "Repair attempt " + attempt + ". Failing command: " + failure.command + "\nExit code: " + failure.exitCode + "\nCheck: " + (failure.label || "Verification") + "\n\n" + (failure.output || ""),
+                  signal,
+                );
+                return "Task agent received the exact failing verification evidence.";
+              },
+              onAttempt: record => setRepairAttempts(record.attempt),
+            });
+            setRepairResult(recovery);
+            if (recovery.status === "passed") setGate(current => current ? { ...current, status: "Ready to review" } : current);
+          } catch (error) {
+            setRepairResult({
+              status: controller.signal.aborted ? "cancelled" : "failed",
+              attempts: [], finalEvidence: { status: "unverified", output: error instanceof Error ? error.message : String(error) },
+              reason: error instanceof Error ? error.message : "Repair failed.",
+            });
+          } finally {
+            setRepairController(null);
+            setRepairing(false);
+          }
+        }}>{repairing() ? "Repairing and re-verifying…" : "Run bounded repair (up to 2 attempts)"}</button>
+        <Show when={repairing()}>
+          <button class="workflow-plan__secondary" onClick={() => repairController()?.abort()}>Cancel repair</button>
+          <p>Attempt {repairAttempts()} of 2 · repair time budget: 10 minutes</p>
+        </Show>
+        <Show when={repairResult()}>
+          <p class="worktree-review__note">Repair outcome: {repairResult()!.status} — {repairResult()!.reason}</p>
+        </Show>
       </Show>
       <button class="workflow-plan__secondary" disabled={effectiveStatus() !== "Ready to review" || !selected().length || applyResult()?.loading} onClick={() => applySelected(false)}>
         {applyResult()?.loading ? "Integrating…" : "Integrate selected files"}

@@ -152,3 +152,74 @@ describe("runSubAgentTasks", () => {
     expect(calls.createWorktree).not.toHaveBeenCalled();
   });
 });
+
+
+describe("bounded transient worker recovery", () => {
+  it("retries a connection failure once and records the successful attempt", async () => {
+    let calls = 0;
+    const execute = vi.fn(async request => {
+      calls++;
+      if (calls === 1) throw new Error("ECONNRESET while contacting the model provider");
+      return {
+        sessionId: "recovered-session",
+        taskId: request.task.id,
+        title: request.task.title,
+        summary: "Recovered after a transient provider failure.",
+        worktreePath: "/tmp/axiom-worker-recovered",
+        logs: ["retry completed"],
+      };
+    });
+    const { options, outcomes } = setup({
+      maxAutomaticRetries: 1,
+      workerProvider: {
+        id: "retry-test",
+        capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
+        execute,
+      },
+    });
+    const result = await runSubAgentTasks(options);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(result[0].result.sessionId).toBe("recovered-session");
+    expect(outcomes.some(record => record.status === "succeeded" && record.attempt === 2)).toBe(true);
+  });
+
+
+  it("uses a consistent default retry count and total-attempt budget", async () => {
+    let calls = 0;
+    const execute = vi.fn(async request => {
+      calls++;
+      if (calls === 1) throw new Error("ECONNRESET while contacting the model provider");
+      return {
+        sessionId: "default-retry-session",
+        taskId: request.task.id,
+        title: request.task.title,
+        summary: "Recovered with the default retry policy.",
+        worktreePath: "/tmp/axiom-worker-default-retry",
+        logs: [],
+      };
+    });
+    const { options } = setup({
+      workerProvider: {
+        id: "default-retry-test",
+        capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
+        execute,
+      },
+    });
+    const results = await runSubAgentTasks(options);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(results[0].result.sessionId).toBe("default-retry-session");
+  });
+
+  it("does not retry permission failures automatically", async () => {
+    const execute = vi.fn(async () => { throw new Error("Permission denied: approval required"); });
+    const { options } = setup({
+      workerProvider: {
+        id: "permission-test",
+        capabilities: { isolatedWorkspaces: true, cancellation: "confirmed", streamingLogs: true },
+        execute,
+      },
+    });
+    await expect(runSubAgentTasks(options)).rejects.toThrow(/permission denied/i);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+});

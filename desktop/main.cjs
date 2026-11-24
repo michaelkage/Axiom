@@ -7,6 +7,12 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
+const { createDeploymentManager } = require("./deployment-provider.cjs");
+const { createDeploymentHistoryStore } = require("./deployment-history.cjs");
+const { validateRemoteWorkerConfig, createRemoteWorkerHostClient } = require("./remote-worker-host-client.cjs");
+const { applyRemoteWorkerPatch } = require("./remote-patch-importer.cjs");
+const { validateBrowserNavigation } = require("./browser-url.cjs");
+const { normalizeBrowserAction, buildBrowserActionScript } = require("./browser-actions.cjs");
 const { redactSecrets } = require("./security-redaction.cjs");
 const { listDirectory, readProjectFile, writeProjectFile } = require("./filesystem.cjs");
 const { createTerminalRunner } = require("./terminal.cjs");
@@ -31,11 +37,30 @@ function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
 }
+
+function readRemoteWorkerSettings() {
+  const store = currentSecureCredentialStore();
+  return {
+    hostUrl: store.get("worker-host", "host-url"),
+    repositoryUrl: store.get("worker-host", "repository-url"),
+    branch: store.get("worker-host", "branch"),
+    enabled: store.get("worker-host", "enabled") === "true",
+    tokenConfigured: Boolean(store.get("worker-host", "token")),
+  };
+}
+function createRemoteWorkerHostClientForApp() {
+  return createRemoteWorkerHostClient({
+    getConfig: async () => ({ hostUrl: currentSecureCredentialStore().get("worker-host", "host-url") }),
+    getToken: async () => currentSecureCredentialStore().get("worker-host", "token"),
+  });
+}
+
 let activeRuntimeUrl = null;
 let mainWindow;
 let isQuitting = false;
 let shutdownStarted = false;
 const remoteWorkspaceJobs = new Map();
+const browserSessions = new Map();
 const remoteWorkspaceOperations = new Map();
 const remoteWorkspaceInstanceId = require("node:crypto").randomUUID();
 async function runRemoteWorkspaceOperation(job, kind, operation) {
@@ -414,7 +439,7 @@ async function createWindow() {
   });
   mainWindow.webContents.on("render-process-gone", (_event, details) => { void appendRuntimeLog("Renderer process exited: " + JSON.stringify(details)); });
   mainWindow.once("ready-to-show", () => mainWindow.show());
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => { for (const entry of browserSessions.values()) { try { entry.window.close(); } catch {} } browserSessions.clear(); mainWindow = null; });
   const htmlPath = app.isPackaged
     ? path.join(process.resourcesPath, "out", "src", "webview", "standalone.html")
     : path.join(__dirname, "..", "out", "src", "webview", "standalone.html");
@@ -524,7 +549,7 @@ async function runQualityGate(event, message) {
   const checks = [];
   const addCheck = async (name, command, args, cwd, timeout) => {
     const result = await run(command, args, cwd, timeout);
-    checks.push({ name, state: result.exitCode === 0 ? "passed" : "failed", exitCode: result.exitCode, output: result.output || "Command completed without output." });
+    checks.push({ name, command: [command, ...args].join(" "), state: result.exitCode === 0 ? "passed" : "failed", exitCode: result.exitCode, output: result.output || "Command completed without output." });
   };
   try {
     validateWorkspace(message.workspaceRoot);
@@ -598,7 +623,7 @@ async function runQualityGate(event, message) {
       checks: checks.map(check => ({ name: check.name, state: check.state === "passed" ? "passed" : "failed", details: "Exit code: " + check.exitCode + ". Full output is available in the verification panel." })),
       files: Array.isArray(message.changedPaths) ? message.changedPaths : []
     });
-    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status, checks, ranProjectCheck });
+    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status, checks, ranProjectCheck });
     sendHostMessage(event, { type: "project-state-updated" });
   } catch (error) {
     try {
@@ -610,7 +635,7 @@ async function runQualityGate(event, message) {
       });
       sendHostMessage(event, { type: "project-state-updated" });
     } catch { /* A history write failure must not hide the verification error. */ }
-    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, status: "Blocked", checks, error: error.message });
+    sendHostMessage(event, { type: "agent-quality-gate-result", taskId: message.taskId, requestId: message.requestId, status: "Blocked", checks, error: error.message });
   }
 }
 
@@ -924,6 +949,215 @@ ipcMain.handle("axiom:omniroute-dashboard", async event => {
   url.pathname = url.pathname.endsWith("/v1") ? (url.pathname.slice(0, -3) || "/") : url.pathname;
   await shell.openExternal(url.toString());
   return true;
+});
+
+
+
+
+
+async function loadBrowserPage(browserWindow, url) {
+  let timer;
+  try {
+    await Promise.race([
+      browserWindow.loadURL(url),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          if (!browserWindow.isDestroyed()) browserWindow.webContents.stop();
+          reject(new Error("Browser navigation timed out after 30 seconds."));
+        }, 30000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+function ownedBrowserSession(event, id) {
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new TypeError("Invalid browser session ID.");
+  const entry = browserSessions.get(id);
+  if (!entry || entry.ownerId !== event.sender.id || entry.window.isDestroyed()) throw new Error("Browser session not found or no longer owned by this window.");
+  return entry;
+}
+function recordBrowserError(entry, value) {
+  const safe = redactSecrets(String(value || "Browser error")).replace(/[\r\n\t]+/g, " ").slice(0, 1200);
+  if (!safe) return;
+  entry.errors.push(safe);
+  if (entry.errors.length > 40) entry.errors.splice(0, entry.errors.length - 40);
+}
+ipcMain.handle("axiom:browser-open", async (event, rawUrl) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const url = validateBrowserNavigation(rawUrl);
+  const sessionId = require("node:crypto").randomUUID();
+  const browserWindow = new BrowserWindow({
+    parent: mainWindow, width: 1280, height: 860, minWidth: 720, minHeight: 520,
+    title: "Axiom Browser", backgroundColor: "#ffffff", show: false,
+    webPreferences: {
+      partition: "axiom-browser-" + sessionId, contextIsolation: true,
+      nodeIntegration: false, sandbox: true, webSecurity: true,
+      allowRunningInsecureContent: false, spellcheck: false,
+    },
+  });
+  browserWindow.removeMenu();
+  const entry = { ownerId: event.sender.id, window: browserWindow, errors: [] };
+  browserSessions.set(sessionId, entry);
+  const pageSession = browserWindow.webContents.session;
+  pageSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  pageSession.on("will-download", (_downloadEvent, item) => item.cancel());
+  browserWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  browserWindow.webContents.on("will-navigate", (navigationEvent, target) => {
+    try { validateBrowserNavigation(target); }
+    catch { navigationEvent.preventDefault(); recordBrowserError(entry, "Blocked navigation to a non-HTTP(S) URL."); }
+  });
+  browserWindow.webContents.on("console-message", (_consoleEvent, detailsOrLevel, message, line, sourceId) => {
+    const details = detailsOrLevel && typeof detailsOrLevel === "object"
+      ? detailsOrLevel
+      : { level: detailsOrLevel, message, lineNumber: line, sourceId };
+    if (details.level === "error" || details.level === 2) recordBrowserError(entry, "Console: " + String(details.message || "").slice(0, 1000));
+  });
+  browserWindow.webContents.on("did-fail-load", (_loadEvent, code, description, failedUrl, isMainFrame) => {
+    if (code !== -3 && isMainFrame) recordBrowserError(entry, "Navigation failed (" + code + "): " + String(description || failedUrl).slice(0, 500));
+  });
+  browserWindow.webContents.on("render-process-gone", (_goneEvent, details) => {
+    recordBrowserError(entry, "Page renderer exited: " + String(details.reason || "unknown"));
+  });
+  browserWindow.on("closed", () => {
+    browserSessions.delete(sessionId);
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === entry.ownerId) {
+      mainWindow.webContents.send("axiom:browser-closed", sessionId);
+    }
+  });
+  try {
+    await loadBrowserPage(browserWindow, url);
+    if (!browserWindow.isDestroyed()) browserWindow.show();
+    await appendRuntimeLog("Browser intelligence opened " + new URL(url).origin + ".");
+    return { sessionId, url: browserWindow.webContents.getURL(), title: browserWindow.webContents.getTitle() };
+  } catch (error) {
+    browserSessions.delete(sessionId);
+    if (!browserWindow.isDestroyed()) browserWindow.close();
+    throw new Error("Could not open browser page: " + redactSecrets(error.message || error).slice(0, 1000));
+  }
+});
+ipcMain.handle("axiom:browser-navigate", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const url = validateBrowserNavigation(request.url);
+  await loadBrowserPage(entry.window, url);
+  return { url: entry.window.webContents.getURL(), title: entry.window.webContents.getTitle() };
+});
+ipcMain.handle("axiom:browser-inspect", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const page = await entry.window.webContents.executeJavaScript("({url:location.href,title:document.title||'',capturedAt:new Date().toISOString(),viewport:{width:innerWidth,height:innerHeight},description:document.querySelector('meta[name=description]')?.content||'',headings:Array.from(document.querySelectorAll('h1,h2,h3,h4')).slice(0,80).map(n=>({level:Number(n.tagName.slice(1)),text:(n.innerText||n.textContent||'').trim().slice(0,240)})),controls:Array.from(document.querySelectorAll('button,input,textarea,select,[role=button],[role=textbox]')).slice(0,120).map(n=>({tag:n.tagName.toLowerCase(),type:n.getAttribute('type')||n.getAttribute('role')||'',label:(n.getAttribute('aria-label')||n.labels?.[0]?.innerText||n.innerText||n.textContent||'').trim().slice(0,160),placeholder:(n.getAttribute('placeholder')||'').slice(0,160),disabled:Boolean(n.disabled||n.getAttribute('aria-disabled')==='true')})),links:Array.from(document.querySelectorAll('a[href]')).slice(0,100).map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,160),href:n.href.slice(0,1000)})),text:(document.body?.innerText||'').slice(0,16000)})", true);
+  return { ...page, errors: [...entry.errors] };
+});
+ipcMain.handle("axiom:browser-act", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const action = normalizeBrowserAction(request?.action);
+  const result = await entry.window.webContents.executeJavaScript(buildBrowserActionScript(action), true);
+  await appendRuntimeLog("Browser action " + action.type + " executed against an explicitly matched visible control.");
+  return result;
+});
+ipcMain.handle("axiom:browser-screenshot", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  const image = await entry.window.webContents.capturePage();
+  const bytes = image.toJPEG(72);
+  if (bytes.length > 5 * 1024 * 1024) throw new Error("Screenshot exceeds the 5 MiB transfer limit.");
+  return { dataUrl: "data:image/jpeg;base64," + bytes.toString("base64") };
+});
+ipcMain.handle("axiom:browser-close", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const entry = ownedBrowserSession(event, request?.sessionId);
+  entry.window.close();
+  browserSessions.delete(request.sessionId);
+  return { closed: true };
+});
+
+
+ipcMain.handle("axiom:remote-worker-config", event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return readRemoteWorkerSettings();
+});
+ipcMain.handle("axiom:remote-worker-config-save", (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  const savedToken = currentSecureCredentialStore().get("worker-host", "token");
+  const validated = validateRemoteWorkerConfig({ ...request, token: typeof request?.token === "string" && request.token.trim() ? request.token.trim() : savedToken });
+  const store = currentSecureCredentialStore();
+  store.set("worker-host", "host-url", validated.hostUrl);
+  store.set("worker-host", "repository-url", validated.repositoryUrl);
+  store.set("worker-host", "branch", validated.branch);
+  store.set("worker-host", "token", validated.token);
+  store.set("worker-host", "enabled", request.enabled === true ? "true" : "false");
+  return readRemoteWorkerSettings();
+});
+ipcMain.handle("axiom:remote-worker-test", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().health();
+});
+ipcMain.handle("axiom:remote-worker-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().list();
+});
+ipcMain.handle("axiom:remote-worker-submit", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().submit(request);
+});
+ipcMain.handle("axiom:remote-worker-get", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().get(id);
+});
+ipcMain.handle("axiom:remote-worker-patch", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().getPatch(id);
+});
+ipcMain.handle("axiom:remote-worker-retry", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return createRemoteWorkerHostClientForApp().retry(request?.id, { idempotencyKey: request?.idempotencyKey, prompt: request?.prompt });
+});
+ipcMain.handle("axiom:remote-worker-cancel", async (event, id) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  await createRemoteWorkerHostClientForApp().cancel(id);
+  return { requested: true };
+});
+
+ipcMain.handle("axiom:remote-worker-apply-patch", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a local project before importing remote worker changes.");
+  const repositoryUrl = currentSecureCredentialStore().get("worker-host", "repository-url");
+  const result = await applyRemoteWorkerPatch({
+    workspaceRoot: selectedWorkspace,
+    userDataPath: app.getPath("userData"),
+    taskId: request?.taskId,
+    jobId: request?.jobId,
+    repositoryUrl,
+    patch: request?.patch,
+  });
+  await appendRuntimeLog("Imported remote worker patch into an isolated local review worktree for task " + String(request.taskId) + ".");
+  return result;
+});
+
+ipcMain.handle("axiom:deployment-history", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) return [];
+  return createDeploymentHistoryStore(app.getPath("userData")).list(selectedWorkspace);
+});
+ipcMain.handle("axiom:deployment-preview", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!selectedWorkspace) throw new Error("Open a project before creating a deployment preview.");
+  if (!request || typeof request !== "object" || path.resolve(String(request.projectRoot || "")) !== path.resolve(selectedWorkspace)) {
+    throw new Error("Deployment requests must target the currently selected project.");
+  }
+  const manager = createDeploymentManager({
+    getCredential: provider => currentSecureCredentialStore().get("deployment", provider),
+  });
+  const result = await manager.deployPreview({
+    ...request,
+    projectRoot: selectedWorkspace,
+    target: "preview",
+  });
+  try { await createDeploymentHistoryStore(app.getPath("userData")).append(selectedWorkspace, result); }
+  catch (historyError) { await appendRuntimeLog("Deployment succeeded but history could not be saved: " + redactSecrets(historyError.message || historyError).slice(0, 500)); }
+  await appendRuntimeLog("Created " + result.provider + " preview deployment for " + path.basename(selectedWorkspace) + ".");
+  return result;
 });
 
 ipcMain.handle("axiom:remote-workspace-create", async (event, request) => {

@@ -1,0 +1,182 @@
+"use strict";
+
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const { randomBytes } = require("node:crypto");
+const { redactSecrets: redactDiagnostic } = require("./security-redaction.cjs");
+
+const execFileAsync = promisify(execFile);
+const PROVIDERS = new Set(["vercel", "netlify", "cloudflare-pages"]);
+const ENV_ALLOWLIST = [
+  "PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
+  "SYSTEMROOT", "WINDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"
+];
+
+function requiredText(value, label, max = 256) {
+  if (typeof value !== "string" || !value.trim() || value.length > max || /[\0\r\n]/.test(value)) {
+    throw new TypeError(label + " must be a non-empty string no longer than " + max + " characters.");
+  }
+  return value.trim();
+}
+
+async function resolveBuildOutput(projectRoot, outputDirectory) {
+  const root = await fs.realpath(path.resolve(requiredText(projectRoot, "Project root", 4096)));
+  const requested = path.resolve(root, requiredText(outputDirectory, "Build output directory", 4096));
+  const output = await fs.realpath(requested);
+  if (output === root || !output.startsWith(root + path.sep)) {
+    throw new Error("Deployment output must be a child directory of the selected project.");
+  }
+  const stat = await fs.stat(output);
+  if (!stat.isDirectory()) throw new Error("Deployment output must be a directory.");
+  const entries = await fs.readdir(output);
+  if (!entries.length) throw new Error("Deployment output directory is empty; build the project before deploying.");
+  return { root, output };
+}
+
+function deploymentCommand(provider, input) {
+  if (provider === "vercel") return {
+    executable: "vercel",
+    args: ["deploy", input.output, "--yes"],
+    credentialName: "VERCEL_TOKEN",
+  };
+  if (provider === "netlify") {
+    const siteId = requiredText(input.siteId, "Netlify site ID", 128);
+    if (!/^[A-Za-z0-9-]{8,128}$/.test(siteId)) throw new TypeError("Netlify site ID contains unsupported characters.");
+    return {
+      executable: "netlify",
+      args: ["deploy", "--dir", input.output, "--site", siteId, "--json"],
+      credentialName: "NETLIFY_AUTH_TOKEN",
+    };
+  }
+  const projectName = requiredText(input.projectName, "Cloudflare Pages project name", 128);
+  if (!/^[a-z0-9][a-z0-9-]{0,58}$/i.test(projectName)) throw new TypeError("Cloudflare Pages project name contains unsupported characters.");
+  const branch = "axiom-preview-" + randomBytes(4).toString("hex");
+  return {
+    executable: "wrangler",
+    args: ["pages", "deploy", input.output, "--project-name", projectName, "--branch", branch],
+    credentialName: "CLOUDFLARE_API_TOKEN",
+  };
+}
+
+function extractPreviewUrl(provider, stdout) {
+  const text = String(stdout || "");
+  if (provider === "netlify") {
+    for (const line of text.split(/\r?\n/)) {
+      try {
+        const value = JSON.parse(line);
+        const candidate = value.deploy_url || value.deployUrl || value.url;
+        if (typeof candidate === "string") {
+          try { const parsed = new URL(candidate); if (parsed.protocol === "https:" && allowedPreviewHost(provider, parsed.hostname)) return parsed.href; } catch { /* Ignore malformed provider output. */ }
+        }
+      } catch { /* CLI may include non-JSON progress lines. */ }
+    }
+  }
+  const matches = text.match(/https:\/\/[a-z0-9.-]+\.(?:vercel\.app|netlify\.app|pages\.dev)(?:\/[^\s"'<>]*)?/gi) || [];
+  return matches.find(value => provider === "vercel" ? value.includes(".vercel.app")
+    : provider === "netlify" ? value.includes(".netlify.app") : value.includes(".pages.dev")) || null;
+}
+
+function allowedPreviewHost(provider, hostname) {
+  const suffix = provider === "vercel" ? ".vercel.app" : provider === "netlify" ? ".netlify.app" : ".pages.dev";
+  return hostname.endsWith(suffix) && hostname.length > suffix.length;
+}
+
+async function verifyPreviewUrl(provider, previewUrl, fetchImpl = globalThis.fetch, timeoutMs = 15000) {
+  const checkedAt = new Date().toISOString();
+  if (typeof fetchImpl !== "function") return { verified: false, status: null, checkedAt, reason: "HTTP verification is unavailable in this runtime." };
+  const controller = new AbortController();
+  const boundedTimeout = Number.isFinite(timeoutMs) ? Math.min(Math.max(timeoutMs, 1000), 30000) : 15000;
+  const timer = setTimeout(() => controller.abort(), boundedTimeout);
+  try {
+    let current = new URL(previewUrl);
+    if (current.protocol !== "https:" || current.username || current.password || !allowedPreviewHost(provider, current.hostname)) {
+      return { verified: false, status: null, checkedAt, reason: "Preview URL did not match the selected provider HTTPS domain." };
+    }
+    let redirects = 0;
+    while (redirects <= 4) {
+      const response = await fetchImpl(current.href, { method: "HEAD", redirect: "manual", signal: controller.signal });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers?.get?.("location");
+        if (!location || redirects === 4) return { verified: false, status: response.status, checkedAt, reason: "Preview endpoint returned an incomplete or excessive redirect chain." };
+        const next = new URL(location, current);
+        if (next.protocol !== "https:" || next.username || next.password || !allowedPreviewHost(provider, next.hostname)) {
+          return { verified: false, status: response.status, checkedAt, reason: "Preview endpoint redirected outside the selected provider domain." };
+        }
+        current = next;
+        redirects++;
+        continue;
+      }
+      let finalResponse = response;
+      if (response.status === 405 || response.status === 501) {
+        finalResponse = await fetchImpl(current.href, { method: "GET", redirect: "manual", signal: controller.signal });
+        try { await finalResponse.body?.cancel?.(); } catch { /* Response body is intentionally discarded. */ }
+      }
+      const verified = finalResponse.status >= 200 && finalResponse.status < 300;
+      return { verified, status: finalResponse.status, checkedAt, finalUrl: current.href, redirects, ...(verified ? {} : { reason: "Preview endpoint returned HTTP " + finalResponse.status + "." }) };
+    }
+    return { verified: false, status: null, checkedAt, reason: "Preview redirect limit exceeded." };
+  } catch (error) {
+    return { verified: false, status: null, checkedAt, reason: redactDiagnostic(error).slice(0, 500) };
+  } finally { clearTimeout(timer); }
+}
+
+function createDeploymentManager(options = {}) {
+  const getCredential = options.getCredential;
+  const execute = options.execFile || execFileAsync;
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof getCredential !== "function") throw new TypeError("Deployment manager requires a secure credential provider.");
+  return Object.freeze({
+    async deployPreview(request) {
+      if (!request || typeof request !== "object" || !PROVIDERS.has(request.provider)) {
+        throw new TypeError("Choose a supported deployment provider.");
+      }
+      if (request.target && request.target !== "preview") {
+        throw new Error("This deployment adapter only supports preview deployments. Production promotion requires a separate explicit approval flow.");
+      }
+      const { root, output } = await resolveBuildOutput(request.projectRoot, request.outputDirectory);
+      const command = deploymentCommand(request.provider, { ...request, output });
+      const credential = await getCredential(request.provider);
+      if (typeof credential !== "string" || credential.length < 8) {
+        throw new Error("Save a valid " + request.provider + " credential in Axiom settings before deploying.");
+      }
+      const env = {};
+      for (const key of ENV_ALLOWLIST) if (typeof process.env[key] === "string") env[key] = process.env[key];
+      env[command.credentialName] = credential;
+      if (request.provider === "cloudflare-pages") {
+        env.CLOUDFLARE_ACCOUNT_ID = requiredText(request.accountId, "Cloudflare account ID", 128);
+        if (!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID)) throw new TypeError("Cloudflare account ID must be a 32-character hexadecimal identifier.");
+      }
+      const startedAt = Date.now();
+      let result;
+      try {
+        result = await execute(command.executable, command.args, {
+          cwd: root, env, timeout: Math.min(Math.max(Number(request.timeoutMs) || 300_000, 10_000), 900_000),
+          maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+        });
+      } catch (error) {
+        const detail = redactDiagnostic(error).slice(-4000);
+        throw new Error("Preview deployment failed: " + detail);
+      }
+      const previewUrl = extractPreviewUrl(request.provider, result.stdout);
+      if (!previewUrl) {
+        throw new Error("The provider command completed but did not return a verifiable preview URL. Output: " + redactDiagnostic(result.stdout || result.stderr || "").slice(-2000));
+      }
+      const verification = await verifyPreviewUrl(request.provider, previewUrl, fetchImpl, request.verificationTimeoutMs);
+      return {
+        provider: request.provider,
+        target: "preview",
+        previewUrl,
+        startedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        outputDirectory: path.relative(root, output).split(path.sep).join("/"),
+        status: verification.verified ? "deployed" : "deployed_unverified",
+        verification,
+      };
+    },
+  });
+}
+
+module.exports = { createDeploymentManager, resolveBuildOutput, deploymentCommand, extractPreviewUrl, verifyPreviewUrl, PROVIDERS };

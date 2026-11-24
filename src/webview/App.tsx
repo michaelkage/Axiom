@@ -11,6 +11,9 @@ import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
+const DeploymentPanel = lazy(() => import("./components/DeploymentPanel").then(module => ({ default: module.DeploymentPanel })));
+const BrowserInspectorPanel = lazy(() => import("./components/BrowserInspectorPanel").then(module => ({ default: module.BrowserInspectorPanel })));
+const RemoteWorkerHostPanel = lazy(() => import("./components/RemoteWorkerHostPanel").then(module => ({ default: module.RemoteWorkerHostPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
 import { withProjectMemory } from "./utils/projectMemory";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
@@ -1741,7 +1744,7 @@ function App() {
             <For each={taskOutcomes()}>{(task) => <li>
               <strong>{task.title}</strong>
               <span>{task.status === "succeeded" ? "AGENT SUCCEEDED · REVIEW REQUIRED" : task.status.toUpperCase()}{task.agent ? " · " + task.agent : ""}{task.sessionId ? " · " + task.sessionId : ""}</span>
-              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} acceptanceCriteria={taskAcceptanceCriteria()[task.taskId] ?? []} onRepair={async failure => { if (!task.sessionId) throw new Error("No task session is available for a bounded repair."); await sendPrompt(task.sessionId, withAxiomProjectContext("Repair this task in its isolated worktree. Fix only the reported verification failures, preserve the task scope, and do not claim checks passed unless their exit status confirms it.\n\nFailure evidence:\n" + failure, sync.workspaceRoot()), task.agent); }} /></Show>
+              <Show when={task.worktreePath}><WorktreeReviewPanel taskId={task.taskId} worktreePath={task.worktreePath!} workspaceRoot={sync.workspaceRoot()} acceptanceCriteria={taskAcceptanceCriteria()[task.taskId] ?? []} onRepair={async (failure, signal) => { if (!task.sessionId) throw new Error("No task session is available for a bounded repair."); const abort = () => { void abortSession(task.sessionId!); }; signal?.addEventListener("abort", abort, { once: true }); try { await sendPrompt(task.sessionId, withAxiomProjectContext("Repair this task in its isolated worktree. Fix only the reported verification failures, preserve the task scope, and do not claim checks passed unless their exit status confirms it.\n\nFailure evidence:\n" + failure, sync.workspaceRoot()), task.agent); } finally { signal?.removeEventListener("abort", abort); } }} /></Show>
               <Show when={task.summary}><p>{task.summary}</p></Show>
               <Show when={typeof task.contextSavingsPercent === "number"}><p>Context compaction estimate: {task.contextEstimatedTokensBefore} → {task.contextEstimatedTokensAfter} tokens ({task.contextSavingsPercent}% estimated reduction)</p></Show>
               <Show when={task.error}><p>{task.error}</p></Show>
@@ -1762,6 +1765,14 @@ function App() {
         <ProviderOnboardingPanel />
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
+        <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
+        <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
+        <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {
+          const sessionId = sync.currentSessionId();
+          if (!sessionId) throw new Error("Open a conversation before sending browser evidence.");
+          const imageParts = screenshot ? [{ type: "file" as const, mime: "image/jpeg", url: screenshot, filename: "axiom-browser.jpg" }] : [];
+          await sendPrompt(sessionId, "Analyze this live browser evidence using the screenshot and structured page data. Identify actionable UI, runtime, accessibility or functional defects. Distinguish observed facts from hypotheses. Do not claim a fix or successful verification unless you actually perform it.\n\n" + JSON.stringify(snapshot, null, 2), undefined, imageParts);
+        }} />
         <section class="workflow-plan workflow-plan--combos" aria-label="Quick workflow combos">
           <div class="workflow-plan__eyebrow">QUICK COMBOS <span>ONE TAP TO START</span></div>
           <div class="workflow-plan__actions">
