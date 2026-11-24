@@ -9,6 +9,7 @@ import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { ChangeTopicsPanel } from "./components/ChangeTopicsPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
+import { WorkerSecurityAuditPanel } from "./components/WorkerSecurityAuditPanel";
 const ProjectMemoryPanel = lazy(() => import("./components/ProjectMemoryPanel").then(module => ({ default: module.ProjectMemoryPanel })));
 const RemoteWorkspaceRecoveryPanel = lazy(() => import("./components/RemoteWorkspaceRecoveryPanel").then(module => ({ default: module.RemoteWorkspaceRecoveryPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
@@ -1938,6 +1939,7 @@ function App() {
           <ChangeTopicsPanel diffs={currentSessionDiffs()} />
         </Show>
         <VerificationPanel results={verificationResults()} />
+        <WorkerSecurityAuditPanel />
         <ProjectMemoryPanel workspaceRoot={sync.workspaceRoot()} />
         <RemoteWorkspaceRecoveryPanel />
         
