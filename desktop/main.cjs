@@ -38,7 +38,8 @@ async function currentWorkerSecurityAuditStore() {
   if (workerSecurityAuditStore) return workerSecurityAuditStore;
   const credentials = currentSecureCredentialStore();
   let encodedKey = credentials.get("worker-audit", "hmac-signing-key");
-  if (!encodedKey) {
+  const isNewKey = !encodedKey;
+  if (isNewKey) {
     encodedKey = require("node:crypto").randomBytes(32).toString("base64");
     credentials.set("worker-audit", "hmac-signing-key", encodedKey);
   }
@@ -46,9 +47,28 @@ async function currentWorkerSecurityAuditStore() {
   if (signingKey.length !== 32 || signingKey.toString("base64") !== encodedKey) {
     throw new Error("The OS-protected worker audit signing key is invalid; audit operations are blocked.");
   }
+  let encodedAnchor = credentials.get("worker-audit", "chain-anchor");
+  if (!encodedAnchor && isNewKey) {
+    encodedAnchor = JSON.stringify({ sequence: 0, hash: "0".repeat(64) });
+    credentials.set("worker-audit", "chain-anchor", encodedAnchor);
+  }
+  if (!encodedAnchor) {
+    throw new Error("The OS-protected worker audit checkpoint is missing; audit operations are blocked.");
+  }
+  const anchorStore = {
+    get() {
+      const value = credentials.get("worker-audit", "chain-anchor");
+      if (!value) throw new Error("The OS-protected worker audit checkpoint is missing.");
+      return JSON.parse(value);
+    },
+    set(value) {
+      credentials.set("worker-audit", "chain-anchor", JSON.stringify(value));
+    }
+  };
   workerSecurityAuditStore = createWorkerSecurityAudit({
     filePath: path.join(app.getPath("userData"), "security", "worker-audit.jsonl"),
-    signingKey
+    signingKey,
+    anchorStore
   });
   return workerSecurityAuditStore;
 }
