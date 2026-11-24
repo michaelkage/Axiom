@@ -1,10 +1,16 @@
-import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
+import { createMemo, createSignal, For, Show, createEffect, onCleanup } from "solid-js";
 import type { ProjectMemory } from "../../shared/axiomWorkflow";
 import { retrieveProjectMemories } from "../../shared/axiomWorkflow";
 import { cacheProjectMemories, isProjectMemoryStale, loadProjectMemories, projectMemoryStorageKey } from "../utils/projectMemory";
 
 type MemoryCategory = ProjectMemory["category"];
 const categories: MemoryCategory[] = ["architecture", "convention", "decision", "preference", "fix", "failure"];
+
+type ProjectMemoryApi = {
+  load: () => Promise<ProjectMemory[]>;
+  save: (memories: ProjectMemory[]) => Promise<ProjectMemory[]>;
+};
+
 export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const [memories, setMemories] = createSignal<ProjectMemory[]>([]);
   const [query, setQuery] = createSignal("");
@@ -14,19 +20,50 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [expanded, setExpanded] = createSignal(false);
   const [storageError, setStorageError] = createSignal("");
-  const desktopMemoryApi = () => (window as Window & { axiomDesktop?: { projectMemory?: { load: () => Promise<ProjectMemory[]>; save: (memories: ProjectMemory[]) => Promise<ProjectMemory[]> } } }).axiomDesktop?.projectMemory;
+  const [saving, setSaving] = createSignal(false);
+  const desktopMemoryApi = () => (window as Window & { axiomDesktop?: { projectMemory?: ProjectMemoryApi } }).axiomDesktop?.projectMemory;
   const key = () => projectMemoryStorageKey(props.workspaceRoot);
-  const persist = (next: ProjectMemory[]) => {
-    setMemories(next);
-    try { localStorage.setItem(key(), JSON.stringify(next)); }
-    catch { /* Storage can be disabled or full; current session remains usable. */ }
+
+  const persist = async (next: ProjectMemory[]) => {
+    setStorageError("");
+    setSaving(true);
+    try {
+      const api = desktopMemoryApi();
+      if (api && props.workspaceRoot) {
+        const saved = await api.save(next);
+        setMemories(saved);
+        cacheProjectMemories(props.workspaceRoot, saved);
+      } else {
+        setMemories(next);
+        localStorage.setItem(key(), JSON.stringify(next));
+      }
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : "Could not save project memory.");
+    } finally {
+      setSaving(false);
+    }
   };
+
   createEffect(() => {
-    // Reload when the host finishes resolving the workspace root, avoiding a default-workspace memory leak.
     const workspace = props.workspaceRoot;
     void key();
-    setMemories(loadProjectMemories(workspace));\n    setStorageError("");\n    const api = desktopMemoryApi();\n    if (api && workspace) {\n      let active = true;\n      void api.load().then(items => { if (active) { setMemories(items); cacheProjectMemories(workspace, items); } })\n        .catch(error => { if (active) setStorageError(error instanceof Error ? error.message : "Could not load .axiom/memory.json."); });\n      onCleanup(() => { active = false; });\n    }
+    setMemories(loadProjectMemories(workspace));
+    setStorageError("");
+    const api = desktopMemoryApi();
+    if (api && workspace) {
+      let active = true;
+      void api.load().then(items => {
+        if (active) {
+          setMemories(items);
+          cacheProjectMemories(workspace, items);
+        }
+      }).catch(error => {
+        if (active) setStorageError(error instanceof Error ? error.message : "Could not load .axiom/memory.json.");
+      });
+      onCleanup(() => { active = false; });
+    }
   });
+
   const visible = createMemo(() => {
     const all = memories();
     return query().trim() ? retrieveProjectMemories(all, query(), 50) : all;
@@ -34,7 +71,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
   const resetForm = () => { setContent(""); setTags(""); setCategory("convention"); setEditingId(null); };
   const save = () => {
     const text = content().trim();
-    if (!text) return;
+    if (!text || saving()) return;
     const now = new Date().toISOString(), id = editingId();
     const old = id ? memories().find(item => item.id === id) : undefined;
     const item: ProjectMemory = {
@@ -47,8 +84,11 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
     resetForm();
   };
   const edit = (item: ProjectMemory) => { setEditingId(item.id); setContent(item.content); setCategory(item.category); setTags(item.tags.join(", ")); setExpanded(true); };
-  const remove = (id: string) => { void persist(memories().filter(item => item.id !== id)); if (editingId() === id) resetForm(); };
-  const markReviewed = (item: ProjectMemory) => { void persist(memories().map(memory => memory.id === item.id ? { ...memory, updatedAt: new Date().toISOString() } : memory)); };
+  const remove = (id: string) => { if (!saving()) void persist(memories().filter(item => item.id !== id)); if (editingId() === id) resetForm(); };
+  const markReviewed = (item: ProjectMemory) => {
+    if (!saving()) void persist(memories().map(memory => memory.id === item.id ? { ...memory, updatedAt: new Date().toISOString() } : memory));
+  };
+
   return <section class="axiom-memory" aria-label="Project intelligence">
     <button class="axiom-memory__toggle" onClick={() => setExpanded(!expanded())} aria-expanded={expanded()}>
       <span><strong>Project intelligence</strong><small>{memories().length} saved memories · {desktopMemoryApi() && props.workspaceRoot ? ".axiom/memory.json · Git-versioned" : "browser-local"}</small></span>
@@ -56,7 +96,8 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
     </button>
     <Show when={expanded()}>
       <div class="axiom-memory__body">
-        <p>Save architecture decisions, conventions, preferences, and useful fixes for future tasks. Desktop memories are stored in <code>.axiom/memory.json</code> and can be reviewed, committed, and synced with Git. Axiom never commits this file automatically.</p>\n        <Show when={storageError()}><p role="alert" class="axiom-memory__stale">{storageError()}</p></Show>
+        <p>Save architecture decisions, conventions, preferences, and useful fixes for future tasks. Desktop memories are stored in <code>.axiom/memory.json</code> and can be reviewed, committed, and synced with Git. Axiom never commits this file automatically.</p>
+        <Show when={storageError()}><p role="alert" class="axiom-memory__stale">{storageError()}</p></Show>
         <label>Memory type
           <select value={category()} onChange={event => setCategory(event.currentTarget.value as MemoryCategory)}>
             <For each={categories}>{item => <option value={item}>{item}</option>}</For>
@@ -69,7 +110,7 @@ export function ProjectMemoryPanel(props: { workspaceRoot?: string }) {
           <input value={tags()} onInput={event => setTags(event.currentTarget.value)} placeholder="architecture, api, testing" />
         </label>
         <div class="axiom-memory__actions">
-          <button disabled={!content().trim()} onClick={save}>{editingId() ? "Update memory" : "Save memory"}</button>
+          <button disabled={!content().trim() || saving()} onClick={save}>{saving() ? "Saving…" : editingId() ? "Update memory" : "Save memory"}</button>
           <Show when={editingId()}><button onClick={resetForm}>Cancel edit</button></Show>
         </div>
         <label>Find relevant memories
