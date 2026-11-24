@@ -147,6 +147,32 @@ export function validateToolInput(schema, value, path = 'input', depth = 0) {
 export async function executeTool(name, input, context = {}) {
   const tool = tools.get(name);
   if (!tool) throw new Error('Unknown tool: ' + name);
+  const integrationId = typeof context?.integrationId === 'string' ? context.integrationId : '';
+  const isMcpInvocation = context?.source === 'mcp' || integrationId.length > 0;
+  if (isMcpInvocation) {
+    const policy = context?.mcpPolicy;
+    const allowedTools = policy && typeof policy === 'object' && !Array.isArray(policy)
+      ? policy[integrationId]?.allowedTools
+      : undefined;
+    const explicitlyAllowed = Array.isArray(allowedTools)
+      && allowedTools.every(item => typeof item === 'string')
+      && allowedTools.includes(name);
+    if (!integrationId || !explicitlyAllowed) {
+      const error = new Error('MCP tool execution denied by runtime policy: ' + (integrationId || 'unknown integration') + '/' + name);
+      error.name = 'ToolPolicyError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'mcp_tool_not_allowlisted' });
+      throw error;
+    }
+  }
+  if (typeof context?.authorizeTool === 'function') {
+    const decision = await context.authorizeTool({ name, input, source: context.source || 'runtime', integrationId: integrationId || null });
+    if (decision !== true && decision?.allowed !== true) {
+      const error = new Error(typeof decision?.reason === 'string' ? decision.reason : 'Tool execution denied by runtime authorization policy: ' + name);
+      error.name = 'ToolPolicyError';
+      emit({ type: 'tool.denied', name, integrationId: integrationId || null, reason: 'runtime_authorizer_denied' });
+      throw error;
+    }
+  }
   validateToolInput(tool.inputSchema, input);
   const startedAt = Date.now();
   const controller = new AbortController();
