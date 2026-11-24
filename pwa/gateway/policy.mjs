@@ -30,7 +30,12 @@ export function parseMcpPolicy(value = '{}') {
 export function inspectMcpToolCall(body) {
   let message;
   try { message = JSON.parse(Buffer.from(body).toString('utf8')); } catch { return null; }
-  if (!message || typeof message !== 'object' || Array.isArray(message)) return null;
+  if (Array.isArray(message)) {
+    return message.some(item => item && typeof item === 'object' && item.method === 'tools/call')
+      ? { invalid: true, name: null, requestId: null }
+      : null;
+  }
+  if (!message || typeof message !== 'object') return null;
   if (message.method !== 'tools/call') return null;
   const name = message.params?.name;
   if (typeof name !== 'string' || !TOOL_NAME.test(name)) return { invalid: true, name: null };
