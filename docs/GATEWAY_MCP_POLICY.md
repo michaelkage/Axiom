@@ -63,3 +63,14 @@ The registered name is `mcp_` + the server ID with non-alphanumeric/underscore c
 Privileged tools are approved centrally at the registry boundary. A tool explicitly marked `requiresApproval` requires a confirmation callback and a positive decision, even if invoked outside the normal chat loop. The registry also automatically marks common mutation actions as approval-required, including Git commits/pushes/merges, GitHub creates/updates, deployments/releases, plugin install/uninstall/enable/disable/configuration, SQL execution, and command execution. The model runners fail closed when the approval UI is unavailable.
 
 OpenCode worker sessions use the provider's native permission requests. Persistent `always` grants are downgraded to one-time approval for `bash`, `edit`, `external_directory`, `task`, `webfetch`, `websearch`, `mcp`, and `plugin` permissions. Read-oriented permissions can retain a persistent grant. Permission decisions are logged without recording command text, file contents, or request metadata that could contain secrets.
+
+
+## User-facing runtime policy editor
+
+The PWA MCP screen exposes an individual allowlist checkbox for every discovered tool on each configured server. The selected set is persisted in `state.settings.mcpPolicy` using the exact server ID and normalized registered tool name. A newly discovered tool is denied until the user explicitly enables it. Revoking a tool removes it from the runtime allowlist immediately; "Revoke all tools" clears that server's list. This setting is stored with the PWA's normal local workspace settings and is not a replacement for the gateway's independent `AXIOM_MCP_POLICY_JSON` policy. Both layers must be configured consistently.
+
+## OpenCode worker permission audit
+
+Before an OpenCode worker permission response is sent, the webview appends a metadata-only record to `axiom.worker-security-audit.v1` in its local storage. Records contain sequence, timestamp, permission category, requested/effective decision, session ID, previous hash, and SHA-256 hash. The chain is verified before every append and after persistence. If WebCrypto is unavailable, storage fails, or verification detects a modified/truncated/reordered record, Axiom rejects the pending worker operation instead of granting it.
+
+The worker audit currently provides local, restart-persistent tamper-evidence, not hardware-backed or remote immutability. An attacker with write access to the same webview storage can replace the entire chain and recompute hashes. Production deployments requiring adversarial tamper resistance must move the audit anchor to the privileged desktop host (or a remote append-only service) and protect the signing key outside renderer storage. Gateway MCP audit records remain separately enforced and stored by the gateway.
