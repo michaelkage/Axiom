@@ -88,6 +88,7 @@ export function createAxiomGateway({
   const mcpServers = parseMcpServers(env.MCP_SERVERS_JSON || '{}');
   const mcpPolicy = parseMcpPolicy(env.AXIOM_MCP_POLICY_JSON || '{}');
   const allowedPrivateMcpHosts = new Set(String(env.AXIOM_MCP_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
+  const allowedPrivateOllamaHosts = new Set(['127.0.0.1', 'localhost', '::1', ...String(env.AXIOM_OLLAMA_ALLOWED_PRIVATE_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean)]);
   if ([...allowedPrivateMcpHosts].some(host => !/^(?:[a-z0-9.-]+|[0-9a-f:]+)$/.test(host))) throw new Error('AXIOM_MCP_ALLOWED_PRIVATE_HOSTS contains an invalid exact hostname or IP literal.');
   const audit = createAuditChain({ path: env.AXIOM_AUDIT_LOG_PATH || join(homedir(), '.config', 'axiom', 'gateway-audit.jsonl'), now });
   const sessionTokens = new Map();
@@ -297,7 +298,8 @@ export function createAxiomGateway({
       const check = async (name, configured, target, headers = {}) => {
         if (!configured) return { configured: false, reachable: false, authenticated: false, status: 'missing', message: name + ' is not configured on the gateway.' };
         try {
-          const upstream = await fetchImpl(target, { method: 'GET', headers, signal: upstreamSignal(8000) });
+          const privateHosts = name === 'Ollama' ? allowedPrivateOllamaHosts : name === 'Supabase' ? allowedPrivateMcpHosts : new Set();
+          const upstream = await fetchSafeMcpTarget(target, { method: 'GET', headers, redirect: 'error', signal: upstreamSignal(8000) }, privateHosts, fetchImpl);
           const accepted = upstream.status >= 200 && upstream.status < 300;
           const message = accepted ? name + ' is reachable and accepted the configured credential.'
             : upstream.status === 401 ? name + ' rejected the configured credential.'
@@ -353,13 +355,13 @@ export function createAxiomGateway({
       if (body === null) return;
       const target = new URL(upstreamPath + url.search, ollamaBase);
       try {
-        const upstream = await fetchImpl(target, {
+        const upstream = await fetchSafeMcpTarget(target, {
           method: req.method,
           headers: upstreamHeaders(req),
           body,
           redirect: 'error',
           signal: upstreamSignal(120000)
-        });
+        }, allowedPrivateOllamaHosts, fetchImpl);
         res.writeHead(upstream.status, {
           'content-type': upstream.headers.get('content-type') || 'application/octet-stream',
           'cache-control': 'no-store',
@@ -414,7 +416,7 @@ export function createAxiomGateway({
       const upstreamPath = validSearch ? '/search/code' : requestedPath;
       const target = new URL(upstreamPath + url.search, 'https://api.github.com');
       try {
-        const upstream = await fetchImpl(target, { method: req.method, headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }, body, redirect: 'error', signal: upstreamSignal(60000) });
+        const upstream = await fetchSafeMcpTarget(target, { method: req.method, headers: { ...upstreamHeaders(req), authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }, body, redirect: 'error', signal: upstreamSignal(60000) }, new Set(), fetchImpl);
         res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' });
         if (!upstream.body) return res.end();
         for await (const chunk of upstream.body) { if (res.destroyed) break; res.write(chunk); }
