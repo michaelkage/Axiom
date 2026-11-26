@@ -32,8 +32,9 @@ function isPublicAddress(address) {
   // benchmarking, and ORCHID ranges whose embedded routing can be misleading.
   if (!/^[23]/.test(normalized)) return false;
   if (normalized.startsWith('2001:db8:') || normalized.startsWith('2001:10:') ||
-      normalized.startsWith('2001:20:') || normalized.startsWith('2002:') ||
-      normalized.startsWith('2001:0:')) return false;
+      normalized.startsWith('2001:20:') || normalized.startsWith('2001:1:') ||
+      normalized.startsWith('2001:2:') || normalized.startsWith('2002:') ||
+      normalized.startsWith('2001:0:') || normalized.startsWith('3fff:')) return false;
   return true;
 }
 
@@ -123,7 +124,7 @@ export async function fetchSafeMcpTarget(value, options = {}, allowedPrivateHost
         else responseHeaders.append(name, value);
       }
       incoming.once('close', () => agent.destroy());
-      const noBody = options.method === 'HEAD' || incoming.statusCode === 204 || incoming.statusCode === 304;
+      const noBody = options.method === 'HEAD' || incoming.statusCode === 204 || incoming.statusCode === 205 || incoming.statusCode === 304;
       const body = noBody ? null : Readable.toWeb(incoming);
       resolve(new Response(body, {
         status: incoming.statusCode || 502,
