@@ -42,7 +42,8 @@ async function resolveSafeTarget(value, allowedPrivateHosts = new Set(), lookupI
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) {
     throw new Error('MCP endpoint must be HTTP(S) without embedded credentials.');
   }
-  const hostname = target.hostname.toLowerCase().replace(/^\\[|\\]$/g, '').replace(/\\.$/, '');
+  const rawHostname = target.hostname.toLowerCase().replaceAll('[', '').replaceAll(']', '');
+  const hostname = rawHostname.endsWith('.') ? rawHostname.slice(0, -1) : rawHostname;
   const explicitlyAllowed = allowedPrivateHosts.has(hostname);
   if (!explicitlyAllowed && (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local'))) {
     throw new Error('MCP endpoint resolves to a local hostname; add its exact hostname to AXIOM_MCP_ALLOWED_PRIVATE_HOSTS only if intentionally trusted.');
