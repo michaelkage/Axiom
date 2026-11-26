@@ -61,7 +61,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
     let previousHash = '0'.repeat(64);
     let sequence = 0;
     const records = [];
-    const lines = content.split('\\n');
+    const lines = content.split('\n');
     if (lines.at(-1) === '') lines.pop();
     for (const line of lines) {
       if (!line) throw new Error('Audit chain contains an empty record.');
@@ -82,7 +82,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
   function verifySigned(content) {
     let previousHash = '0'.repeat(64);
     let sequence = 0;
-    const lines = content.split('\\n');
+    const lines = content.split('\n');
     if (lines.at(-1) === '') lines.pop();
     for (const line of lines) {
       if (!line) throw new Error('Audit chain contains an empty record.');
@@ -110,7 +110,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
       sequence += 1;
       return JSON.stringify({ ...signed, hash });
     });
-    const serialized = lines.join('\\n') + (lines.length ? '\\n' : '');
+    const serialized = lines.join('\n') + (lines.length ? '\n' : '');
     const temporaryPath = path + '.migrate-' + process.pid + '-' + randomBytes(8).toString('hex');
     const handle = await open(temporaryPath, 'wx', 0o600);
     try {
@@ -136,7 +136,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
       let sequence = 0;
       try {
         const content = await readFile(path, 'utf8');
-        const firstLine = content.split('\\n', 1)[0];
+        const firstLine = content.split('\n', 1)[0];
         let records;
         try {
           const first = JSON.parse(firstLine);
@@ -167,7 +167,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
       try {
         const stat = await handle.stat();
         if (!stat.isFile()) throw new Error('Audit log must be a regular file.');
-        await handle.writeFile(JSON.stringify({ ...payload, hash }) + '\\n', 'utf8');
+        await handle.writeFile(JSON.stringify({ ...payload, hash }) + '\n', 'utf8');
         await handle.sync();
         await handle.chmod(0o600);
       } finally {
