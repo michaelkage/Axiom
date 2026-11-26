@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, appendFile, chmod } from 'node:fs/promises';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { mkdir, readFile, open, rename, unlink, chmod } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { dirname } from 'node:path';
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
@@ -42,9 +43,84 @@ export function inspectMcpToolCall(body) {
   return { invalid: false, name, requestId: message.id ?? null };
 }
 
-export function createAuditChain({ path, now = Date.now } = {}) {
+export function createAuditChain({ path, key, now = Date.now } = {}) {
   if (!path) throw new Error('An audit log path is required.');
+  if (!(typeof key === 'string' || Buffer.isBuffer(key)) || Buffer.byteLength(key) < 32) {
+    throw new Error('An audit signing key of at least 32 bytes is required.');
+  }
+  const signingKey = Buffer.from(key);
   let tail = Promise.resolve();
+
+  const digest = payload => createHmac('sha256', signingKey).update(JSON.stringify(payload)).digest('hex');
+  const equalDigest = (left, right) => {
+    if (typeof left !== 'string' || typeof right !== 'string' || !/^[a-f0-9]{64}$/.test(left) || !/^[a-f0-9]{64}$/.test(right)) return false;
+    return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
+  };
+
+  function verifyLegacy(content) {
+    let previousHash = '0'.repeat(64);
+    let sequence = 0;
+    const records = [];
+    const lines = content.split('\\n');
+    if (lines.at(-1) === '') lines.pop();
+    for (const line of lines) {
+      if (!line) throw new Error('Audit chain contains an empty record.');
+      let record;
+      try { record = JSON.parse(line); } catch { throw new Error('Audit chain contains an invalid record.'); }
+      const { hash, ...payload } = record;
+      const expected = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      if (record.previousHash !== previousHash || record.sequence !== sequence + 1 || hash !== expected) {
+        throw new Error('Audit chain integrity verification failed.');
+      }
+      previousHash = hash;
+      sequence += 1;
+      records.push(payload);
+    }
+    return records;
+  }
+
+  function verifySigned(content) {
+    let previousHash = '0'.repeat(64);
+    let sequence = 0;
+    const lines = content.split('\\n');
+    if (lines.at(-1) === '') lines.pop();
+    for (const line of lines) {
+      if (!line) throw new Error('Audit chain contains an empty record.');
+      let record;
+      try { record = JSON.parse(line); } catch { throw new Error('Audit chain contains an invalid record.'); }
+      const { hash, ...payload } = record;
+      if (payload.version !== 2 || payload.previousHash !== previousHash ||
+          payload.sequence !== sequence + 1 || !equalDigest(hash, digest(payload))) {
+        throw new Error('Audit chain integrity verification failed.');
+      }
+      previousHash = hash;
+      sequence += 1;
+    }
+    return { previousHash, sequence };
+  }
+
+  async function persistSigned(records) {
+    const serialized = records.map(payload => {
+      const signed = { ...payload, version: 2 };
+      return JSON.stringify({ ...signed, hash: digest(signed) });
+    }).join('\\n') + (records.length ? '\\n' : '');
+    const temporaryPath = path + '.migrate-' + process.pid + '-' + randomBytes(8).toString('hex');
+    const handle = await open(temporaryPath, 'wx', 0o600);
+    try {
+      await handle.writeFile(serialized, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await rename(temporaryPath, path);
+      await chmod(path, 0o600);
+    } catch (error) {
+      await unlink(temporaryPath).catch(() => {});
+      throw error;
+    }
+  }
+
   async function append(event) {
     const operation = tail.then(async () => {
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -52,26 +128,48 @@ export function createAuditChain({ path, now = Date.now } = {}) {
       let sequence = 0;
       try {
         const content = await readFile(path, 'utf8');
-        const lines = content.split('\n');
-        if (lines.at(-1) === '') lines.pop();
-        for (const line of lines) {
-          if (!line) throw new Error('Audit chain contains an empty record.');
-          const record = JSON.parse(line);
-          const { hash, ...payload } = record;
-          const expected = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-          if (record.previousHash !== previousHash || record.sequence !== sequence + 1 || hash !== expected) {
-            throw new Error('Audit chain integrity verification failed.');
+        const firstLine = content.split('\\n', 1)[0];
+        let records;
+        try {
+          const first = JSON.parse(firstLine);
+          if (first.version === 2) {
+            ({ previousHash, sequence } = verifySigned(content));
+          } else {
+            records = verifyLegacy(content);
+            await persistSigned(records);
+            if (records.length) {
+              const last = records[records.length - 1];
+              previousHash = digest({ ...last, version: 2 });
+              sequence = records.length;
+            }
           }
-          previousHash = hash;
-          sequence += 1;
+        } catch (error) {
+          if (error.message === 'Audit chain integrity verification failed.' ||
+              error.message === 'Audit chain contains an empty record.' ||
+              error.message === 'Audit chain contains an invalid record.') throw error;
+          throw new Error('Audit chain integrity verification failed.');
         }
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
-      const payload = { ...event, sequence: sequence + 1, timestamp: new Date(now()).toISOString(), previousHash };
-      const hash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-      await appendFile(path, JSON.stringify({ ...payload, hash }) + '\n', { encoding: 'utf8', mode: 0o600, flag: 'a' });
-      await chmod(path, 0o600);
+      const payload = {
+        ...event,
+        version: 2,
+        sequence: sequence + 1,
+        timestamp: new Date(now()).toISOString(),
+        previousHash
+      };
+      const hash = digest(payload);
+      const handle = await open(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW || 0), 0o600);
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile()) throw new Error('Audit log must be a regular file.');
+        await handle.writeFile(JSON.stringify({ ...payload, hash }) + '\\n', 'utf8');
+        await handle.sync();
+        await handle.chmod(0o600);
+      } finally {
+        await handle.close();
+      }
       return hash;
     });
     tail = operation.catch(() => {});
