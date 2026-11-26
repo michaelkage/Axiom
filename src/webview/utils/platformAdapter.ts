@@ -1,6 +1,11 @@
 import type { AxiomFileEntry, AxiomPlatformAdapter } from "../../shared/platform";
 
 type DesktopBridge = {
+  workerAudit: {
+    append(record: { permission: string; requestedDecision: "once" | "always" | "reject"; effectiveDecision: "once" | "always" | "reject"; sessionId: string }): Promise<unknown>;
+    list(): Promise<{ valid: boolean; total: number; records: Array<Record<string, unknown>> }>;
+    verify(): Promise<{ valid: boolean; records: number; latestHash?: string; reason?: string }>;
+  };
   secureStorage: {
     get(namespace: string, key: string): Promise<string | null>;
     set(namespace: string, key: string, value: string): Promise<{ stored: boolean }>;
