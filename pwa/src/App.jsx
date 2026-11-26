@@ -599,6 +599,7 @@ export default function App(){
     executeTool,
     serializeToolResult,
     getToolMeta:name=>listTools().find(tool=>tool.name===name),
+    executionContext:{source:'model',mcpPolicy:state.settings?.mcpPolicy||{}},
     confirmTool:(name,args,{signal}={})=>new Promise(resolve=>{const finish=allowed=>{signal?.removeEventListener('abort',onAbort);approvalResolver.current=null;setPendingApproval(null);resolve(allowed);};const onAbort=()=>finish(false);approvalResolver.current=finish;setPendingApproval({name,args});if(signal?.aborted)onAbort();else signal?.addEventListener('abort',onAbort,{once:true});}),
     onText:value=>{answer=value;if(streamTimerRef.current===null)streamTimerRef.current=setTimeout(()=>{streamTimerRef.current=null;patchChat(old=>old.map(m=>m.id===assistantId?{...m,content:answer}:m),chatId);},100);},
     maxRetries:Math.max(0,Math.min(5,Number(state.settings?.retryAttempts??2))),
