@@ -14,7 +14,7 @@ function isPublicIPv4(address) {
   const ranges = [
     ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
     ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24],
-    ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15],
+    ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15],
     ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]
   ];
   return !ranges.some(([base, bits]) => {
@@ -113,6 +113,10 @@ export async function fetchSafeMcpTarget(value, options = {}, allowedPrivateHost
       reject(error);
     };
     request.once('error', fail);
+    request.once('upgrade', (_incoming, socket) => {
+      socket.destroy();
+      fail(new Error('Upstream protocol upgrades are not supported.'));
+    });
     request.once('response', incoming => {
       if (settled) { incoming.destroy(); return; }
       settled = true;
