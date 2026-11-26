@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { createCompanionCoordinator } from './companion.js';
 import { parseMcpPolicy, inspectMcpToolCall, createAuditChain } from './policy.mjs';
-import { assertSafeMcpTarget } from './network-policy.mjs';
+import { assertSafeMcpTarget, fetchSafeMcpTarget } from './network-policy.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const OLLAMA_PATHS = new Set(['/api/tags', '/api/chat', '/api/generate', '/api/show', '/api/ps', '/api/pull']);
@@ -450,8 +450,7 @@ export function createAxiomGateway({
       const target = new URL(suffix + url.search, supabaseBase);
       const headers = upstreamHeaders(req, { apikey: key, authorization: 'Bearer ' + key });
       try {
-        await assertSafeMcpTarget(target, allowedPrivateMcpHosts);
-        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: upstreamSignal(60000) });
+        const upstream = await fetchSafeMcpTarget(target, { method: req.method, headers, body, redirect: 'error', signal: upstreamSignal(60000) }, allowedPrivateMcpHosts, fetchImpl);
         const responseHeaders = { 'cache-control': 'no-store' };
         for (const name of ['content-type', 'content-range', 'content-location', 'preference-applied']) {
           const value = upstream.headers.get(name);
@@ -504,8 +503,7 @@ export function createAxiomGateway({
       }
       const headers = upstreamHeaders(req, config.token ? { authorization: 'Bearer ' + config.token } : {});
       try {
-        const target = await assertSafeMcpTarget(config.url, allowedPrivateMcpHosts);
-        const upstream = await fetchImpl(target, { method: req.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(120000) });
+        const upstream = await fetchSafeMcpTarget(config.url, { method: req.method, headers, body, redirect: 'error', signal: AbortSignal.timeout(120000) }, allowedPrivateMcpHosts, fetchImpl);
         const responseHeaders = {
           'cache-control': 'no-store',
           'x-content-type-options': 'nosniff'
