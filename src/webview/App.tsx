@@ -22,6 +22,9 @@ import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
 import { McpIntegrationsPanel } from "./components/McpIntegrationsPanel";
 import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
 import { SecurityPolicyPanel } from "./components/SecurityPolicyPanel";
+import { appendWorkerSecurityAudit, verifyWorkerSecurityAudit } from "../shared/workerSecurityAudit";
+import { resolvePermissionDecision } from "../shared/securityPolicy";
+const WorkerSecurityAuditPanel = lazy(() => import("./components/WorkerSecurityAuditPanel").then(module => ({ default: module.WorkerSecurityAuditPanel })));
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -1676,7 +1679,19 @@ function App() {
       return;
     }
 
-    await respondToPermission(sessionId, permissionId, response);
+    const permissionType = permission?.permission || "unknown";
+    const effectiveResponse = resolvePermissionDecision(permissionType, response);
+    const integrity = await verifyWorkerSecurityAudit();
+    if (!integrity.valid) {
+      throw new Error(integrity.reason || "Worker security audit integrity could not be verified; permission grant blocked.");
+    }
+    await appendWorkerSecurityAudit({
+      permission: permissionType,
+      requestedDecision: response,
+      effectiveDecision: effectiveResponse,
+      sessionId
+    });
+    await respondToPermission(sessionId, permissionId, effectiveResponse);
     // Permission removal is handled by store via SSE events
   };
 
@@ -1854,6 +1869,7 @@ function App() {
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
         <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
+        <WorkerSecurityAuditPanel />
         <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
         <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {
