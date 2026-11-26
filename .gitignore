@@ -11,3 +11,9 @@ OpenCode.log
 # Playwright test artifacts
 test-results/
 playwright-report/
+
+# Internal working material; keep repository root focused on product entry points.
+/thoughts/
+/archive/
+/PROMPT.md
+/TODO.md
