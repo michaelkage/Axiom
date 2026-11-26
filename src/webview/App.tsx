@@ -15,13 +15,16 @@ const DeploymentPanel = lazy(() => import("./components/DeploymentPanel").then(m
 const BrowserInspectorPanel = lazy(() => import("./components/BrowserInspectorPanel").then(module => ({ default: module.BrowserInspectorPanel })));
 const RemoteWorkerHostPanel = lazy(() => import("./components/RemoteWorkerHostPanel").then(module => ({ default: module.RemoteWorkerHostPanel })));
 const WorktreeReviewPanel = lazy(() => import("./components/WorktreeReviewPanel").then(module => ({ default: module.WorktreeReviewPanel })));
-import { withProjectMemory } from "./utils/projectMemory";
+import { cacheProjectMemories, withProjectMemory } from "./utils/projectMemory";
+import type { ProjectMemory } from "../shared/axiomWorkflow";
 import { RecoveryAdvice } from "./components/RecoveryAdvice";
 import { ProviderOnboardingPanel } from "./components/ProviderOnboardingPanel";
 import { OmniRouteSetupPanel } from "./components/OmniRouteSetupPanel";
 import { McpIntegrationsPanel } from "./components/McpIntegrationsPanel";
 import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
 import { SecurityPolicyPanel } from "./components/SecurityPolicyPanel";
+import { appendWorkerSecurityAudit, verifyWorkerSecurityAudit } from "../shared/workerSecurityAudit";
+import { resolvePermissionDecision } from "../shared/securityPolicy";
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -66,7 +69,8 @@ import { logger } from "./utils/logger";
 import { applyThemePreferences, loadThemePreferences, saveThemePreferences, type AxiomTheme } from "./utils/theme";
 import { extractMentions } from "./utils/editorContent";
 import {
-  encodeFileMentionReference,
+
+const WorkerSecurityAuditPanel = lazy(() => import("./components/WorkerSecurityAuditPanel").then(module => ({ default: module.WorkerSecurityAuditPanel })));  encodeFileMentionReference,
   parseFileMentionReference,
 } from "./utils/fileMentionReference";
 
@@ -93,6 +97,15 @@ function App() {
   const [taskAcceptanceCriteria, setTaskAcceptanceCriteria] = createSignal<Record<string, string[]>>({});
   const [installedPluginIds, setInstalledPluginIds] = createSignal<string[]>([]);
   const [desktopProjectState, setDesktopProjectState] = createSignal<{ workspaceRoot: string; context: string; changes: Array<{ id: string; title: string; summary: string; status: string; createdAt: string; checks?: Array<{ name: string; state: string; details: string }>; files?: string[] }>; updatedAt: string | null } | null>(null);
+  createEffect(() => {
+    const workspace = desktopProjectState()?.workspaceRoot;
+    const api = (window as Window & { axiomDesktop?: { projectMemory?: { load: () => Promise<ProjectMemory[]> } } }).axiomDesktop?.projectMemory;
+    if (!workspace || !api) return;
+    let active = true;
+    void api.load().then(memories => { if (active) cacheProjectMemories(workspace, memories); })
+      .catch(error => { cacheProjectMemories(workspace, []); logger.error("Could not preload versioned project memory: " + String(error)); });
+    onCleanup(() => { active = false; });
+  });
   const [projectContextDraft, setProjectContextDraft] = createSignal("");
   const [desktopProjectNotice, setDesktopProjectNotice] = createSignal("");
   const [desktopProjectBusy, setDesktopProjectBusy] = createSignal(false);
@@ -1676,7 +1689,19 @@ function App() {
       return;
     }
 
-    await respondToPermission(sessionId, permissionId, response);
+    const permissionType = permission?.permission || "unknown";
+    const effectiveResponse = resolvePermissionDecision(permissionType, response);
+    const integrity = await verifyWorkerSecurityAudit();
+    if (!integrity.valid) {
+      throw new Error(integrity.reason || "Worker security audit integrity could not be verified; permission grant blocked.");
+    }
+    await appendWorkerSecurityAudit({
+      permission: permissionType,
+      requestedDecision: response,
+      effectiveDecision: effectiveResponse,
+      sessionId
+    });
+    await respondToPermission(sessionId, permissionId, effectiveResponse);
     // Permission removal is handled by store via SSE events
   };
 
@@ -1854,6 +1879,7 @@ function App() {
         <OmniRouteSetupPanel />
         <McpIntegrationsPanel />
         <SecurityPolicyPanel workspaceRoot={sync.workspaceRoot()} />
+        <WorkerSecurityAuditPanel />
         <RemoteWorkerHostPanel workspaceRoot={sync.workspaceRoot()} />
         <DeploymentPanel workspaceRoot={sync.workspaceRoot()} />
         <BrowserInspectorPanel canAnalyze={Boolean(sync.currentSessionId())} onAnalyze={async (snapshot, screenshot) => {

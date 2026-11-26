@@ -28,11 +28,12 @@ export async function runNativeToolChat({
   executeTool,
   serializeToolResult = value => JSON.stringify(value) ?? 'null',
   getToolMeta = () => undefined,
-  confirmTool = async () => true,
+  confirmTool = async () => false,
   onText = () => {},
   onEvent = () => {},
   maxTurns = 5,
-  maxTokens = 768
+  maxTokens = 768,
+  executionContext = {}
 }) {
   if (typeof executeTool !== 'function') throw new TypeError('executeTool is required');
   if (!Number.isInteger(maxTurns) || maxTurns < 1) throw new TypeError('maxTurns must be a positive integer');
@@ -52,7 +53,7 @@ export async function runNativeToolChat({
       abortError(signal);
       onEvent({ type: 'tool.request', name, args });
       try {
-        const result = await executeTool(name, args, { signal });
+        const result = await executeTool(name, args, { ...executionContext, signal });
         const serialized = serializeToolResult(result);
         conversation.push({ role: 'tool', content: 'Verified result from ' + name + ': ' + serialized });
         onEvent({ type: 'tool.completed', name, result: serialized });
@@ -142,7 +143,7 @@ export async function runNativeToolChat({
           continue;
         }
         try {
-          const result = await executeTool(call.name, args, { signal });
+          const result = await executeTool(call.name, args, { ...executionContext, signal, ...(meta?.requiresApproval ? { approvalGranted: true } : {}) });
           const serialized = serializeToolResult(result);
           conversation.push({ role: 'tool', content: 'Result from ' + call.name + ': ' + serialized });
           onEvent({ type: 'tool.completed', name: call.name, result: serialized });

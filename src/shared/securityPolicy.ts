@@ -118,3 +118,29 @@ export function evaluateSecurityRequest(policy: SecurityPolicy | null | undefine
   }
   return defaultDeny(policy, request.action, "Action is not recognized by this policy version.");
 }
+
+export type PermissionDecision = "once" | "always" | "reject";
+
+const PRIVILEGED_PERMISSION_TYPES = new Set([
+  "bash",
+  "edit",
+  "external_directory",
+  "task",
+  "webfetch",
+  "mcp",
+  "plugin",
+]);
+
+/**
+ * Prevent persistent grants for worker permissions that can execute commands,
+ * mutate files, expand filesystem scope, delegate agents, or reach external
+ * destinations. This is an additional runtime guard; it does not replace the
+ * project-scoped SecurityPolicy evaluator above.
+ */
+export function resolvePermissionDecision(
+  permission: string,
+  requested: PermissionDecision,
+): PermissionDecision {
+  if (requested === "always" && PRIVILEGED_PERMISSION_TYPES.has(permission)) return "once";
+  return requested;
+}

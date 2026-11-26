@@ -55,6 +55,14 @@ jobs:
       - name: Run unit tests
         run: pnpm exec vitest run
 
+      - name: Install PWA gateway test dependencies
+        working-directory: pwa
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Run PWA and gateway security tests
+        working-directory: pwa
+        run: npm test
+
       - name: Validate product site and release catalog
         run: pnpm run test:site
 
@@ -100,6 +108,47 @@ jobs:
       - name: Build Windows installer
         working-directory: desktop
         run: npm run dist
+
+      - name: Smoke-test installed desktop application on every pull request
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $installer = Get-ChildItem "desktop/release/Axiom-Setup-*-x64.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Installer was not produced." }
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList @("/S") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Silent installer exited with code $($install.ExitCode)." }
+          $exe = Join-Path $env:LOCALAPPDATA "Programs/Axiom/Axiom.exe"
+          if (-not (Test-Path $exe)) {
+            $candidate = Get-ChildItem (Join-Path $env:LOCALAPPDATA "Programs") -Filter "Axiom.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $exe = $candidate.FullName }
+          }
+          if (-not (Test-Path $exe)) { throw "Axiom.exe was not found after installation." }
+          $workspace = Join-Path $env:RUNNER_TEMP "axiom-install-smoke"
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+          $app = Start-Process -FilePath $exe -ArgumentList @("--axiom-workspace=$workspace", "--disable-gpu") -PassThru
+          $runtimeLogCandidates = @((Join-Path $env:APPDATA "Axiom/logs/runtime.log"), (Join-Path $env:APPDATA "axiom-desktop/logs/runtime.log"))
+          $deadline = (Get-Date).AddSeconds(60)
+          $log = ""
+          $runtimeReady = $false
+          $rendererReady = $false
+          $uiMounted = $false
+          do {
+            $app.Refresh()
+            if ($app.HasExited) { throw "Installed Axiom exited during startup. $log" }
+            $foundLog = $runtimeLogCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($foundLog) {
+              $log = Get-Content $foundLog -Tail 120 | Out-String
+              if ($log -match "Runtime executable lookup failed|Runtime process error|Runtime startup failed|could not start its local AI runtime") { throw "Installed Axiom reported a runtime startup failure. $log" }
+              $runtimeReady = $log -match "Runtime ready at http://127\.0\.0\.1:"
+              $rendererReady = $log -match "Axiom renderer loaded\."
+              $uiMounted = $log -match "Axiom UI mounted\."
+              if ($runtimeReady -and $rendererReady -and $uiMounted) { break }
+            }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+          if (-not $runtimeReady -or -not $rendererReady -or -not $uiMounted) { throw "Installed Axiom did not complete runtime, renderer, and UI startup within 60 seconds. $log" }
+          try { & taskkill.exe /pid $app.Id /t /f | Out-Null } catch {}
+          $app.WaitForExit(10000) | Out-Null
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4

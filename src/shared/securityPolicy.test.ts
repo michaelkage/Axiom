@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateSecurityRequest, type SecurityPolicy } from "./securityPolicy";
+import { evaluateSecurityRequest, resolvePermissionDecision, type SecurityPolicy } from "./securityPolicy";
 const policy: SecurityPolicy = {
   version: 1, projectId: "project-1", defaultDecision: "deny",
   filesystem: { readRoots: ["src", "docs"], writeRoots: ["src"], deniedPaths: ["src/secrets"] },
@@ -38,5 +38,22 @@ describe("project security policy engine", () => {
   });
   it("fails closed when policy is absent", () => {
     expect(evaluateSecurityRequest(null, { action: "filesystem.read", resource: "src/a.ts" }).decision).toBe("deny");
+  });
+});
+
+describe("worker permission policy", () => {
+  it.each(["bash", "edit", "external_directory", "task", "webfetch", "mcp", "plugin"])(
+    "downgrades persistent grants for privileged %s operations",
+    permission => {
+      expect(resolvePermissionDecision(permission, "always")).toBe("once");
+      expect(resolvePermissionDecision(permission, "once")).toBe("once");
+      expect(resolvePermissionDecision(permission, "reject")).toBe("reject");
+    },
+  );
+
+  it("preserves persistent grants for non-privileged read-only permissions", () => {
+    expect(resolvePermissionDecision("read", "always")).toBe("always");
+    expect(resolvePermissionDecision("glob", "always")).toBe("always");
+    expect(resolvePermissionDecision("websearch", "always")).toBe("always");
   });
 });

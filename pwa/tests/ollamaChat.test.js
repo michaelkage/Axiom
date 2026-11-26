@@ -212,3 +212,36 @@ test('aggregates model metrics across tool turns', async () => {
   assert.ok(result.metrics.firstTokenMs >= 0);
   assert.ok(result.metrics.wallTimeMs >= result.metrics.firstTokenMs);
 });
+
+test('fails closed for privileged tool calls when no approval callback is supplied', async () => {
+  let executed = false;
+  const harness = setup([
+    streamResponse([assistant('', [toolCall('github_update_file')])]),
+    streamResponse([assistant('No write was performed')])
+  ], {
+    getToolMeta: () => ({ requiresApproval: true }),
+    executeTool: async () => { executed = true; }
+  });
+  await harness.run();
+  assert.equal(executed, false);
+  assert.deepEqual(JSON.parse(harness.requests[1].payload.messages.at(-1).content), {
+    cancelled: true, message: 'User declined this action.'
+  });
+});
+
+
+test('propagates the runtime policy context to every model-originated tool execution', async () => {
+  let received;
+  const harness = setup([
+    streamResponse([assistant('', [toolCall('read_repo')])]),
+    streamResponse([assistant('Finished')])
+  ], {
+    executionContext: { source: 'model_runtime', mcpPolicy: { serverA: { allowedTools: ['mcp_serverA_read_repo'] } } },
+    executeTool: async (_name, _args, context) => { received = context; return { ok: true }; }
+  });
+  await harness.run();
+  assert.equal(received.source, 'model_runtime');
+  assert.deepEqual(received.mcpPolicy, { serverA: { allowedTools: ['mcp_serverA_read_repo'] } });
+  assert.ok(received.signal instanceof AbortSignal);
+});
+

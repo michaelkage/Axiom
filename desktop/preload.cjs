@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     }
     ipcRenderer.send("axiom:webview-message", message);
   },
+  workerAudit: Object.freeze({
+    append: request => ipcRenderer.invoke("axiom:worker-audit-append", request),
+    list: () => ipcRenderer.invoke("axiom:worker-audit-list"),
+    verify: () => ipcRenderer.invoke("axiom:worker-audit-verify")
+  }),
   security: Object.freeze({
     audit: () => ipcRenderer.invoke("axiom:security-audit-list"),
     verifyAudit: () => ipcRenderer.invoke("axiom:security-audit-verify"),
@@ -112,6 +117,10 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     create: objective => ipcRenderer.invoke("axiom:execution-ledger-create", objective),
     commit: request => ipcRenderer.invoke("axiom:execution-ledger-commit", request),
     remove: request => ipcRenderer.invoke("axiom:execution-ledger-remove", request)
+  }),
+  projectMemory: Object.freeze({
+    load: () => ipcRenderer.invoke("axiom:project-memory-load"),
+    save: memories => ipcRenderer.invoke("axiom:project-memory-save", memories)
   }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),

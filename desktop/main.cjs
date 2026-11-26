@@ -6,6 +6,8 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { createProjectStore } = require("./project-store.cjs");
+const { createProjectMemoryStore } = require("./project-memory.cjs");
+const { detectQualityGatePresets } = require("./quality-gate-presets.cjs");
 const { createSecureStorage } = require("./secure-storage.cjs");
 const { createDeploymentManager } = require("./deployment-provider.cjs");
 const { createDeploymentHistoryStore } = require("./deployment-history.cjs");
@@ -33,6 +35,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
+const { createWorkerSecurityAudit } = require("./worker-security-audit.cjs");
 const { applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
 const { createNetworkPolicyProxy } = require("./network-policy-proxy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
@@ -47,6 +50,7 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let securityAuditStore;
+let workerSecurityAuditStore;
 let workspaceSecurityPolicyStore;
 let runtimeNetworkProxy;
 let runtimeNetworkProxyWorkspace = null;
@@ -56,6 +60,33 @@ let runtimeNetworkEpoch = 0;
 function currentWorkspaceSecurityPolicyStore() {
   if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
   return workspaceSecurityPolicyStore;
+}
+function currentWorkerSecurityAuditStore() {
+  if (!workerSecurityAuditStore) {
+    const secureStore = currentSecureCredentialStore();
+    let signingKey = secureStore.get("security", "worker-audit-signing-key");
+    if (!signingKey) {
+      signingKey = require("node:crypto").randomBytes(32).toString("hex");
+      secureStore.set("security", "worker-audit-signing-key", signingKey);
+    }
+    if (!/^[a-f0-9]{64}$/i.test(signingKey)) throw new Error("The protected worker audit signing key is invalid.");
+    const readAnchor = () => {
+      const value = secureStore.get("security", "worker-audit-head");
+      if (!value) return { sequence: 0, hash: "0".repeat(64) };
+      let parsed;
+      try { parsed = JSON.parse(value); } catch { throw new Error("The protected worker audit checkpoint is corrupt."); }
+      return parsed;
+    };
+    workerSecurityAuditStore = createWorkerSecurityAudit({
+      filePath: path.join(app.getPath("userData"), "security", "worker-audit.jsonl"),
+      signingKey: Buffer.from(signingKey, "hex"),
+      anchorStore: {
+        get: readAnchor,
+        set: anchor => secureStore.set("security", "worker-audit-head", JSON.stringify(anchor))
+      }
+    });
+  }
+  return workerSecurityAuditStore;
 }
 function currentSecurityAuditStore() {
   if (!securityAuditStore) {
@@ -133,6 +164,17 @@ function currentPluginHost() {
 const executionTelemetry = createExecutionTelemetry();
 let openCodeTelemetryBridge;
 let secureCredentialStore;
+let projectMemoryStore;
+let projectMemoryWorkspace;
+function currentProjectMemoryStore() {
+  if (!selectedWorkspace) throw new Error("Open a project before accessing versioned project memory.");
+  const workspace = path.resolve(selectedWorkspace);
+  if (!projectMemoryStore || projectMemoryWorkspace !== workspace) {
+    projectMemoryWorkspace = workspace;
+    projectMemoryStore = createProjectMemoryStore(workspace);
+  }
+  return projectMemoryStore;
+}
 function currentSecureCredentialStore() {
   if (!secureCredentialStore) secureCredentialStore = createSecureStorage({ userDataPath: app.getPath("userData"), safeStorage });
   return secureCredentialStore;
@@ -812,28 +854,19 @@ async function runQualityGate(event, message) {
       output: untrackedIssues.join("\n") || "No whitespace issues or common conflict markers found in untracked files."
     });
 
-    const packageFile = path.join(message.worktreePath, "package.json");
-    let manifest = null;
-    try { manifest = JSON.parse(await fs.promises.readFile(packageFile, "utf8")); } catch {}
-    const testPaths = paths.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file)
-      && fs.existsSync(path.resolve(message.worktreePath, file)));
-    const lockName = fs.existsSync(path.join(message.worktreePath, "pnpm-lock.yaml")) ? "pnpm" :
-      fs.existsSync(path.join(message.worktreePath, "yarn.lock")) ? "yarn" : "npm";
-    if (testPaths.length && manifest) {
-      const command = lockName === "pnpm" ? "pnpm" : lockName === "yarn" ? "yarn" : "npm";
-      const args = lockName === "npm"
-        ? ["exec", "--", "vitest", "run", ...testPaths]
-        : lockName === "yarn" ? ["vitest", "run", ...testPaths] : ["exec", "vitest", "run", ...testPaths];
-      await addCheck("Targeted unit tests", command, args, message.worktreePath, 180000);
+    const presets = detectQualityGatePresets(message.worktreePath, paths);
+    for (const preset of presets.commands) {
+      await addCheck(preset.name, preset.command, preset.args, message.worktreePath, preset.timeout);
     }
-    const sourceChanged = paths.some(file => /\.(tsx?|jsx?)$/.test(file) && !/(\.test|\.spec)\./.test(file));
-    if (sourceChanged && manifest?.scripts?.build) {
-      const command = lockName === "pnpm" ? "pnpm" : lockName === "yarn" ? "yarn" : "npm";
-      const args = lockName === "npm" ? ["run", "build"] : ["run", "build"];
-      await addCheck("Project build", command, args, message.worktreePath, 240000);
+    for (const suggestion of presets.suggestions) {
+      checks.push({
+        name: suggestion.name,
+        state: "unverified",
+        output: "Suggested command: " + suggestion.command + (suggestion.args.length ? " " + suggestion.args.join(" ") : "") + ". " + suggestion.reason
+      });
     }
 
-    const ranProjectCheck = checks.some(check => check.name === "Targeted unit tests" || check.name === "Project build");
+    const ranProjectCheck = presets.commands.some(preset => /test|build/i.test(preset.name));
     if (!ranProjectCheck) {
       checks.push({
         name: "Project-level verification evidence",
@@ -1422,6 +1455,28 @@ ipcMain.handle("axiom:plugin-run", async (event, request) => {
   });
   await appendRuntimeLog("Plugin " + request.pluginId + " completed in the isolated runtime.");
   return result;
+});
+
+ipcMain.handle("axiom:worker-audit-append", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("A worker audit decision is required.");
+  const record = await currentWorkerSecurityAuditStore().append(request);
+  currentSecurityAuditStore().record({
+    action: "worker.permission." + request.permission,
+    decision: request.effectiveDecision === "reject" ? "deny" : "allow",
+    reason: "Worker permission decision recorded in the HMAC-authenticated audit chain.",
+    projectId: selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null,
+    resource: "session:" + request.sessionId + ";requested:" + request.requestedDecision + ";effective:" + request.effectiveDecision
+  });
+  return record;
+});
+ipcMain.handle("axiom:worker-audit-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentWorkerSecurityAuditStore().list();
+});
+ipcMain.handle("axiom:worker-audit-verify", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentWorkerSecurityAuditStore().verify();
 });
 
 ipcMain.handle("axiom:security-audit-list", event => {
@@ -2214,6 +2269,15 @@ ipcMain.handle("axiom:fs-write", async (event, relativePath, content) => {
   if (!selectedWorkspace) throw new Error("No project is currently open.");
   await authorizeFilesystemOperation("write", relativePath);
   return writeProjectFile(selectedWorkspace, relativePath, content);
+});
+
+ipcMain.handle("axiom:project-memory-load", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().load();
+});
+ipcMain.handle("axiom:project-memory-save", async (event, memories) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentProjectMemoryStore().save(memories);
 });
 
 ipcMain.handle("axiom:project-bootstrap", event => {
