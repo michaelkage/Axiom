@@ -1,6 +1,6 @@
 # Axiom
 
-**[Axiom product site and downloads →](https://michaelkage.github.io/Axiom/)** · [Latest releases](https://github.com/michaelkage/Axiom/releases) · [Quick start](./QUICKSTART.md)
+**[Axiom product site and downloads →](https://michaelkage.github.io/Axiom/)** · [Latest releases](https://github.com/michaelkage/Axiom/releases) · [Quick start](./docs/QUICKSTART.md)
 
 **Build software by describing the outcome, not by starting with a pile of files.**
 
