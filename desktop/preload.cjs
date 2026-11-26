@@ -118,6 +118,10 @@ contextBridge.exposeInMainWorld("axiomDesktop", Object.freeze({
     commit: request => ipcRenderer.invoke("axiom:execution-ledger-commit", request),
     remove: request => ipcRenderer.invoke("axiom:execution-ledger-remove", request)
   }),
+  projectMemory: Object.freeze({
+    load: () => ipcRenderer.invoke("axiom:project-memory-load"),
+    save: memories => ipcRenderer.invoke("axiom:project-memory-save", memories)
+  }),
   project: Object.freeze({
     bootstrap: () => ipcRenderer.invoke("axiom:project-bootstrap"),
     readState: () => ipcRenderer.invoke("axiom:project-state-read"),
