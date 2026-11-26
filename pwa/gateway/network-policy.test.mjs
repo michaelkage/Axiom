@@ -48,7 +48,7 @@ test('returns a bodyless response for HTTP 205 without violating the Fetch Respo
 test('rejects protocol upgrades instead of leaving an upstream socket open', async () => {
   const server = net.createServer(socket => {
     socket.once('data', () => {
-      socket.write('HTTP/1.1 101 Switching Protocols\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\n\\r\\n');
+      socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
     });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
