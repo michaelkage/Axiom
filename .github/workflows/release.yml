@@ -88,6 +88,9 @@ jobs:
           if ($version -ne $desktopVersion) { throw "Release version $version does not match desktop/package.json version $desktopVersion" }
           if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid release version: $version" }
           "AXIOM_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $notes = "docs/releases/v$version.md"
+          if (-not (Test-Path $notes)) { $notes = "docs/releases/README.md" }
+          "AXIOM_RELEASE_NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build Windows installer
         working-directory: desktop
@@ -182,7 +185,7 @@ jobs:
           tag_name: v${{ env.AXIOM_VERSION }}
           target_commitish: ${{ github.sha }}
           name: Axiom ${{ env.AXIOM_VERSION }}
-          body_path: docs/releases/${{ github.ref_name }}.md
+          body_path: ${{ env.AXIOM_RELEASE_NOTES }}
           files: |
             desktop/release/Axiom-Setup-*-x64.exe
             desktop/release/Axiom-Setup-*-x64.exe.sha256
