@@ -33,6 +33,7 @@ const { createMcpManager } = require("./mcp-manager.cjs");
 const { createPluginHost, PLUGIN_DIRECTORY } = require("./plugin-host.cjs");
 const { evaluateFilesystemAccess, combineFilesystemDecisions, createSecurityAuditStore } = require("./security-enforcement.cjs");
 const { createWorkspaceSecurityPolicyStore } = require("./workspace-security-policy.cjs");
+const { createWorkerSecurityAudit } = require("./worker-security-audit.cjs");
 const { applyRuntimePermissionPolicy } = require("./runtime-policy.cjs");
 const { createNetworkPolicyProxy } = require("./network-policy-proxy.cjs");
 const { createPlatformPluginSandbox } = require("./plugin-sandbox-linux.cjs");
@@ -47,6 +48,7 @@ let terminalRunner;
 let omniRouteManager;
 let mcpManager;
 let securityAuditStore;
+let workerSecurityAuditStore;
 let workspaceSecurityPolicyStore;
 let runtimeNetworkProxy;
 let runtimeNetworkProxyWorkspace = null;
@@ -56,6 +58,33 @@ let runtimeNetworkEpoch = 0;
 function currentWorkspaceSecurityPolicyStore() {
   if (!workspaceSecurityPolicyStore) workspaceSecurityPolicyStore = createWorkspaceSecurityPolicyStore({ userDataPath: app.getPath("userData") });
   return workspaceSecurityPolicyStore;
+}
+function currentWorkerSecurityAuditStore() {
+  if (!workerSecurityAuditStore) {
+    const secureStore = currentSecureCredentialStore();
+    let signingKey = secureStore.get("security", "worker-audit-signing-key");
+    if (!signingKey) {
+      signingKey = require("node:crypto").randomBytes(32).toString("hex");
+      secureStore.set("security", "worker-audit-signing-key", signingKey);
+    }
+    if (!/^[a-f0-9]{64}$/i.test(signingKey)) throw new Error("The protected worker audit signing key is invalid.");
+    const readAnchor = () => {
+      const value = secureStore.get("security", "worker-audit-head");
+      if (!value) return { sequence: 0, hash: "0".repeat(64) };
+      let parsed;
+      try { parsed = JSON.parse(value); } catch { throw new Error("The protected worker audit checkpoint is corrupt."); }
+      return parsed;
+    };
+    workerSecurityAuditStore = createWorkerSecurityAudit({
+      filePath: path.join(app.getPath("userData"), "security", "worker-audit.jsonl"),
+      signingKey: Buffer.from(signingKey, "hex"),
+      anchorStore: {
+        get: readAnchor,
+        set: anchor => secureStore.set("security", "worker-audit-head", JSON.stringify(anchor))
+      }
+    });
+  }
+  return workerSecurityAuditStore;
 }
 function currentSecurityAuditStore() {
   if (!securityAuditStore) {
@@ -1422,6 +1451,28 @@ ipcMain.handle("axiom:plugin-run", async (event, request) => {
   });
   await appendRuntimeLog("Plugin " + request.pluginId + " completed in the isolated runtime.");
   return result;
+});
+
+ipcMain.handle("axiom:worker-audit-append", async (event, request) => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("A worker audit decision is required.");
+  const record = await currentWorkerSecurityAuditStore().append(request);
+  currentSecurityAuditStore().record({
+    action: "worker.permission." + request.permission,
+    decision: request.effectiveDecision === "reject" ? "deny" : "allow",
+    reason: "Worker permission decision recorded in the HMAC-authenticated audit chain.",
+    projectId: selectedWorkspace ? require("node:crypto").createHash("sha256").update(path.resolve(selectedWorkspace)).digest("hex").slice(0, 40) : null,
+    resource: "session:" + request.sessionId + ";requested:" + request.requestedDecision + ";effective:" + request.effectiveDecision
+  });
+  return record;
+});
+ipcMain.handle("axiom:worker-audit-list", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentWorkerSecurityAuditStore().list();
+});
+ipcMain.handle("axiom:worker-audit-verify", async event => {
+  if (!trustedRenderer(event)) throw new Error("Untrusted renderer.");
+  return currentWorkerSecurityAuditStore().verify();
 });
 
 ipcMain.handle("axiom:security-audit-list", event => {
