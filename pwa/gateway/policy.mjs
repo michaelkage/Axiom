@@ -100,10 +100,17 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
   }
 
   async function persistSigned(records) {
-    const serialized = records.map(payload => {
-      const signed = { ...payload, version: 2 };
-      return JSON.stringify({ ...signed, hash: digest(signed) });
-    }).join('\\n') + (records.length ? '\\n' : '');
+    let previousHash = '0'.repeat(64);
+    let sequence = 0;
+    const lines = records.map(record => {
+      const { previousHash: _legacyPreviousHash, ...payload } = record;
+      const signed = { ...payload, version: 2, previousHash };
+      const hash = digest(signed);
+      previousHash = hash;
+      sequence += 1;
+      return JSON.stringify({ ...signed, hash });
+    });
+    const serialized = lines.join('\\n') + (lines.length ? '\\n' : '');
     const temporaryPath = path + '.migrate-' + process.pid + '-' + randomBytes(8).toString('hex');
     const handle = await open(temporaryPath, 'wx', 0o600);
     try {
@@ -119,6 +126,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
       await unlink(temporaryPath).catch(() => {});
       throw error;
     }
+    return { previousHash, sequence };
   }
 
   async function append(event) {
@@ -136,12 +144,7 @@ export function createAuditChain({ path, key, now = Date.now } = {}) {
             ({ previousHash, sequence } = verifySigned(content));
           } else {
             records = verifyLegacy(content);
-            await persistSigned(records);
-            if (records.length) {
-              const last = records[records.length - 1];
-              previousHash = digest({ ...last, version: 2 });
-              sequence = records.length;
-            }
+            ({ previousHash, sequence } = await persistSigned(records));
           }
         } catch (error) {
           if (error.message === 'Audit chain integrity verification failed.' ||
