@@ -25,7 +25,6 @@ import { ProviderReadinessPanel } from "./components/ProviderReadinessPanel";
 import { SecurityPolicyPanel } from "./components/SecurityPolicyPanel";
 import { appendWorkerSecurityAudit, verifyWorkerSecurityAudit } from "../shared/workerSecurityAudit";
 import { resolvePermissionDecision } from "../shared/securityPolicy";
-const WorkerSecurityAuditPanel = lazy(() => import("./components/WorkerSecurityAuditPanel").then(module => ({ default: module.WorkerSecurityAuditPanel })));
 import { getVerificationResult, skippedChecks } from "../shared/verification";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
@@ -70,7 +69,8 @@ import { logger } from "./utils/logger";
 import { applyThemePreferences, loadThemePreferences, saveThemePreferences, type AxiomTheme } from "./utils/theme";
 import { extractMentions } from "./utils/editorContent";
 import {
-  encodeFileMentionReference,
+
+const WorkerSecurityAuditPanel = lazy(() => import("./components/WorkerSecurityAuditPanel").then(module => ({ default: module.WorkerSecurityAuditPanel })));  encodeFileMentionReference,
   parseFileMentionReference,
 } from "./utils/fileMentionReference";
 
