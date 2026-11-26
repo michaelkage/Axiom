@@ -127,7 +127,6 @@ const PRIVILEGED_PERMISSION_TYPES = new Set([
   "external_directory",
   "task",
   "webfetch",
-  "websearch",
   "mcp",
   "plugin",
 ]);
